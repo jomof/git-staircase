@@ -132,19 +132,19 @@ impl<'a> StaircaseRebaser<'a> {
     fn restore_head_silent(&self) {
         if let Some(ref refname) = self.original_head {
             let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
-            let _ = self.repo.run(&["checkout", "-f", target]);
+            let _ = self.repo.run(&["checkout", target]);
         } else {
-            let _ = self.repo.run(&["checkout", "-f", &self.original_head_oid]);
+            let _ = self.repo.run(&["checkout", &self.original_head_oid]);
         }
     }
 
     fn finalize(&self) -> Result<()> {
         if let Some(ref refname) = self.original_head {
             let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
-            self.repo.run(&["checkout", "-f", target])?;
+            self.repo.run(&["checkout", target])?;
         } else {
             self.repo
-                .run(&["checkout", "-f", &self.original_head_oid])?;
+                .run(&["checkout", &self.original_head_oid])?;
         }
         Ok(())
     }
@@ -332,62 +332,72 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
         .map(|s| s.cut.clone())
         .collect();
 
-    for i in 0..status.steps.len() {
-        let step_status = &status.steps[i];
-        let step_name = status.metadata.steps[i].name.clone();
+    let run_loop = || -> Result<()> {
+        for i in 0..status.steps.len() {
+            let step_status = &status.steps[i];
+            let step_name = status.metadata.steps[i].name.clone();
 
-        let actual_oid = match &step_status.actual_oid {
-            Some(oid) => oid.clone(),
-            None => status.metadata.steps[i].cut.clone(),
-        };
-
-        let is_stale = !repo.is_ancestor(&current_base, &actual_oid)?;
-        if is_stale {
-            let old_parent_cut = if i == 0 {
-                repo.merge_base(&actual_oid, &current_base)?
-            } else {
-                original_cuts[i - 1].clone()
+            let actual_oid = match &step_status.actual_oid {
+                Some(oid) => oid.clone(),
+                None => status.metadata.steps[i].cut.clone(),
             };
 
-            match rebaser.rebase_step(
-                &status.metadata.steps[i],
-                &actual_oid,
-                &old_parent_cut,
-                &current_base,
-            ) {
-                Ok(new_oid) => {
-                    current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
-                    status.metadata.steps[i].cut = new_oid.clone();
-                    metadata_changed = true;
-                    current_base = new_oid;
-                }
-                Err(e) => {
-                    if metadata_changed {
-                        let _ = current_rs.commit_metadata(repo, status.metadata);
+            let is_stale = !repo.is_ancestor(&current_base, &actual_oid)?;
+            if is_stale {
+                let old_parent_cut = if i == 0 {
+                    repo.merge_base(&actual_oid, &current_base)?
+                } else {
+                    original_cuts[i - 1].clone()
+                };
+
+                match rebaser.rebase_step(
+                    &status.metadata.steps[i],
+                    &actual_oid,
+                    &old_parent_cut,
+                    &current_base,
+                ) {
+                    Ok(new_oid) => {
+                        current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
+                        status.metadata.steps[i].cut = new_oid.clone();
+                        metadata_changed = true;
+                        current_base = new_oid;
                     }
-                    return Err(StaircaseError::Other(format!(
-                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
-                        step_name, e
-                    )));
+                    Err(e) => {
+                        if metadata_changed {
+                            let _ = current_rs.commit_metadata(repo, status.metadata.clone());
+                        }
+                        return Err(StaircaseError::Other(format!(
+                            "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
+                            step_name, e
+                        )));
+                    }
                 }
-            }
-        } else {
-            current_base = actual_oid.clone();
-            if status.metadata.steps[i].cut != actual_oid {
-                current_rs = current_rs.update_step_oid(repo, i, actual_oid.clone())?;
-                status.metadata.steps[i].cut = actual_oid;
-                metadata_changed = true;
+            } else {
+                current_base = actual_oid.clone();
+                if status.metadata.steps[i].cut != actual_oid {
+                    current_rs = current_rs.update_step_oid(repo, i, actual_oid.clone())?;
+                    status.metadata.steps[i].cut = actual_oid;
+                    metadata_changed = true;
+                }
             }
         }
+
+        if metadata_changed {
+            current_rs.commit_metadata(repo, status.metadata)?;
+        }
+        Ok(())
+    };
+
+    match run_loop() {
+        Ok(_) => {
+            rebaser.finalize()?;
+            Ok(())
+        }
+        Err(e) => {
+            rebaser.rollback();
+            Err(e)
+        }
     }
-
-    if metadata_changed {
-        current_rs.commit_metadata(repo, status.metadata)?;
-    }
-
-    rebaser.finalize()?;
-
-    Ok(())
 }
 pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
