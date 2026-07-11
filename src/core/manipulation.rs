@@ -229,9 +229,7 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
     }
 
     if let Some(err) = rebase_err {
-        return Err(StaircaseError::Other(format!(
-            "Reorder failed: {}", err
-        )));
+        return Err(StaircaseError::Other(format!("Reorder failed: {}", err)));
     }
 
     Ok(())

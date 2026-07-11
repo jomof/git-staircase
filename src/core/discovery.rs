@@ -9,6 +9,17 @@ use uuid::Uuid;
 use super::inference::{extract_path_to, infer_onto};
 use super::utils::common_prefix;
 
+fn compute_implicit_id(steps: &[Step]) -> String {
+    use std::collections::hash_map::DefaultHasher;
+    use std::hash::{Hash, Hasher};
+    let mut hasher = DefaultHasher::new();
+    for step in steps {
+        step.cut.hash(&mut hasher);
+        step.name.hash(&mut hasher);
+    }
+    format!("implicit@{:016x}", hasher.finish())
+}
+
 /// Discover potential staircases relative to `onto`.
 pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
     let branches = repo.local_branches()?;
@@ -125,7 +136,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
                 common_prefix(&branch_names).unwrap_or_else(|| steps.last().unwrap().name.clone());
 
             discoveries.push(Discovery::Linear(StaircaseMetadata {
-                id: Uuid::new_v4().to_string(),
+                id: compute_implicit_id(&steps),
                 verification_policy: None,
                 name,
                 target: onto_final.to_string(),
@@ -195,11 +206,14 @@ pub fn resolve_staircase(
     name: &str,
     onto: Option<&str>,
 ) -> Result<Option<ResolvedStaircase>> {
+    let mut resolved_staircases: HashMap<String, ResolvedStaircase> = HashMap::new();
+    let mut resolved_commits: HashMap<String, String> = HashMap::new();
+
+    // Interpretation 1: Managed
     let staircases = repo.list_staircases()?;
-    let mut managed_matches = Vec::new();
     for s in staircases {
         if s.name == name || s.id == name {
-            managed_matches.push(s);
+            resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s));
         }
     }
 
@@ -207,29 +221,50 @@ pub fn resolve_staircase(
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
-
     let discoveries = discover(repo, Some(&onto_final))?;
-    let mut implicit_matches = Vec::new();
 
-    // Try matching by nominal name
+    // Interpretation 3: Implicit Name
     for d in &discoveries {
-        if let Discovery::Linear(s) = d {
-            if s.name == name {
-                implicit_matches.push(s.clone());
+        match d {
+            Discovery::Linear(s) => {
+                if s.name == name || s.id == name {
+                    // Prefer Managed if already present with same ID
+                    if !resolved_staircases.contains_key(&s.id) {
+                        resolved_staircases
+                            .insert(s.id.clone(), ResolvedStaircase::Implicit(s.clone()));
+                    }
+                }
             }
+            _ => {}
         }
     }
 
+    // Interpretation 2: Standard Git Revision
     if let Ok(oid) = repo.resolve_ref(name) {
+        let full_name = repo
+            .run(&["rev-parse", "--symbolic-full-name", name])
+            .unwrap_or_else(|_| name.to_string())
+            .trim()
+            .to_string();
+        let full_name = if full_name.is_empty() {
+            name.to_string()
+        } else {
+            full_name
+        };
+
+        let mut matched_staircase = false;
         for d in &discoveries {
             match d {
                 Discovery::Linear(s) => {
                     if let Some(pos) = s.steps.iter().position(|step| step.cut == oid) {
                         let mut sub_s = s.clone();
                         sub_s.steps.truncate(pos + 1);
-                        if !implicit_matches.iter().any(|m| m.steps == sub_s.steps) {
-                            implicit_matches.push(sub_s);
+                        let id = compute_implicit_id(&sub_s.steps);
+                        // Prefer Managed if already present
+                        if !resolved_staircases.contains_key(&id) {
+                            resolved_staircases.insert(id, ResolvedStaircase::Implicit(sub_s));
                         }
+                        matched_staircase = true;
                     }
                 }
                 Discovery::Ambiguous(f) => {
@@ -237,59 +272,100 @@ pub fn resolve_staircase(
                         f.steps.values().find(|s| s.cut == oid).map(|s| &s.name)
                     {
                         if let Some(path) = extract_path_to(f, step_name) {
-                            if !implicit_matches.iter().any(|m| m.steps == path.steps) {
-                                implicit_matches.push(path);
+                            let id = compute_implicit_id(&path.steps);
+                            if !resolved_staircases.contains_key(&id) {
+                                resolved_staircases.insert(id, ResolvedStaircase::Implicit(path));
                             }
+                            matched_staircase = true;
                         }
                     }
                 }
             }
         }
+        if !matched_staircase {
+            resolved_commits.insert(oid, full_name);
+        }
     }
 
-    // De-duplicate implicit matches that are already managed
-    implicit_matches.retain(|s| {
-        !managed_matches.iter().any(|m| {
-            m.steps.iter().any(|m_step| {
-                s.steps
-                    .iter()
-                    .any(|s_step| m_step.name == s_step.name && m_step.cut == s_step.cut)
-            })
-        })
-    });
-
-    let total_matches = managed_matches.len() + implicit_matches.len();
-
-    if total_matches > 1 {
-        let mut msg = format!("staircase name '{}' is ambiguous", name);
-        msg.push_str("\n\ncandidates:");
-        for m in &managed_matches {
-            msg.push_str(&format!("\n  {} (managed)", m.name));
-        }
-        for m in &implicit_matches {
-            let desc = if let Some(step) = m.steps.last() {
-                format!(
-                    "{} -> {}",
-                    m.steps.first().map(|s| s.name.as_str()).unwrap_or("?"),
-                    step.name
+    // De-duplicate Implicit that are already Managed by content
+    let managed_step_signatures: Vec<Vec<(String, String)>> = resolved_staircases
+        .values()
+        .filter_map(|rs| {
+            if let ResolvedStaircase::Managed(m) = rs {
+                Some(
+                    m.steps
+                        .iter()
+                        .map(|step| (step.name.clone(), step.cut.clone()))
+                        .collect(),
                 )
             } else {
-                "empty".to_string()
-            };
-            msg.push_str(&format!("\n  {} (implicit)  {}", m.name, desc));
+                None
+            }
+        })
+        .collect();
+
+    resolved_staircases.retain(|_, rs| {
+        if let ResolvedStaircase::Implicit(s) = rs {
+            let sig: Vec<(String, String)> = s
+                .steps
+                .iter()
+                .map(|step| (step.name.clone(), step.cut.clone()))
+                .collect();
+            !managed_step_signatures.contains(&sig)
+        } else {
+            true
+        }
+    });
+
+    let total_entities = resolved_staircases.len() + resolved_commits.len();
+    if total_entities > 1 {
+        let mut msg = format!("error: selector '{}' is ambiguous", name);
+        let mut managed = Vec::new();
+        let mut implicit = Vec::new();
+        for rs in resolved_staircases.values() {
+            match rs {
+                ResolvedStaircase::Managed(s) => managed.push(s),
+                ResolvedStaircase::Implicit(s) => implicit.push(s),
+            }
+        }
+        if !managed.is_empty() {
+            msg.push_str("\n\nmanaged staircase:");
+            for m in managed {
+                msg.push_str(&format!("\n  refs/staircases/{}", m.name));
+                msg.push_str(&format!("\n  lineage: {}", m.id));
+            }
+        }
+        if !resolved_commits.is_empty() {
+            msg.push_str("\n\nGit revision:");
+            for (oid, full_name) in &resolved_commits {
+                msg.push_str(&format!("\n  {}", full_name));
+                msg.push_str(&format!("\n  commit: {}", oid));
+            }
+        }
+        if !implicit.is_empty() {
+            msg.push_str("\n\nimplicit staircase:");
+            for m in implicit {
+                msg.push_str(&format!("\n  {} (implicit)", m.id));
+                if let Some(step) = m.steps.last() {
+                    msg.push_str(&format!("\n  top: {}", step.cut));
+                }
+            }
+        }
+        msg.push_str("\n\nuse one of:");
+        msg.push_str(&format!("\n  git staircase show --name {}", name));
+        if let Some(full_name) = resolved_commits.values().next() {
+            msg.push_str(&format!("\n  git staircase discover --top {}", full_name));
+        }
+        if let Some(rs) = resolved_staircases.values().next() {
+            msg.push_str(&format!(
+                "\n  git staircase show --structural-key {}",
+                rs.metadata().id
+            ));
         }
         return Err(StaircaseError::Ambiguous(msg));
     }
 
-    if let Some(s) = managed_matches.pop() {
-        return Ok(Some(ResolvedStaircase::Managed(s)));
-    }
-
-    if let Some(s) = implicit_matches.pop() {
-        return Ok(Some(ResolvedStaircase::Implicit(s)));
-    }
-
-    Ok(None)
+    Ok(resolved_staircases.into_values().next())
 }
 
 pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetadata>> {
@@ -305,7 +381,6 @@ pub fn resolve_explicit_staircase(
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
-
     let mut staircase_steps = Vec::new();
     for s in steps {
         let oid = repo.resolve_ref(s)?;
@@ -316,9 +391,9 @@ pub fn resolve_explicit_staircase(
             branch: Some(short_name),
         });
     }
-
+    let id = compute_implicit_id(&staircase_steps);
     Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
-        id: Uuid::new_v4().to_string(),
+        id,
         name: steps
             .last()
             .map(|s| s.strip_prefix("refs/heads/").unwrap_or(s).to_string())

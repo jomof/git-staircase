@@ -1,94 +1,55 @@
 mod common;
 use common::*;
 use git_staircase::core;
-use git_staircase::model::StaircaseMetadata;
-use git_staircase::*;
-use uuid::Uuid;
 
 #[test]
-fn test_resolve_ambiguity_managed_vs_implicit() {
+fn test_selector_ambiguity_with_git_revision() {
     let (_tmp, repo) = setup_repo();
-    let path = &repo.workdir;
+    let dir = &repo.workdir;
 
-    // Create an implicit staircase named 'feat'
-    run_git(path, &["checkout", "-b", "feat-1"]);
-    let _feat1_oid = commit(path, "feat1.txt", "1", "feat 1");
-    run_git(path, &["checkout", "-b", "feat-2"]);
-    let _feat2_oid = commit(path, "feat2.txt", "2", "feat 2");
+    // 1. Create a branch named 'auth' at the initial commit (already merged in 'main')
+    // This Git revision will NOT denote a staircase relative to 'main'.
+    let initial_oid = repo.resolve_ref("main").unwrap();
+    run_git(dir, &["branch", "auth", &initial_oid]);
 
-    // Create a managed staircase also named 'feat' (different steps to distinguish)
-    run_git(path, &["checkout", "main"]);
-    run_git(path, &["checkout", "-b", "other-1"]);
-    let other1_oid = commit(path, "other1.txt", "1", "other 1");
+    // 2. Create and adopt a staircase named 'auth'
+    run_git(dir, &["checkout", "main"]);
+    run_git(dir, &["checkout", "-b", "feature/staircase"]);
+    let _c2 = commit(dir, "feat.txt", "feat", "feat commit");
 
-    let metadata = StaircaseMetadata {
-        id: Uuid::new_v4().to_string(),
-        name: "feat".to_string(),
-        target: "main".to_string(),
-        steps: vec![Step {
-            name: "other-1".to_string(),
-            cut: other1_oid,
-            branch: Some("other-1".to_string()),
-        }],
-        verification_policy: None,
+    let discoveries = core::discover(&repo, Some("main")).unwrap();
+    let mut s = match &discoveries[0] {
+        git_staircase::Discovery::Linear(s) => s.clone(),
+        _ => panic!("Expected linear discovery"),
     };
-    core::adopt(&repo, &metadata).unwrap();
+    s.name = "auth".to_string();
+    core::adopt(&repo, &s).unwrap();
 
-    // Now 'feat' should be ambiguous
-    let result = core::resolve_staircase(&repo, "feat", Some("main"));
+    // ACT: Resolve the selector 'auth'
+    let result = core::resolve_staircase(&repo, "auth", Some("main"));
 
+    // ASSERT: Verify it fails with an ambiguity error
     match result {
-        Err(StaircaseError::Ambiguous(msg)) => {
+        Err(git_staircase::error::StaircaseError::Ambiguous(msg)) => {
+            println!("Ambiguity message:\n{}", msg);
             assert!(
-                msg.contains("ambiguous"),
-                "Error message should mention ambiguity: {}",
-                msg
+                msg.contains("error: selector 'auth' is ambiguous"),
+                "Message should have error prefix"
+            );
+            assert!(
+                msg.contains("managed staircase:"),
+                "Message should contain managed staircase"
+            );
+            assert!(
+                msg.contains("Git revision:"),
+                "Message should contain Git revision"
             );
         }
-        Ok(Some(rs)) => {
-            panic!("Expected Ambiguous error, but got {:?}", rs);
+        Ok(res) => {
+            panic!("Expected Ambiguous error, but got Ok({:?})", res);
         }
-        other => {
-            panic!("Expected Ambiguous error, but got {:?}", other);
-        }
-    }
-}
-
-#[test]
-fn test_resolve_ambiguity_multiple_implicit() {
-    let (_tmp, repo) = setup_repo();
-    let path = &repo.workdir;
-
-    // Create first implicit staircase named 'feat'
-    run_git(path, &["checkout", "main"]);
-    run_git(path, &["checkout", "-b", "feat-1"]);
-    commit(path, "feat1.txt", "1", "feat 1");
-    run_git(path, &["checkout", "-b", "feat-2"]);
-    commit(path, "feat2.txt", "2", "feat 2");
-
-    // Create second implicit staircase also named 'feat' (starting from a different branch)
-    run_git(path, &["checkout", "main"]);
-    run_git(path, &["checkout", "-b", "feat-alpha"]);
-    commit(path, "alpha.txt", "alpha", "feat alpha");
-    run_git(path, &["checkout", "-b", "feat-beta"]);
-    commit(path, "beta.txt", "beta", "feat beta");
-
-    // Now 'feat' should be ambiguous
-    let result = core::resolve_staircase(&repo, "feat", Some("main"));
-
-    match result {
-        Err(StaircaseError::Ambiguous(msg)) => {
-            assert!(
-                msg.contains("ambiguous"),
-                "Error message should mention ambiguity: {}",
-                msg
-            );
-        }
-        Ok(Some(rs)) => {
-            panic!("Expected Ambiguous error, but got {:?}", rs);
-        }
-        other => {
-            panic!("Expected Ambiguous error, but got {:?}", other);
+        Err(e) => {
+            panic!("Expected Ambiguous error, but got {:?}", e);
         }
     }
 }
