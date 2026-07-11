@@ -1,13 +1,11 @@
-use super::{OutputFormat, print_output};
+use super::{OutputFormat, StaircaseSelectorArgs, print_output};
 use crate::GitRepo;
 use git_staircase::core;
 
 pub fn run(
     repo: &GitRepo,
     format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
     aggregate: bool,
     each_prefix: bool,
     build_command: Option<String>,
@@ -16,7 +14,7 @@ pub fn run(
     let aggregate_opt = if aggregate { Some(true) } else { None };
     let each_prefix_opt = if each_prefix { Some(true) } else { None };
 
-    let rs = super::resolve_rs(repo, name, steps, onto)?;
+    let rs = super::resolve_rs(repo, &staircase)?;
 
     let results = core::verify(
         repo,

@@ -1,10 +1,12 @@
-use anyhow::{Context, anyhow};
+use anyhow::{Context, anyhow, Result};
 use clap::{Parser, Subcommand};
 use git_staircase::GitRepo;
 use git_staircase::IdentityKind;
 use std::path::PathBuf;
 
 pub mod cli;
+
+use cli::StaircaseSelectorArgs;
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -22,25 +24,20 @@ struct Cli {
 enum Commands {
     /// Reorder steps of a staircase
     Reorder {
-        name: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
+        /// New order of steps by 1-based index.
         #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<usize>>,
-        #[arg(long, value_delimiter = ',')]
-        staircase_steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        order: Option<Vec<usize>>,
     },
     /// Move commits between steps
     Move {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(long)]
         from: usize,
         #[arg(long)]
         to: usize,
-        #[arg(long)]
-        onto: Option<String>,
         commits: Vec<String>,
     },
     /// Drop a step from a staircase
@@ -80,19 +77,13 @@ enum Commands {
     },
     /// Show details of a staircase
     Show {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
     },
     /// Show status of a staircase (clean/stale/modified)
     Status {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
     },
     /// Split a step into two
     Split {
@@ -116,29 +107,20 @@ enum Commands {
     },
     /// Rebase the entire staircase onto a new target
     Rebase {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: String,
-        #[arg(long)]
-        resolve_onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
+        #[arg(long = "to")]
+        to: String,
     },
     /// Restack stale steps
     Restack {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
     },
     /// Verify a staircase
     Verify {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(long)]
         aggregate: bool,
         #[arg(long)]
@@ -150,73 +132,52 @@ enum Commands {
     },
     /// Show identities of a staircase
     Id {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(long, value_enum, default_value = "lineage")]
         kind: IdentityKind,
     },
     /// Delete a managed staircase
     Delete {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(long)]
         delete_branches: bool,
     },
     /// Show log for a staircase
     Log {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(last = true)]
         git_args: Vec<String>,
     },
     /// Show diff for a staircase
     Diff {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(last = true)]
         git_args: Vec<String>,
     },
     /// Show graph for a staircase
     Graph {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
         #[arg(last = true)]
         git_args: Vec<String>,
     },
     /// List steps of a staircase
     Steps {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
     },
     /// List commits in each step of a staircase
     Commits {
-        name: Option<String>,
-        #[arg(long, value_delimiter = ',')]
-        steps: Option<Vec<String>>,
-        #[arg(long)]
-        onto: Option<String>,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
     },
 }
 
-fn find_repo_root() -> anyhow::Result<PathBuf> {
+fn find_repo_root() -> Result<PathBuf> {
     let output = std::process::Command::new("git")
         .arg("rev-parse")
         .arg("--show-toplevel")
@@ -231,7 +192,7 @@ fn find_repo_root() -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(path_str))
 }
 
-pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
+pub fn parse_step_spec(spec: &str) -> Result<(String, usize)> {
     let parts: Vec<&str> = spec.split(':').collect();
     if parts.len() != 2 {
         return Err(anyhow!(
@@ -246,7 +207,7 @@ pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
     Ok((name, num))
 }
 
-fn main() -> anyhow::Result<()> {
+fn main() -> Result<()> {
     let cli = Cli::parse();
     let repo_root = find_repo_root()?;
     let repo = GitRepo::new(repo_root);
@@ -260,19 +221,15 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Reorder {
-            name,
-            steps,
-            staircase_steps,
-            onto,
-        } => cli::reorder::run(&repo, format, name, steps, staircase_steps, onto),
+            staircase,
+            order,
+        } => cli::reorder::run(&repo, format, staircase, order),
         Commands::Move {
-            name,
-            steps,
+            staircase,
             from,
             to,
-            onto,
             commits,
-        } => cli::move_cmd::run(&repo, format, name, steps, from, to, onto, commits),
+        } => cli::move_cmd::run(&repo, format, staircase, from, to, commits),
         Commands::Drop { step, onto } => cli::drop::run(&repo, format, step, onto),
         Commands::Discover { onto } => cli::discover::run(&repo, format, onto),
         Commands::Adopt {
@@ -297,10 +254,8 @@ fn main() -> anyhow::Result<()> {
             implicit,
             onto,
         } => cli::list::run(&repo, format, managed, implicit, onto),
-        Commands::Show { name, steps, onto } => cli::show::run(&repo, format, name, steps, onto),
-        Commands::Status { name, steps, onto } => {
-            cli::status::run(&repo, format, name, steps, onto)
-        }
+        Commands::Show { staircase } => cli::show::run(&repo, format, staircase),
+        Commands::Status { staircase } => cli::status::run(&repo, format, staircase),
         Commands::Split {
             step,
             at,
@@ -309,18 +264,14 @@ fn main() -> anyhow::Result<()> {
         } => cli::split::run(&repo, format, step, at, name, onto),
         Commands::Join { step1, step2, onto } => cli::join::run(&repo, format, step1, step2, onto),
         Commands::Rebase {
-            name,
-            steps,
-            onto,
-            resolve_onto,
-        } => cli::rebase::run(&repo, format, name, steps, onto, resolve_onto),
-        Commands::Restack { name, steps, onto } => {
-            cli::restack::run(&repo, format, name, steps, onto)
+            staircase,
+            to,
+        } => cli::rebase::run(&repo, format, staircase, to),
+        Commands::Restack { staircase } => {
+            cli::restack::run(&repo, format, staircase)
         }
         Commands::Verify {
-            name,
-            steps,
-            onto,
+            staircase,
             aggregate,
             each_prefix,
             build_command,
@@ -328,47 +279,35 @@ fn main() -> anyhow::Result<()> {
         } => cli::verify::run(
             &repo,
             format,
-            name,
-            steps,
-            onto,
+            staircase,
             aggregate,
             each_prefix,
             build_command,
             test_command,
         ),
         Commands::Id {
-            name,
-            steps,
+            staircase,
             kind,
-            onto,
-        } => cli::id::run(&repo, format, name, steps, kind, onto),
+        } => cli::id::run(&repo, format, staircase, kind),
         Commands::Delete {
-            name,
-            steps,
-            onto,
+            staircase,
             delete_branches,
-        } => cli::delete::run(&repo, format, name, steps, onto, delete_branches),
+        } => cli::delete::run(&repo, format, staircase, delete_branches),
         Commands::Log {
-            name,
-            steps,
-            onto,
+            staircase,
             git_args,
-        } => cli::log::run(&repo, format, name, steps, onto, git_args),
+        } => cli::log::run(&repo, format, staircase, git_args),
         Commands::Diff {
-            name,
-            steps,
-            onto,
+            staircase,
             git_args,
-        } => cli::diff::run(&repo, format, name, steps, onto, git_args),
+        } => cli::diff::run(&repo, format, staircase, git_args),
         Commands::Graph {
-            name,
-            steps,
-            onto,
+            staircase,
             git_args,
-        } => cli::graph::run(&repo, format, name, steps, onto, git_args),
-        Commands::Steps { name, steps, onto } => cli::steps::run(&repo, format, name, steps, onto),
-        Commands::Commits { name, steps, onto } => {
-            cli::commits::run(&repo, format, name, steps, onto)
+        } => cli::graph::run(&repo, format, staircase, git_args),
+        Commands::Steps { staircase } => cli::steps::run(&repo, format, staircase),
+        Commands::Commits { staircase } => {
+            cli::commits::run(&repo, format, staircase)
         }
     }
 }

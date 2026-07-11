@@ -1,13 +1,11 @@
-use super::{OutputFormat, print_output};
+use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
 
 pub fn run(
     repo: &GitRepo,
     format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, name, steps, onto)?;
-    print_output(format, &rs)
+    let rs = super::resolve_rs(repo, &staircase)?;
+    super::print_output(format, rs.metadata())
 }

@@ -1,14 +1,12 @@
-use super::OutputFormat;
+use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
 
 pub fn run(
     repo: &GitRepo,
     _format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, name, steps, onto)?;
+    let rs = super::resolve_rs(repo, &staircase)?;
     let target_oid = repo.resolve_ref(&rs.metadata().target)?;
     let mut current_base = target_oid;
     for (i, step) in rs.metadata().steps.iter().enumerate() {

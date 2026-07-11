@@ -1,15 +1,13 @@
-use super::OutputFormat;
+use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
 
 pub fn run(
     repo: &GitRepo,
     _format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
     git_args: Vec<String>,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, name, steps, onto)?;
+    let rs = super::resolve_rs(repo, &staircase)?;
     let mut args = vec!["diff"];
     let range = format!(
         "{}..{}",

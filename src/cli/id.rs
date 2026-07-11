@@ -1,4 +1,4 @@
-use super::OutputFormat;
+use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
 use git_staircase::IdentityKind;
 use git_staircase::core;
@@ -6,12 +6,10 @@ use git_staircase::core;
 pub fn run(
     repo: &GitRepo,
     format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
+    staircase: StaircaseSelectorArgs,
     kind: IdentityKind,
-    onto: Option<String>,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, name, steps, onto)?;
+    let rs = super::resolve_rs(repo, &staircase)?;
     let was_implicit = !rs.is_managed();
     let id = core::compute_identity(repo, &rs, kind)?;
     if was_implicit && kind == IdentityKind::Lineage && matches!(format, OutputFormat::Human) {

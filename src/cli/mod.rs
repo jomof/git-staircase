@@ -1,4 +1,5 @@
-use anyhow::anyhow;
+use anyhow::{anyhow, Result};
+use clap::Args;
 use git_staircase::model::{ToHuman, ToPorcelain};
 use git_staircase::{GitRepo, ResolvedStaircase, core};
 use serde::Serialize;
@@ -30,7 +31,19 @@ pub enum OutputFormat {
     Porcelain,
 }
 
-pub fn print_output<T>(format: OutputFormat, value: &T) -> anyhow::Result<()>
+#[derive(Args, Clone, Debug)]
+pub struct StaircaseSelectorArgs {
+    /// Name of the staircase to operate on. Can also be a branch name within a staircase.
+    pub name: Option<String>,
+    /// Explicit list of branch names (root to tip) for an unmanaged staircase.
+    #[arg(long, value_delimiter = ',')]
+    pub steps: Option<Vec<String>>,
+    /// The target branch the staircase is based on (e.g., 'main').
+    #[arg(long)]
+    pub onto: Option<String>,
+}
+
+pub fn print_output<T>(format: OutputFormat, value: &T) -> Result<()>
 where
     T: Serialize + ToHuman + ToPorcelain,
 {
@@ -61,15 +74,14 @@ where
 
 pub fn resolve_rs(
     repo: &GitRepo,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: Option<String>,
-) -> anyhow::Result<ResolvedStaircase> {
-    if let Some(s) = steps {
-        Ok(core::resolve_explicit_staircase(repo, &s, onto.as_deref())?)
+    args: &StaircaseSelectorArgs,
+) -> Result<ResolvedStaircase> {
+    if let Some(s) = &args.steps {
+        Ok(core::resolve_explicit_staircase(repo, s, args.onto.as_deref())?)
     } else {
-        let name = name.ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
-        core::resolve_staircase(repo, &name, onto.as_deref())?
+        let name = args.name.as_ref().ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
+        core::resolve_staircase(repo, name, args.onto.as_deref())?
             .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
     }
 }
+

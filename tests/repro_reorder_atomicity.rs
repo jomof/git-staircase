@@ -40,7 +40,7 @@ fn test_reorder_non_atomic() {
     // Rebase of branch-b succeeds, rebase of branch-a fails.
     let (success, _stdout, stderr) = run_staircase(
         tmp.path(),
-        &["reorder", "branch-b", "--steps", "2,1", "--onto", "main"],
+        &["reorder", "branch-b", "--order", "2,1", "--onto", "main"],
     );
 
     assert!(!success, "Reorder should have failed. Stderr: {}", stderr);

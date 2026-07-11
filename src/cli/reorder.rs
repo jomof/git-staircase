@@ -1,4 +1,4 @@
-use super::OutputFormat;
+use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
 use anyhow::anyhow;
 use git_staircase::core;
@@ -6,15 +6,14 @@ use git_staircase::core;
 pub fn run(
     repo: &GitRepo,
     format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<usize>>,
-    staircase_steps: Option<Vec<String>>,
-    onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
+    order: Option<Vec<usize>>,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, name, staircase_steps, onto.clone())?;
-    let steps = steps.ok_or_else(|| anyhow!("--steps (indices) must be provided"))?;
+    let onto = staircase.onto.clone();
+    let rs = super::resolve_rs(repo, &staircase)?;
+    let order = order.ok_or_else(|| anyhow!("--order (indices) must be provided"))?;
     let mut zero_based_steps = Vec::new();
-    for &s in &steps {
+    for &s in &order {
         if s == 0 {
             return Err(anyhow!("Step indices must be 1-based (got 0)"));
         }

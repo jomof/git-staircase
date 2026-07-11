@@ -1,19 +1,17 @@
-use super::OutputFormat;
+use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
 use git_staircase::core;
 
 pub fn run(
     repo: &GitRepo,
     format: OutputFormat,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: String,
-    resolve_onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
+    to: String,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, name, steps, resolve_onto)?;
-    core::rebase(repo, &rs, &onto)?;
+    let rs = super::resolve_rs(repo, &staircase)?;
+    core::rebase(repo, &rs, &to)?;
     if matches!(format, OutputFormat::Human) {
-        println!("Rebased staircase onto '{}'.", onto);
+        println!("Rebased staircase onto {}", to);
     }
     Ok(())
 }

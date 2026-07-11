@@ -14,7 +14,7 @@ fn test_reorder_underflow_error() {
 
     let (success, _stdout, stderr) = run_staircase(
         tmp.path(),
-        &["reorder", "branch-a", "--steps", "0,1", "--onto", "main"],
+        &["reorder", "branch-a", "--order", "0,1", "--onto", "main"],
     );
 
     assert!(!success);
