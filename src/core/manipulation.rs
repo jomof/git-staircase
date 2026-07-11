@@ -1,37 +1,7 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{ResolvedStaircase, StaircaseMetadata, Step};
-
-/// Adopt a staircase by writing its metadata and creating step refs.
-pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
-    // Verify that the cuts exist and form a valid ancestry chain
-    let target_oid = repo.resolve_ref(&staircase.target)?;
-    let mut last_cut = target_oid;
-    for step in &staircase.steps {
-        let current_cut = repo.resolve_ref(&step.cut)?;
-
-        if current_cut == last_cut {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
-                step.name, step.cut
-            )));
-        }
-
-        if !repo.is_ancestor(&last_cut, &current_cut)? {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
-                step.name, step.cut
-            )));
-        }
-        last_cut = current_cut;
-    }
-
-    repo.write_metadata(staircase)?;
-    for step in &staircase.steps {
-        repo.update_step_ref(&staircase.id, &step.name, &step.cut)?;
-    }
-    Ok(())
-}
+use crate::model::{StaircaseMetadata, Step};
+use crate::core::ResolvedStaircase;
 
 pub fn split(
     repo: &GitRepo,
@@ -40,9 +10,7 @@ pub fn split(
     at_commit: &str,
     new_step_name: Option<&str>,
 ) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-
-    if step_index >= metadata.steps.len() {
+    if step_index >= staircase.metadata().steps.len() {
         return Err(StaircaseError::InvalidStructure(format!(
             "Step index {} out of bounds",
             step_index
@@ -50,12 +18,11 @@ pub fn split(
     }
 
     let at_oid = repo.resolve_ref(at_commit)?;
-
-    let cut_oid = &metadata.steps[step_index].cut;
+    let cut_oid = &staircase.metadata().steps[step_index].cut;
     let prev_cut_oid = if step_index == 0 {
-        repo.resolve_ref(&metadata.target)?
+        repo.resolve_ref(&staircase.metadata().target)?
     } else {
-        metadata.steps[step_index - 1].cut.clone()
+        staircase.metadata().steps[step_index - 1].cut.clone()
     };
 
     if !repo.is_ancestor(&prev_cut_oid, &at_oid)? {
@@ -78,7 +45,7 @@ pub fn split(
 
     let name = match new_step_name {
         Some(n) => n.to_string(),
-        None => format!("{}-split", metadata.steps[step_index].name),
+        None => format!("{}-split", staircase.metadata().steps[step_index].name),
     };
 
     let new_step = Step {
@@ -91,19 +58,7 @@ pub fn split(
         },
     };
 
-    metadata.steps.insert(step_index, new_step);
-
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-        repo.update_step_ref(&metadata.id, &name, &at_oid)?;
-    } else {
-        if let Some(branch_name) = new_step_name {
-            repo.update_branch(branch_name, &at_oid)?;
-        } else {
-            adopt(repo, &metadata)?;
-        }
-    }
-
+    staircase.add_step(repo, step_index, new_step)?;
     Ok(())
 }
 
@@ -113,8 +68,6 @@ pub fn join(
     step_index_1: usize,
     step_index_2: usize,
 ) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-
     let (low, high) = if step_index_1 < step_index_2 {
         (step_index_1, step_index_2)
     } else {
@@ -128,24 +81,14 @@ pub fn join(
         )));
     }
 
-    if high >= metadata.steps.len() {
+    if high >= staircase.metadata().steps.len() {
         return Err(StaircaseError::InvalidStructure(format!(
             "Step index {} out of bounds",
             high
         )));
     }
 
-    let removed_step = metadata.steps.remove(low);
-
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-        repo.delete_step_ref(&metadata.id, &removed_step.name)?;
-    } else {
-        if removed_step.branch.is_some() {
-            adopt(repo, &metadata)?;
-        }
-    }
-
+    staircase.remove_step(repo, low)?;
     Ok(())
 }
 
@@ -218,14 +161,7 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
 
     if success_count > 0 {
         metadata.steps = new_steps;
-        if staircase.is_managed() {
-            repo.write_metadata(&metadata)?;
-            for step in &metadata.steps {
-                repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
-            }
-        } else {
-            adopt(repo, &metadata)?;
-        }
+        staircase.commit_metadata(repo, metadata)?;
     }
 
     if let Some(err) = rebase_err {
@@ -289,16 +225,7 @@ pub fn move_commits(
                 repo.update_branch(branch, &oid_to_move)?;
             }
 
-            if staircase.is_managed() {
-                repo.write_metadata(&metadata)?;
-                repo.update_step_ref(
-                    &metadata.id,
-                    &metadata.steps[to_step_index].name,
-                    &oid_to_move,
-                )?;
-            } else {
-                adopt(repo, &metadata)?;
-            }
+            staircase.commit_metadata(repo, metadata)?;
             return Ok(());
         }
     }
@@ -309,7 +236,7 @@ pub fn move_commits(
 }
 
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
-    let mut status = super::status::get_status_metadata(repo, staircase.metadata().clone())?;
+    let mut status = crate::core::status::get_status_metadata(repo, staircase.metadata().clone())?;
 
     if status.is_clean {
         return Ok(());
@@ -318,6 +245,7 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     let target_oid = repo.resolve_ref(&status.metadata.target)?;
     let mut current_base = target_oid;
     let mut metadata_changed = false;
+    let mut current_rs = staircase.clone();
 
     let original_cuts: Vec<String> = status
         .metadata
@@ -364,16 +292,14 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
             ]) {
                 Ok(_) => {
                     let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
+                    current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
                     status.metadata.steps[i].cut = new_oid.clone();
-                    if staircase.is_managed() {
-                        repo.update_step_ref(&status.metadata.id, &step_name, &new_oid)?;
-                    }
                     metadata_changed = true;
                     current_base = new_oid;
                 }
                 Err(e) => {
-                    if metadata_changed && staircase.is_managed() {
-                        repo.write_metadata(&status.metadata)?;
+                    if metadata_changed {
+                        current_rs.commit_metadata(repo, status.metadata)?;
                     }
                     return Err(StaircaseError::Other(format!(
                         "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
@@ -384,17 +310,15 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
         } else {
             current_base = actual_oid.clone();
             if status.metadata.steps[i].cut != actual_oid {
-                status.metadata.steps[i].cut = actual_oid.clone();
-                if staircase.is_managed() {
-                    repo.update_step_ref(&status.metadata.id, &step_name, &actual_oid)?;
-                }
+                current_rs = current_rs.update_step_oid(repo, i, actual_oid.clone())?;
+                status.metadata.steps[i].cut = actual_oid;
                 metadata_changed = true;
             }
         }
     }
 
-    if metadata_changed && staircase.is_managed() {
-        repo.write_metadata(&status.metadata)?;
+    if metadata_changed {
+        current_rs.commit_metadata(repo, status.metadata)?;
     }
 
     Ok(())
@@ -403,14 +327,8 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
 pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     metadata.target = onto.to_string();
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-    }
-    let updated_rs = if staircase.is_managed() {
-        ResolvedStaircase::Managed(metadata)
-    } else {
-        ResolvedStaircase::Implicit(metadata)
-    };
+    
+    let updated_rs = staircase.commit_metadata(repo, metadata)?;
     restack(repo, &updated_rs)
 }
 

@@ -1,8 +1,9 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
-    BranchInfo, Discovery, FamilyStep, ResolvedStaircase, StaircaseFamily, StaircaseMetadata, Step,
+    BranchInfo, Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, Step,
 };
+use super::ResolvedStaircase;
 use std::collections::HashMap;
 use uuid::Uuid;
 

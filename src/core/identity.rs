@@ -1,14 +1,15 @@
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::model::{IdentityKind, ResolvedStaircase};
+use crate::model::{IdentityKind};
 
+use super::ResolvedStaircase;
 pub fn compute_identity(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
     kind: IdentityKind,
 ) -> Result<String> {
     if kind == IdentityKind::Lineage && !staircase.is_managed() {
-        super::manipulation::adopt(repo, staircase.metadata())?;
+        super::resolved::adopt(repo, staircase.metadata())?;
     }
     let staircase = staircase.metadata();
     match kind {

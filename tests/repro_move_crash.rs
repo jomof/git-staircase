@@ -1,7 +1,8 @@
 mod common;
 use common::*;
 use git_staircase::core;
-use git_staircase::model::{ResolvedStaircase, StaircaseMetadata, Step};
+use git_staircase::ResolvedStaircase;
+use git_staircase::model::{StaircaseMetadata, Step};
 
 #[test]
 fn test_move_commits_empty_panic() -> anyhow::Result<()> {
