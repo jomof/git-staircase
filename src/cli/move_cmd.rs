@@ -1,6 +1,7 @@
 use super::OutputFormat;
 use crate::GitRepo;
 use git_staircase::core;
+use anyhow::anyhow;
 
 pub fn run(
     repo: &GitRepo,
@@ -13,6 +14,9 @@ pub fn run(
     commits: Vec<String>,
 ) -> anyhow::Result<()> {
     let rs = super::resolve_rs(repo, name, steps, onto)?;
+    if from == 0 || to == 0 {
+        return Err(anyhow!("Step numbers must be 1-based"));
+    }
     core::move_commits(repo, &rs, from - 1, to - 1, &commits)?;
     if matches!(format, OutputFormat::Human) {
         println!("Moved commits.");

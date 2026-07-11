@@ -1,50 +1,58 @@
 mod common;
 use common::*;
-use git_staircase::ResolvedStaircase;
-use git_staircase::core;
-use git_staircase::model::{StaircaseMetadata, Step};
+use std::fs;
 
 #[test]
-fn test_reorder_partial_failure_leaves_desync() -> anyhow::Result<()> {
-    let (_tmp, repo) = setup_repo();
+fn test_reorder_non_atomic() {
+    let (tmp, repo) = setup_repo();
     let repo_path = &repo.workdir;
-    let target = run_git(repo_path, &["rev-parse", "HEAD"]);
 
-    run_git(repo_path, &["checkout", "-b", "step1", &target]);
-    let c1 = commit(repo_path, "f1.txt", "1", "c1");
+    // Create a staircase with two branches
+    run_git(repo_path, &["checkout", "-b", "branch-a"]);
+    fs::write(repo_path.join("file_a"), "content a").unwrap();
+    run_git(repo_path, &["add", "file_a"]);
+    run_git(repo_path, &["commit", "-m", "commit a"]);
+    let oid_a_orig = run_git(repo_path, &["rev-parse", "HEAD"]);
 
-    run_git(repo_path, &["checkout", "-b", "step2", &c1]);
-    let c2 = commit(repo_path, "conflict.txt", "2", "c2");
+    run_git(repo_path, &["checkout", "-b", "branch-b"]);
+    fs::write(repo_path.join("file_b"), "content b").unwrap();
+    run_git(repo_path, &["add", "file_b"]);
+    run_git(repo_path, &["commit", "-m", "commit b"]);
+    let oid_b_orig = run_git(repo_path, &["rev-parse", "HEAD"]);
 
-    let metadata = StaircaseMetadata {
-        id: "test-id".to_string(),
-        name: "test".to_string(),
-        target: "main".to_string(),
-        steps: vec![
-            Step {
-                name: "step1".to_string(),
-                cut: c1.clone(),
-                branch: Some("step1".to_string()),
-            },
-            Step {
-                name: "step2".to_string(),
-                cut: c2.clone(),
-                branch: Some("step2".to_string()),
-            },
-        ],
-        verification_policy: None,
-    };
-    core::adopt(&repo, &metadata).unwrap();
-
+    // Create conflict for the second step in the reordered sequence
     run_git(repo_path, &["checkout", "main"]);
-    commit(repo_path, "conflict.txt", "conflict", "conflict on main");
+    fs::write(repo_path.join("conflict.txt"), "base").unwrap();
+    run_git(repo_path, &["add", "conflict.txt"]);
+    run_git(repo_path, &["commit", "-m", "base conflict"]);
 
-    // Reorder [0, 1]. Step 1 rebases onto new main (success), Step 2 rebases onto new step 1 (fails).
-    let rs = ResolvedStaircase::Managed(metadata);
-    let _ = core::reorder(&repo, &rs, &[0, 1]);
+    run_git(repo_path, &["checkout", "branch-a"]);
+    fs::write(repo_path.join("conflict.txt"), "content a").unwrap();
+    run_git(repo_path, &["add", "conflict.txt"]);
+    run_git(repo_path, &["commit", "-m", "commit a conflict"]);
 
-    let saved_metadata = repo.read_metadata("test-id").unwrap();
-    let actual_c1 = run_git(repo_path, &["rev-parse", "step1"]);
-    assert_eq!(saved_metadata.steps[0].cut, actual_c1);
-    Ok(())
+    run_git(repo_path, &["checkout", "branch-b"]);
+    fs::write(repo_path.join("conflict.txt"), "content b").unwrap();
+    run_git(repo_path, &["add", "conflict.txt"]);
+    run_git(repo_path, &["commit", "-m", "commit b conflict"]);
+
+    // Attempt to reorder [branch-b, branch-a] onto main
+    // Rebase of branch-b succeeds, rebase of branch-a fails.
+    let (success, _stdout, stderr) = run_staircase(
+        tmp.path(),
+        &["reorder", "branch-b", "--steps", "2,1", "--onto", "main"],
+    );
+
+    assert!(!success, "Reorder should have failed. Stderr: {}", stderr);
+
+    let oid_b_new = run_git(repo_path, &["rev-parse", "branch-b"]);
+
+    // Branch B was moved (rebased successfully)
+    assert_ne!(
+        oid_b_new, oid_b_orig,
+        "branch-b should have been rebased even though the command failed"
+    );
+
+    // The bug is that the command didn't roll back the changes to branch-b,
+    // leaving the repository in a partially reordered state that is inconsistent with the metadata.
 }
