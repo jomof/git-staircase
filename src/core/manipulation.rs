@@ -143,7 +143,8 @@ impl<'a> StaircaseRebaser<'a> {
             let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
             self.repo.run(&["checkout", "-f", target])?;
         } else {
-            self.repo.run(&["checkout", "-f", &self.original_head_oid])?;
+            self.repo
+                .run(&["checkout", "-f", &self.original_head_oid])?;
         }
         Ok(())
     }
@@ -157,7 +158,8 @@ impl<'a> StaircaseRebaser<'a> {
     ) -> Result<String> {
         let mut rebase_target = actual_oid.to_string();
         if let Some(ref branch_name) = step.branch {
-            if self.repo
+            if self
+                .repo
                 .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
                 .is_some()
             {
@@ -165,19 +167,12 @@ impl<'a> StaircaseRebaser<'a> {
             }
         }
 
-        self.repo.run_interactive(&[
-            "rebase",
-            "--onto",
-            new_parent,
-            old_parent,
-            &rebase_target,
-        ])?;
+        self.repo
+            .run_interactive(&["rebase", "--onto", new_parent, old_parent, &rebase_target])?;
 
         self.repo.resolve_commit("HEAD")
     }
 }
-
-
 
 pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
@@ -312,7 +307,6 @@ pub fn move_commits(
     ))
 }
 
-
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     let mut status = crate::core::status::get_status_metadata(
         repo,
@@ -355,7 +349,12 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                 original_cuts[i - 1].clone()
             };
 
-            match rebaser.rebase_step(&status.metadata.steps[i], &actual_oid, &old_parent_cut, &current_base) {
+            match rebaser.rebase_step(
+                &status.metadata.steps[i],
+                &actual_oid,
+                &old_parent_cut,
+                &current_base,
+            ) {
                 Ok(new_oid) => {
                     current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
                     status.metadata.steps[i].cut = new_oid.clone();

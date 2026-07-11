@@ -40,10 +40,11 @@ enum Commands {
     },
     /// Drop a step from a staircase
     Drop {
-        /// Format: <staircase_name>:<step_number> (1-based)
-        step: String,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
+        /// Step number (1-based). Can be part of the staircase name (e.g. name:1)
         #[arg(long)]
-        onto: Option<String>,
+        step: Option<usize>,
     },
     /// Discover potential staircases
     Discover {
@@ -89,23 +90,29 @@ enum Commands {
     },
     /// Split a step into two
     Split {
-        /// Format: <staircase_name>:<step_number> (1-based)
-        step: String,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
+        /// Step number (1-based). Can be part of the staircase name (e.g. name:1)
         #[arg(long)]
-        onto: Option<String>,
+        step: Option<usize>,
         #[arg(long)]
         at: String,
+        /// Name of the new step.
         #[arg(long)]
-        name: Option<String>,
+        step_name: Option<String>,
     },
     /// Join two adjacent steps
     Join {
-        /// Format: <staircase_name>:<step_number> (1-based)
-        step1: String,
-        /// Format: <staircase_name>:<step_number> (1-based)
-        step2: String,
+        #[command(flatten)]
+        staircase: StaircaseSelectorArgs,
+        /// First step number (1-based). Can be part of the staircase name (e.g. name:1)
         #[arg(long)]
-        onto: Option<String>,
+        step: Option<usize>,
+        /// Second step number (1-based).
+        #[arg(long)]
+        step2: Option<usize>,
+        /// Second step number if not using --step2.
+        step2_pos: Option<String>,
     },
     /// Rebase the entire staircase onto a new target
     Rebase {
@@ -216,7 +223,7 @@ fn main() -> Result<()> {
             to,
             commits,
         } => cli::move_cmd::run(&repo, format, staircase, from, to, commits),
-        Commands::Drop { step, onto } => cli::drop::run(&repo, format, step, onto),
+        Commands::Drop { staircase, step } => cli::drop::run(&repo, format, staircase, step),
         Commands::Discover { onto } => cli::discover::run(&repo, format, onto),
         Commands::Adopt {
             name,
@@ -245,12 +252,17 @@ fn main() -> Result<()> {
         Commands::Show { staircase } => cli::show::run(&repo, format, staircase),
         Commands::Status { staircase } => cli::status::run(&repo, format, staircase),
         Commands::Split {
+            staircase,
             step,
             at,
-            name,
-            onto,
-        } => cli::split::run(&repo, format, step, at, name, onto),
-        Commands::Join { step1, step2, onto } => cli::join::run(&repo, format, step1, step2, onto),
+            step_name,
+        } => cli::split::run(&repo, format, staircase, step, at, step_name),
+        Commands::Join {
+            staircase,
+            step,
+            step2,
+            step2_pos,
+        } => cli::join::run(&repo, format, staircase, step, step2, step2_pos),
         Commands::Rebase { staircase, to } => cli::rebase::run(&repo, format, staircase, to),
         Commands::Restack { staircase } => cli::restack::run(&repo, format, staircase),
         Commands::Verify {

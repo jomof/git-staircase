@@ -1,4 +1,4 @@
-use super::OutputFormat;
+use super::{OutputFormat, StaircaseSelectorArgs, resolve_rs};
 use crate::GitRepo;
 use crate::core;
 use anyhow::anyhow;
@@ -6,23 +6,52 @@ use anyhow::anyhow;
 pub fn run(
     repo: &GitRepo,
     format: OutputFormat,
-    step1: String,
-    step2: String,
-    onto: Option<String>,
+    staircase: StaircaseSelectorArgs,
+    step: Option<usize>,
+    step2: Option<usize>,
+    step2_pos: Option<String>,
 ) -> anyhow::Result<()> {
-    let (sc_name1, step_num1) = crate::parse_step_spec(&step1)?;
-    let (sc_name2, step_num2) = crate::parse_step_spec(&step2)?;
+    let (rs, step_num1, step_num2) = if let Some(s1) = step {
+        let s2 = if let Some(s2) = step2 {
+            s2
+        } else if let Some(s2_str) = step2_pos {
+            s2_str
+                .parse::<usize>()
+                .map_err(|e| anyhow!("Failed to parse step number '{}': {}", s2_str, e))?
+        } else {
+            return Err(anyhow!(
+                "Second step number must be provided via --step2 or as a positional argument"
+            ));
+        };
+        (resolve_rs(repo, &staircase)?, s1, s2)
+    } else {
+        let name_spec = staircase.name.as_ref().ok_or_else(|| anyhow!("Step number must be provided either via --step or as part of the staircase name (e.g. name:1)"))?;
+        let (sc_name, s1) = crate::parse_step_spec(name_spec)?;
 
-    if sc_name1 != sc_name2 {
-        return Err(anyhow!(
-            "Cannot join steps from different staircases: '{}' and '{}'",
-            sc_name1,
-            sc_name2
-        ));
-    }
+        let s2 = if let Some(s2) = step2 {
+            s2
+        } else if let Some(s2_str) = step2_pos {
+            if let Ok(n) = s2_str.parse::<usize>() {
+                n
+            } else {
+                let (sc_name2, n) = crate::parse_step_spec(&s2_str)?;
+                if sc_name != sc_name2 {
+                    return Err(anyhow!(
+                        "Cannot join steps from different staircases: '{}' and '{}'",
+                        sc_name,
+                        sc_name2
+                    ));
+                }
+                n
+            }
+        } else {
+            return Err(anyhow!("Second step number must be provided"));
+        };
 
-    let rs = core::resolve_staircase(repo, &sc_name1, onto.as_deref())?
-        .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name1))?;
+        let mut sc_args = staircase.clone();
+        sc_args.name = Some(sc_name);
+        (resolve_rs(repo, &sc_args)?, s1, s2)
+    };
 
     if step_num1 == 0 || step_num2 == 0 {
         return Err(anyhow!("Step numbers must be 1-based"));
@@ -32,7 +61,9 @@ pub fn run(
     if matches!(format, OutputFormat::Human) {
         println!(
             "Joined steps {} and {} of staircase '{}'.",
-            step_num1, step_num2, sc_name1
+            step_num1,
+            step_num2,
+            rs.metadata().name
         );
     }
     Ok(())

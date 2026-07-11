@@ -1,8 +1,8 @@
 mod common;
 use common::*;
-use git_staircase::core;
-use git_staircase::ResolvedStaircase;
 use git_staircase::Discovery;
+use git_staircase::ResolvedStaircase;
+use git_staircase::core;
 
 #[test]
 fn test_resolve_managed_by_internal_step_branch() {

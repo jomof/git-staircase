@@ -13,16 +13,14 @@ pub use model::{
 };
 
 pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
-    let parts: Vec<&str> = spec.split(':').collect();
-    if parts.len() != 2 {
-        return Err(anyhow::anyhow!(
-            "Invalid step spec '{}'. Expected format: <staircase_name>:<step_number>",
+    let (name, num_str) = spec.rsplit_once(":").ok_or_else(|| {
+        anyhow::anyhow!(
+            "Invalid step spec \"{}\". Expected format: <staircase_name>:<step_number>",
             spec
-        ));
-    }
-    let name = parts[0].to_string();
-    let num = parts[1]
+        )
+    })?;
+    let num = num_str
         .parse::<usize>()
-        .map_err(|e| anyhow::anyhow!("Failed to parse step number: {}", e))?;
-    Ok((name, num))
+        .map_err(|e| anyhow::anyhow!("Failed to parse step number \"{}\": {}", num_str, e))?;
+    Ok((name.to_string(), num))
 }
