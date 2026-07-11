@@ -56,11 +56,7 @@ pub fn run(
                     _ => {
                         let m = r.metadata();
                         let status = core::get_status_metadata(repo, m.clone(), !r.is_managed())?;
-                        let state = if status.steps.iter().any(|s| s.is_stale) {
-                            "stale"
-                        } else {
-                            "clean"
-                        };
+                        let state = status.state();
                         let steps_count = m.steps.len();
                         let steps_word = if steps_count == 1 { "step" } else { "steps" };
                         let implicit_marker = if r.is_managed() { "" } else { " (implicit)" };

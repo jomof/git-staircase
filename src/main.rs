@@ -1,4 +1,4 @@
-use anyhow::{Context, anyhow, Result};
+use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::GitRepo;
 use git_staircase::IdentityKind;
@@ -224,10 +224,9 @@ fn main() -> Result<()> {
     };
 
     match cli.command {
-        Commands::Reorder {
-            staircase,
-            order,
-        } => cli::reorder::run(&repo, format, staircase, order),
+        Commands::Reorder { staircase, order } => {
+            cli::reorder::run(&repo, format, staircase, order)
+        }
         Commands::Move {
             staircase,
             from,
@@ -256,7 +255,9 @@ fn main() -> Result<()> {
         Commands::List {
             managed,
             implicit,
-            onto, discovered, families,
+            onto,
+            discovered,
+            families,
         } => cli::list::run(&repo, format, managed, implicit, discovered, families, onto),
         Commands::Show { staircase } => cli::show::run(&repo, format, staircase),
         Commands::Status { staircase } => cli::status::run(&repo, format, staircase),
@@ -267,13 +268,8 @@ fn main() -> Result<()> {
             onto,
         } => cli::split::run(&repo, format, step, at, name, onto),
         Commands::Join { step1, step2, onto } => cli::join::run(&repo, format, step1, step2, onto),
-        Commands::Rebase {
-            staircase,
-            to,
-        } => cli::rebase::run(&repo, format, staircase, to),
-        Commands::Restack { staircase } => {
-            cli::restack::run(&repo, format, staircase)
-        }
+        Commands::Rebase { staircase, to } => cli::rebase::run(&repo, format, staircase, to),
+        Commands::Restack { staircase } => cli::restack::run(&repo, format, staircase),
         Commands::Verify {
             staircase,
             aggregate,
@@ -289,10 +285,7 @@ fn main() -> Result<()> {
             build_command,
             test_command,
         ),
-        Commands::Id {
-            staircase,
-            kind,
-        } => cli::id::run(&repo, format, staircase, kind),
+        Commands::Id { staircase, kind } => cli::id::run(&repo, format, staircase, kind),
         Commands::Delete {
             staircase,
             delete_branches,
@@ -310,8 +303,6 @@ fn main() -> Result<()> {
             git_args,
         } => cli::graph::run(&repo, format, staircase, git_args),
         Commands::Steps { staircase } => cli::steps::run(&repo, format, staircase),
-        Commands::Commits { staircase } => {
-            cli::commits::run(&repo, format, staircase)
-        }
+        Commands::Commits { staircase } => cli::commits::run(&repo, format, staircase),
     }
 }

@@ -67,12 +67,20 @@ fn test_list_families_flag() {
 
     // ASSERT: Verify success and output includes families
     assert!(success, "list --families failed: {}", stderr);
-    
+
     let output = stdout.trim();
     // Example: auth-family 2 paths (implicit)
     // In this case, shared-base has 2 children (feature/ui and feature/cli)
     // The discovery logic should name it after the common prefix or the branches.
     // Based on my run, it seems to be named "feature".
-    assert!(output.contains("2 paths"), "Output should mention 2 paths: {}", output);
-    assert!(output.contains("(implicit)"), "Output should mention implicit: {}", output);
+    assert!(
+        output.contains("2 paths"),
+        "Output should mention 2 paths: {}",
+        output
+    );
+    assert!(
+        output.contains("(implicit)"),
+        "Output should mention implicit: {}",
+        output
+    );
 }

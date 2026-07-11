@@ -1,4 +1,4 @@
-use anyhow::{anyhow, Result};
+use anyhow::{Result, anyhow};
 use clap::Args;
 use git_staircase::model::{ToHuman, ToPorcelain};
 use git_staircase::{GitRepo, ResolvedStaircase, core};
@@ -72,16 +72,19 @@ where
     }
 }
 
-pub fn resolve_rs(
-    repo: &GitRepo,
-    args: &StaircaseSelectorArgs,
-) -> Result<ResolvedStaircase> {
+pub fn resolve_rs(repo: &GitRepo, args: &StaircaseSelectorArgs) -> Result<ResolvedStaircase> {
     if let Some(s) = &args.steps {
-        Ok(core::resolve_explicit_staircase(repo, s, args.onto.as_deref())?)
+        Ok(core::resolve_explicit_staircase(
+            repo,
+            s,
+            args.onto.as_deref(),
+        )?)
     } else {
-        let name = args.name.as_ref().ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
+        let name = args
+            .name
+            .as_ref()
+            .ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
         core::resolve_staircase(repo, name, args.onto.as_deref())?
             .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
     }
 }
-

@@ -1,6 +1,7 @@
 use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Step {
@@ -66,12 +67,42 @@ pub struct StepStatus {
     pub is_modified: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum StaircaseState {
+    Clean,
+    Modified,
+    Stale,
+}
+
+impl fmt::Display for StaircaseState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            StaircaseState::Clean => write!(f, "clean"),
+            StaircaseState::Modified => write!(f, "modified"),
+            StaircaseState::Stale => write!(f, "stale"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseStatus {
     pub metadata: StaircaseMetadata,
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
     pub is_implicit: bool,
+}
+
+impl StaircaseStatus {
+    pub fn state(&self) -> StaircaseState {
+        if self.steps.iter().any(|s| s.is_stale) {
+            StaircaseState::Stale
+        } else if self.steps.iter().any(|s| s.is_modified) {
+            StaircaseState::Modified
+        } else {
+            StaircaseState::Clean
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -113,7 +144,7 @@ impl ToPorcelain for StaircaseStatus {
             "{}\t{}\t{}\n",
             self.metadata.name,
             self.metadata.id,
-            if self.is_clean { "clean" } else { "modified" }
+            self.state()
         );
         for step in &self.steps {
             out.push_str(&format!(
@@ -204,10 +235,7 @@ impl ToHuman for StaircaseStatus {
         }
         out.push('\n');
         out.push_str(&format!("  target: {}\n", self.metadata.target));
-        out.push_str(&format!(
-            "  state: {}\n",
-            if self.is_clean { "clean" } else { "modified" }
-        ));
+        out.push_str(&format!("  state: {}\n", self.state()));
         out.push_str(&format!("  steps: {}\n", self.steps.len()));
         out.push_str(&format!(
             "  lineage: {}\n",

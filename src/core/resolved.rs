@@ -173,7 +173,9 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
 impl ToPorcelain for ResolvedStaircase {
     fn to_porcelain(&self) -> String {
         match self {
-            ResolvedStaircase::ImplicitFamily(f) => format!("{}\t{}\tfamily\t{}", f.name, f.id, f.steps.len()),
+            ResolvedStaircase::ImplicitFamily(f) => {
+                format!("{}\t{}\tfamily\t{}", f.name, f.id, f.steps.len())
+            }
             _ => {
                 let m = self.metadata();
                 format!(
@@ -195,9 +197,15 @@ impl ToPorcelain for ResolvedStaircase {
 impl ToHuman for ResolvedStaircase {
     fn to_human(&self) -> String {
         match self {
-            ResolvedStaircase::ImplicitFamily(f) => format!("Implicit Staircase Family: {}\n{}", f.name, f.to_human()),
-            ResolvedStaircase::Managed(m) => format!("Managed Staircase: {}\n{}", m.name, m.to_human()),
-            ResolvedStaircase::Implicit(m) => format!("Implicit Staircase: {}\n{}", m.name, m.to_human()),
+            ResolvedStaircase::ImplicitFamily(f) => {
+                format!("Implicit Staircase Family: {}\n{}", f.name, f.to_human())
+            }
+            ResolvedStaircase::Managed(m) => {
+                format!("Managed Staircase: {}\n{}", m.name, m.to_human())
+            }
+            ResolvedStaircase::Implicit(m) => {
+                format!("Implicit Staircase: {}\n{}", m.name, m.to_human())
+            }
         }
     }
 }
