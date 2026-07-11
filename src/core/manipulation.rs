@@ -94,10 +94,93 @@ pub fn join(
     Ok(())
 }
 
+struct StaircaseRebaser<'a> {
+    repo: &'a GitRepo,
+    original_head: Option<String>,
+    original_head_oid: String,
+    original_branch_oids: HashMap<String, String>,
+}
+
+impl<'a> StaircaseRebaser<'a> {
+    fn new(repo: &'a GitRepo, steps: &[Step]) -> Result<Self> {
+        let original_head = repo.current_branch()?;
+        let original_head_oid = repo.resolve_commit("HEAD")?;
+        let mut original_branch_oids = HashMap::new();
+        for step in steps {
+            if let Some(ref branch) = step.branch {
+                if let Some(oid) = repo.resolve_commit_opt(&format!("refs/heads/{}", branch))? {
+                    original_branch_oids.insert(branch.clone(), oid);
+                }
+            }
+        }
+        Ok(Self {
+            repo,
+            original_head,
+            original_head_oid,
+            original_branch_oids,
+        })
+    }
+
+    fn rollback(&self) {
+        let _ = self.repo.run(&["rebase", "--abort"]);
+        for (branch, oid) in &self.original_branch_oids {
+            let _ = self.repo.update_branch(branch, oid);
+        }
+        self.restore_head_silent();
+    }
+
+    fn restore_head_silent(&self) {
+        if let Some(ref refname) = self.original_head {
+            let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
+            let _ = self.repo.run(&["checkout", "-f", target]);
+        } else {
+            let _ = self.repo.run(&["checkout", "-f", &self.original_head_oid]);
+        }
+    }
+
+    fn finalize(&self) -> Result<()> {
+        if let Some(ref refname) = self.original_head {
+            let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
+            self.repo.run(&["checkout", "-f", target])?;
+        } else {
+            self.repo.run(&["checkout", "-f", &self.original_head_oid])?;
+        }
+        Ok(())
+    }
+
+    fn rebase_step(
+        &self,
+        step: &Step,
+        actual_oid: &str,
+        old_parent: &str,
+        new_parent: &str,
+    ) -> Result<String> {
+        let mut rebase_target = actual_oid.to_string();
+        if let Some(ref branch_name) = step.branch {
+            if self.repo
+                .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
+                .is_some()
+            {
+                rebase_target = branch_name.clone();
+            }
+        }
+
+        self.repo.run_interactive(&[
+            "rebase",
+            "--onto",
+            new_parent,
+            old_parent,
+            &rebase_target,
+        ])?;
+
+        self.repo.resolve_commit("HEAD")
+    }
+}
+
+
+
 pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
-    let original_head = repo.current_branch()?;
-    let original_head_oid = repo.resolve_commit("HEAD")?;
     let old_steps = metadata.steps.clone();
 
     let mut seen = HashSet::new();
@@ -114,20 +197,10 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         new_steps.push(old_steps[idx].clone());
     }
 
-    // Save original branch OIDs for rollback
-    let mut original_branch_oids = HashMap::new();
-    for step in &old_steps {
-        if let Some(ref branch) = step.branch {
-            if let Some(oid) = repo.resolve_commit_opt(&format!("refs/heads/{}", branch))? {
-                original_branch_oids.insert(branch.clone(), oid);
-            }
-        }
-    }
+    let rebaser = StaircaseRebaser::new(repo, &old_steps)?;
 
     let target_oid = repo.resolve_commit(&metadata.target)?;
     let mut current_base = target_oid;
-
-    let mut rebase_err = None;
 
     for i in 0..new_steps.len() {
         let step = &new_steps[i];
@@ -141,31 +214,14 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         };
 
         if current_base != old_parent_oid {
-            let mut rebase_target = step.cut.clone();
-            if let Some(ref branch_name) = step.branch {
-                if repo
-                    .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
-                    .is_some()
-                {
-                    rebase_target = branch_name.clone();
-                }
-            }
-
-            match repo.run_interactive(&[
-                "rebase",
-                "--onto",
-                &current_base,
-                &old_parent_oid,
-                &rebase_target,
-            ]) {
-                Ok(_) => {
-                    let new_oid = repo.resolve_commit("HEAD")?;
+            match rebaser.rebase_step(step, &step.cut, &old_parent_oid, &current_base) {
+                Ok(new_oid) => {
                     new_steps[i].cut = new_oid.clone();
                     current_base = new_oid;
                 }
                 Err(e) => {
-                    rebase_err = Some(e);
-                    break;
+                    rebaser.rollback();
+                    return Err(StaircaseError::Other(format!("Reorder failed: {}", e)));
                 }
             }
         } else {
@@ -173,34 +229,13 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         }
     }
 
-    if let Some(err) = rebase_err {
-        // ROLLBACK
-        let _ = repo.run(&["rebase", "--abort"]);
-        for (branch, oid) in original_branch_oids {
-            let _ = repo.update_branch(&branch, &oid);
-        }
-        if let Some(refname) = original_head {
-            let target = refname.strip_prefix("refs/heads/").unwrap_or(&refname);
-            let _ = repo.run(&["checkout", "-f", target]);
-        } else {
-            let _ = repo.run(&["checkout", "-f", &original_head_oid]);
-        }
-        return Err(StaircaseError::Other(format!("Reorder failed: {}", err)));
-    }
-
-    if let Some(refname) = original_head {
-        let target = refname.strip_prefix("refs/heads/").unwrap_or(&refname);
-        let _ = repo.run(&["checkout", "-f", target]);
-    } else {
-        let _ = repo.run(&["checkout", "-f", &original_head_oid]);
-    }
+    rebaser.finalize()?;
 
     metadata.steps = new_steps;
     staircase.commit_metadata(repo, metadata)?;
 
     Ok(())
 }
-
 pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) -> Result<()> {
     let metadata = staircase.metadata().clone();
     if step_index >= metadata.steps.len() {
@@ -277,9 +312,8 @@ pub fn move_commits(
     ))
 }
 
+
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
-    let original_head = repo.current_branch()?;
-    let original_head_oid = repo.resolve_commit("HEAD")?;
     let mut status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
@@ -289,6 +323,8 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     if status.is_clean {
         return Ok(());
     }
+
+    let rebaser = StaircaseRebaser::new(repo, &status.metadata.steps)?;
 
     let target_oid = repo.resolve_commit(&status.metadata.target)?;
     let mut current_base = target_oid;
@@ -305,7 +341,6 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     for i in 0..status.steps.len() {
         let step_status = &status.steps[i];
         let step_name = status.metadata.steps[i].name.clone();
-        let step_branch = status.metadata.steps[i].branch.clone();
 
         let actual_oid = match &step_status.actual_oid {
             Some(oid) => oid.clone(),
@@ -320,25 +355,8 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                 original_cuts[i - 1].clone()
             };
 
-            let mut rebase_target = actual_oid.clone();
-            if let Some(ref branch_name) = step_branch {
-                if repo
-                    .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
-                    .is_some()
-                {
-                    rebase_target = branch_name.clone();
-                }
-            }
-
-            match repo.run_interactive(&[
-                "rebase",
-                "--onto",
-                &current_base,
-                &old_parent_cut,
-                &rebase_target,
-            ]) {
-                Ok(_) => {
-                    let new_oid = repo.resolve_commit("HEAD")?;
+            match rebaser.rebase_step(&status.metadata.steps[i], &actual_oid, &old_parent_cut, &current_base) {
+                Ok(new_oid) => {
                     current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
                     status.metadata.steps[i].cut = new_oid.clone();
                     metadata_changed = true;
@@ -346,11 +364,10 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                 }
                 Err(e) => {
                     if metadata_changed {
-                        current_rs.commit_metadata(repo, status.metadata)?;
+                        let _ = current_rs.commit_metadata(repo, status.metadata);
                     }
                     return Err(StaircaseError::Other(format!(
-                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.
-Error: {}",
+                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
                         step_name, e
                     )));
                 }
@@ -369,16 +386,10 @@ Error: {}",
         current_rs.commit_metadata(repo, status.metadata)?;
     }
 
-    if let Some(refname) = original_head {
-        let target = refname.strip_prefix("refs/heads/").unwrap_or(&refname);
-        let _ = repo.run(&["checkout", "-f", target]);
-    } else {
-        let _ = repo.run(&["checkout", "-f", &original_head_oid]);
-    }
+    rebaser.finalize()?;
 
     Ok(())
 }
-
 pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     metadata.target = onto.to_string();
