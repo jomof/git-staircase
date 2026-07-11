@@ -2,7 +2,7 @@ use super::Summary;
 use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;
-use crate::model::{ToHuman, ToPorcelain};
+use super::formatting::{ToHuman, ToPorcelain};
 use crate::{Discovery, ResolvedStaircase};
 use serde::Serialize;
 

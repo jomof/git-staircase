@@ -1,7 +1,7 @@
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{StaircaseFamily, StaircaseMetadata, Step, ToHuman, ToPorcelain};
+use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -174,42 +174,3 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     Ok(staircase)
 }
 
-impl ToPorcelain for ResolvedStaircase {
-    fn to_porcelain(&self) -> String {
-        match self {
-            ResolvedStaircase::ImplicitFamily(f) => {
-                format!("{}\t{}\tfamily\t{}", f.name, f.id, f.steps.len())
-            }
-            _ => {
-                let m = self.metadata();
-                format!(
-                    "{}\t{}\t{}\t{}",
-                    m.name,
-                    m.id,
-                    if self.is_managed() {
-                        "managed"
-                    } else {
-                        "implicit"
-                    },
-                    m.steps.len()
-                )
-            }
-        }
-    }
-}
-
-impl ToHuman for ResolvedStaircase {
-    fn to_human(&self) -> String {
-        match self {
-            ResolvedStaircase::ImplicitFamily(f) => {
-                format!("Implicit Staircase Family: {}\n{}", f.name, f.to_human())
-            }
-            ResolvedStaircase::Managed(m) => {
-                format!("Managed Staircase: {}\n{}", m.name, m.to_human())
-            }
-            ResolvedStaircase::Implicit(m) => {
-                format!("Implicit Staircase: {}\n{}", m.name, m.to_human())
-            }
-        }
-    }
-}

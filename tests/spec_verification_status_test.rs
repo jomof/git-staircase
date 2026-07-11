@@ -1,6 +1,7 @@
 use git_staircase::core::{persistence, status};
 use git_staircase::git::GitRepo;
-use git_staircase::model::{IdentityKind, StaircaseMetadata, Step, ToHuman, VerificationResult};
+use git_staircase::ToHuman;
+use git_staircase::model::{IdentityKind, StaircaseMetadata, Step, VerificationResult};
 use std::fs;
 use std::process::Command;
 use tempfile::tempdir;
