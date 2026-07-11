@@ -1,54 +1,55 @@
-use git_staircase::core::discovery::compute_implicit_id;
-use git_staircase::model::Step;
+use git_staircase::core::resolve_staircase;
+use git_staircase::git::GitRepo;
+use std::fs;
+use std::process::Command;
+use tempfile::TempDir;
 
 #[test]
-fn test_id_stability_and_format() {
-    let steps = vec![Step {
-        name: "step1".to_string(),
-        cut: "1111111111111111111111111111111111111111".to_string(),
-        branch: Some("step1".to_string()),
-    }];
-    let target_oid = "0000000000000000000000000000000000000000";
-    let object_format = "sha1";
+fn test_implicit_sub_staircase_id_mismatch() {
+    let tmp = TempDir::new().unwrap();
+    let repo_path = tmp.path();
+    let run_git = |args: &[&str]| {
+        let status = Command::new("git")
+            .current_dir(repo_path)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+        assert!(status.success());
+    };
+    run_git(&["init", "-b", "main"]);
+    fs::write(repo_path.join("file"), "0").unwrap();
+    run_git(&["add", "file"]);
+    run_git(&["commit", "-m", "initial"]);
+    run_git(&["checkout", "-b", "feature"]);
+    fs::write(repo_path.join("file"), "1").unwrap();
+    run_git(&["commit", "-am", "step 1"]);
+    run_git(&["branch", "step-1"]);
+    fs::write(repo_path.join("file"), "2").unwrap();
+    run_git(&["commit", "-am", "step 2"]);
+    run_git(&["branch", "step-2"]);
 
-    // This will fail to compile initially because compute_implicit_id only takes steps
-    let id = compute_implicit_id(object_format, target_oid, &steps);
+    let repo = GitRepo::new(repo_path.to_path_buf());
+    let step1_oid = repo.resolve_commit("step-1").unwrap();
+    let rs1 = resolve_staircase(&repo, &step1_oid, Some("main"))
+        .unwrap()
+        .unwrap();
+    let id1_metadata = rs1.metadata().id.clone();
+    println!("ID 1: {}", id1_metadata);
 
-    assert!(
-        id.starts_with("implicit@"),
-        "ID should start with implicit@, got {}",
-        id
+    let step2_oid = repo.resolve_commit("step-2").unwrap();
+    let rs2 = resolve_staircase(&repo, &step2_oid, Some("main"))
+        .unwrap()
+        .unwrap();
+    let id2_metadata = rs2.metadata().id.clone();
+    println!("ID 2: {}", id2_metadata);
+
+    // The sub-staircase (rs1) should have a different structural ID than the full staircase (rs2)
+    assert_ne!(
+        id1_metadata, id2_metadata,
+        "Metadata ID should be unique to the steps content and updated on truncation"
     );
-
-    // We expect a stable hash. For version 1, target_oid, 1 step, step1 cut and name.
-    // Let's say we expect a specific value once we implement it.
-    // For now, let's just assert it's 16 hex chars after implicit@
-    let hash_part = &id["implicit@".len()..];
-    assert_eq!(
-        hash_part.len(),
-        16,
-        "Hash part should be 16 hex chars, got {}",
-        hash_part
-    );
-    assert!(
-        hash_part.chars().all(|c| c.is_ascii_hexdigit()),
-        "Hash part should be hex, got {}",
-        hash_part
-    );
-}
-
-#[test]
-fn test_id_is_stable_across_calls() {
-    let steps = vec![Step {
-        name: "step1".to_string(),
-        cut: "1111111111111111111111111111111111111111".to_string(),
-        branch: Some("step1".to_string()),
-    }];
-    let target_oid = "0000000000000000000000000000000000000000";
-    let object_format = "sha1";
-
-    let id1 = compute_implicit_id(object_format, target_oid, &steps);
-    let id2 = compute_implicit_id(object_format, target_oid, &steps);
-
-    assert_eq!(id1, id2, "IDs should be identical for same input");
 }

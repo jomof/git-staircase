@@ -1,8 +1,8 @@
 mod common;
 use common::*;
-use git_staircase::core;
-use git_staircase::cli::{StaircaseSelectorArgs, resolve_rs};
 use git_staircase::ResolvedStaircase;
+use git_staircase::cli::{StaircaseSelectorArgs, resolve_rs};
+use git_staircase::core;
 
 #[test]
 fn test_explicit_selectors_resolve_ambiguity() {
@@ -13,7 +13,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
     run_git(dir, &["checkout", "main"]);
     run_git(dir, &["checkout", "-b", "managed-auth"]);
     let _c1 = commit(dir, "m.txt", "m", "managed commit");
-    
+
     let discoveries = core::discover(&repo, Some("main")).unwrap();
     let mut s = match &discoveries[0] {
         git_staircase::Discovery::Linear(s) => s.clone(),
@@ -40,7 +40,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         r#ref: None,
         structural_key: None,
     };
-    
+
     let result = resolve_rs(&repo, &args_bare);
     assert!(result.is_err(), "Bare 'auth' should be ambiguous");
     assert!(result.unwrap_err().to_string().contains("ambiguous"));
@@ -103,5 +103,8 @@ fn test_explicit_selectors_resolve_ambiguity() {
     };
     let rs = resolve_rs(&repo, &args_rev).expect("Should resolve by --revision");
     assert!(matches!(rs, ResolvedStaircase::Managed(_)));
-    assert_eq!(repo.resolve_ref("refs/staircases/auth").unwrap(), revision_oid);
+    assert_eq!(
+        repo.resolve_ref("refs/staircases/auth").unwrap(),
+        revision_oid
+    );
 }
