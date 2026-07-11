@@ -307,7 +307,7 @@ impl GitRepo {
     pub fn local_branches(&self) -> Result<Vec<BranchInfo>> {
         let stdout = self.run(&[
             "for-each-ref",
-            "--format=%(refname)|%(objectname)|%(upstream)",
+            "--format=%(refname)%09%(objectname)%09%(upstream)",
             "refs/heads/",
         ])?;
 
@@ -317,7 +317,7 @@ impl GitRepo {
             if line.is_empty() {
                 continue;
             }
-            let parts: Vec<&str> = line.split('|').collect();
+            let parts: Vec<&str> = line.split('\t').collect();
             if parts.len() >= 2 {
                 let refname = parts[0].to_string();
                 let oid = parts[1].to_string();

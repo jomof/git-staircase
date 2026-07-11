@@ -46,15 +46,19 @@ pub fn verify(
         return Err(StaircaseError::Other("No steps to verify".to_string()));
     }
 
-    // Save current branch to restore later
-    let original_branch = repo
-        .run(&["rev-parse", "--abbrev-ref", "HEAD"])?
-        .trim()
-        .to_string();
+    // Save current branch or OID to restore later
+    let original_ref = {
+        let branch = repo.run(&["rev-parse", "--abbrev-ref", "HEAD"])?.trim().to_string();
+        if branch == "HEAD" {
+            repo.run(&["rev-parse", "HEAD"])?.trim().to_string()
+        } else {
+            branch
+        }
+    };
 
     let _guard = CheckoutGuard {
         repo,
-        original_branch,
+        original_ref,
     };
 
     for (step_name, cut) in targets {
@@ -127,11 +131,11 @@ fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, Stri
 
 struct CheckoutGuard<'a> {
     repo: &'a GitRepo,
-    original_branch: String,
+    original_ref: String,
 }
 
 impl<'a> Drop for CheckoutGuard<'a> {
     fn drop(&mut self) {
-        let _ = self.repo.run(&["checkout", &self.original_branch]);
+        let _ = self.repo.run(&["checkout", &self.original_ref]);
     }
 }
