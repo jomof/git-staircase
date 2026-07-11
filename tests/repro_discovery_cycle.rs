@@ -1,46 +1,26 @@
+mod common;
+use common::*;
 use git_staircase::core::discover;
-use git_staircase::git::GitRepo;
 use std::fs;
-use std::process::Command;
-use tempfile::TempDir;
-
-fn setup_repo() -> (TempDir, GitRepo) {
-    let dir = TempDir::new().unwrap();
-    let repo_path = dir.path().to_path_buf();
-
-    let run = |args: &[&str]| {
-        let status = Command::new("git")
-            .current_dir(&repo_path)
-            .args(args)
-            .status()
-            .unwrap();
-        assert!(status.success());
-    };
-
-    run(&["init"]);
-    run(&["config", "user.email", "you@example.com"]);
-    run(&["config", "user.name", "Your Name"]);
-    run(&["commit", "--allow-empty", "-m", "initial commit"]);
-
-    // Create a commit on main
-    fs::write(repo_path.join("file"), "content").unwrap();
-    run(&["add", "file"]);
-    run(&["commit", "-m", "base commit"]);
-
-    // Create two branches at the same OID, ahead of main
-    run(&["checkout", "-b", "branch-a"]);
-    fs::write(repo_path.join("file"), "modified").unwrap();
-    run(&["add", "file"]);
-    run(&["commit", "-m", "work"]);
-
-    run(&["branch", "branch-b", "branch-a"]);
-
-    (dir, GitRepo::new(repo_path))
-}
 
 #[test]
 fn test_discovery_with_duplicate_oids() {
-    let (_dir, repo) = setup_repo();
+    let (_tmp, repo) = setup_repo();
+    let repo_path = &repo.workdir;
+
+    // Create a commit on main
+    fs::write(repo_path.join("file_new"), "content").unwrap();
+    run_git(repo_path, &["add", "file_new"]);
+    run_git(repo_path, &["commit", "-m", "base commit"]);
+
+    // Create two branches at the same OID, ahead of main
+    run_git(repo_path, &["checkout", "-b", "branch-a"]);
+    fs::write(repo_path.join("file_new"), "modified").unwrap();
+    run_git(repo_path, &["add", "file_new"]);
+    run_git(repo_path, &["commit", "-m", "work"]);
+
+    run_git(repo_path, &["branch", "branch-b", "branch-a"]);
+
     let onto = if repo.resolve_ref("master").is_ok() {
         "master"
     } else {

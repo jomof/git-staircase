@@ -1,62 +1,10 @@
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use tempfile::TempDir;
-
-fn run_git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .env("GIT_AUTHOR_NAME", "Test")
-        .env("GIT_AUTHOR_EMAIL", "test@example.com")
-        .env("GIT_COMMITTER_NAME", "Test")
-        .env("GIT_COMMITTER_EMAIL", "test@example.com")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "git {:?} failed. Stderr: {}",
-        args,
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
-    let path = dir.join(file);
-    fs::write(path, contents).unwrap();
-    run_git(dir, &["add", "."]);
-    run_git(dir, &["commit", "-m", msg]);
-    run_git(dir, &["rev-parse", "HEAD"])
-}
-
-fn setup_repo() -> TempDir {
-    let tmp = TempDir::new().unwrap();
-    let path = tmp.path();
-    run_git(path, &["init", "-b", "main"]);
-    commit(path, "init.txt", "initial", "initial commit");
-    tmp
-}
-
-fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
-    let binary = env!("CARGO_BIN_EXE_git-staircase");
-    let output = Command::new(binary)
-        .current_dir(dir)
-        .args(args)
-        .output()
-        .expect("Failed to execute git-staircase");
-    (
-        output.status.success(),
-        String::from_utf8_lossy(&output.stdout).to_string(),
-        String::from_utf8_lossy(&output.stderr).to_string(),
-    )
-}
+mod common;
+use common::*;
 
 #[test]
 fn test_inspection_commands_on_implicit_staircase() {
     // ARRANGE
-    let tmp = setup_repo();
+    let (tmp, _repo) = setup_repo();
     let dir = tmp.path();
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
@@ -116,7 +64,7 @@ fn test_inspection_commands_on_implicit_staircase() {
 #[test]
 fn test_inspection_commands_on_managed_staircase() {
     // ARRANGE
-    let tmp = setup_repo();
+    let (tmp, _repo) = setup_repo();
     let dir = tmp.path();
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);

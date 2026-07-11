@@ -1,38 +1,14 @@
+mod common;
+use common::*;
+use git_staircase::*;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
-
-fn run_git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .env("GIT_AUTHOR_NAME", "Test")
-        .env("GIT_AUTHOR_EMAIL", "test@example.com")
-        .env("GIT_COMMITTER_NAME", "Test")
-        .env("GIT_COMMITTER_EMAIL", "test@example.com")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .unwrap();
-    if !output.status.success() {
-        panic!(
-            "git {:?} failed: {}",
-            args,
-            String::from_utf8_lossy(&output.stderr)
-        );
-    }
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
 
 #[test]
 fn test_restack_propagation() {
-    let tmp = tempfile::tempdir().unwrap();
-    let repo_dir = tmp.path();
+    let (_tmp, repo) = setup_repo();
+    let repo_dir = &repo.workdir;
 
-    // 1. Initialize repo
-    run_git(repo_dir, &["init", "-b", "main"]);
-    fs::write(repo_dir.join("a.txt"), "a").unwrap();
-    run_git(repo_dir, &["add", "."]);
-    run_git(repo_dir, &["commit", "-m", "initial"]);
+    // 1. Repo already initialized with one commit by setup_repo()
 
     // 2. Create a chain of 3 branches: s1 -> s2 -> s3
     run_git(repo_dir, &["checkout", "-b", "s1"]);
@@ -54,23 +30,22 @@ fn test_restack_propagation() {
     let c3 = run_git(repo_dir, &["rev-parse", "HEAD"]);
 
     // 3. Adopt as a staircase
-    let repo = git_staircase::GitRepo::new(repo_dir.to_path_buf());
-    let sc = git_staircase::StaircaseMetadata {
+    let sc = StaircaseMetadata {
         id: "test-sc".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),
         steps: vec![
-            git_staircase::Step {
+            Step {
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: Some("s1".to_string()),
             },
-            git_staircase::Step {
+            Step {
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: Some("s2".to_string()),
             },
-            git_staircase::Step {
+            Step {
                 name: "s3".to_string(),
                 cut: c3.clone(),
                 branch: Some("s3".to_string()),
@@ -105,23 +80,11 @@ fn test_restack_propagation() {
     assert_eq!(s1_final, s1_new);
 
     // s2 should have been rebased onto s1_new
-    assert!(
-        Command::new("git")
-            .current_dir(repo_dir)
-            .args(["merge-base", "--is-ancestor", &s1_final, &s2_final])
-            .status()
-            .unwrap()
-            .success()
-    );
+    assert!(repo.is_ancestor(&s1_final, &s2_final).unwrap());
 
     // s3 SHOULD have been rebased onto s2_new
     assert!(
-        Command::new("git")
-            .current_dir(repo_dir)
-            .args(["merge-base", "--is-ancestor", &s2_final, &s3_final])
-            .status()
-            .unwrap()
-            .success(),
+        repo.is_ancestor(&s2_final, &s3_final).unwrap(),
         "s3 was not rebased onto s2"
     );
 }

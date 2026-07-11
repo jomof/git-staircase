@@ -1,46 +1,8 @@
+mod common;
+use common::*;
 use git_staircase::core;
-use git_staircase::{Discovery, GitRepo, StaircaseMetadata, Step};
+use git_staircase::{Discovery, StaircaseMetadata, Step, VerificationPolicy};
 use std::fs;
-use std::path::Path;
-use std::process::Command;
-use tempfile::TempDir;
-
-fn run_git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .env("GIT_AUTHOR_NAME", "Test")
-        .env("GIT_AUTHOR_EMAIL", "test@example.com")
-        .env("GIT_COMMITTER_NAME", "Test")
-        .env("GIT_COMMITTER_EMAIL", "test@example.com")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "git {:?} failed. Stderr: {}",
-        args,
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
-    let path = dir.join(file);
-    fs::write(path, contents).unwrap();
-    run_git(dir, &["add", "."]);
-    run_git(dir, &["commit", "-m", msg]);
-    run_git(dir, &["rev-parse", "HEAD"])
-}
-
-fn setup_repo() -> (TempDir, GitRepo) {
-    let tmp = TempDir::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    run_git(&path, &["init", "-b", "main"]);
-    // Git needs at least one commit to do many operations
-    commit(&path, "init.txt", "initial", "initial commit");
-    (tmp, GitRepo::new(path))
-}
 
 #[test]
 fn test_discover_linear() {
@@ -366,7 +328,7 @@ fn test_verification_aggregate() {
     s.name = "auth".to_string();
 
     // Set verification policy
-    s.verification_policy = Some(git_staircase::VerificationPolicy {
+    s.verification_policy = Some(VerificationPolicy {
         build_command: Some("true".to_string()),
         test_command: Some("true".to_string()),
         verify_each_prefix: false,
@@ -418,7 +380,7 @@ fn test_verification_each_prefix() {
     s.name = "auth".to_string();
 
     // Set verification policy
-    s.verification_policy = Some(git_staircase::VerificationPolicy {
+    s.verification_policy = Some(VerificationPolicy {
         build_command: Some("true".to_string()),
         test_command: Some("true".to_string()),
         verify_each_prefix: true,

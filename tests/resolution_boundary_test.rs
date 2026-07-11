@@ -1,41 +1,15 @@
+mod common;
+use common::*;
 use git_staircase::GitRepo;
 use git_staircase::core;
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use tempfile::TempDir;
-
-fn run_git(dir: &Path, args: &[&str]) -> String {
-    let output = Command::new("git")
-        .current_dir(dir)
-        .args(args)
-        .env("GIT_AUTHOR_NAME", "Test")
-        .env("GIT_AUTHOR_EMAIL", "test@example.com")
-        .env("GIT_COMMITTER_NAME", "Test")
-        .env("GIT_COMMITTER_EMAIL", "test@example.com")
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .output()
-        .unwrap();
-    assert!(
-        output.status.success(),
-        "git {:?} failed. Stderr: {}",
-        args,
-        String::from_utf8_lossy(&output.stderr)
-    );
-    String::from_utf8_lossy(&output.stdout).trim().to_string()
-}
-
-fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
-    let path = dir.join(file);
-    fs::write(path, contents).unwrap();
-    run_git(dir, &["add", "."]);
-    run_git(dir, &["commit", "-m", msg]);
-    run_git(dir, &["rev-parse", "HEAD"])
-}
 
 #[test]
 fn test_resolve_staircase_inferred_develop() {
-    let tmp = TempDir::new().unwrap();
+    let (_tmp, _repo) = setup_repo(); // setup_repo creates main
+    // But this test needs develop as default branch.
+    // setup_repo is a bit opinionated.
+    // I'll just use a fresh TempDir here or manually fix it.
+    let tmp = tempfile::TempDir::new().unwrap();
     let path = tmp.path().to_path_buf();
     run_git(&path, &["init", "-b", "develop"]);
     commit(&path, "init.txt", "initial", "initial commit");
@@ -55,7 +29,8 @@ fn test_resolve_staircase_inferred_develop() {
 
 #[test]
 fn test_resolve_staircase_with_explicit_onto() {
-    let tmp = TempDir::new().unwrap();
+    let (_tmp, _repo) = setup_repo();
+    let tmp = tempfile::TempDir::new().unwrap();
     let path = tmp.path().to_path_buf();
     run_git(&path, &["init", "-b", "develop"]);
     commit(&path, "init.txt", "initial", "initial commit");
@@ -75,23 +50,19 @@ fn test_resolve_staircase_with_explicit_onto() {
 
 #[test]
 fn test_resolve_staircase_inference_upstream() {
-    let tmp = TempDir::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    run_git(&path, &["init", "-b", "main"]);
-    commit(&path, "init.txt", "initial", "initial commit");
+    let (_tmp, repo) = setup_repo();
+    let path = &repo.workdir;
 
-    run_git(&path, &["checkout", "-b", "base"]);
-    commit(&path, "base.txt", "base", "base commit");
+    run_git(path, &["checkout", "-b", "base"]);
+    commit(path, "base.txt", "base", "base commit");
 
-    run_git(&path, &["checkout", "-b", "feat-1"]);
-    commit(&path, "feat1.txt", "1", "feat 1");
+    run_git(path, &["checkout", "-b", "feat-1"]);
+    commit(path, "feat1.txt", "1", "feat 1");
 
-    run_git(&path, &["checkout", "-b", "feat-2"]);
-    commit(&path, "feat2.txt", "2", "feat 2");
+    run_git(path, &["checkout", "-b", "feat-2"]);
+    commit(path, "feat2.txt", "2", "feat 2");
 
-    run_git(&path, &["branch", "--set-upstream-to=base"]);
-
-    let repo = GitRepo::new(path.clone());
+    run_git(path, &["branch", "--set-upstream-to=base"]);
 
     let rs = core::resolve_staircase(&repo, "feat", None)
         .unwrap()
