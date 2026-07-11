@@ -1,7 +1,7 @@
 use super::OutputFormat;
 use crate::GitRepo;
-use git_staircase::core;
 use anyhow::anyhow;
+use git_staircase::core;
 
 pub fn run(
     repo: &GitRepo,

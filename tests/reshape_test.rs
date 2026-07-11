@@ -145,3 +145,155 @@ fn test_move() {
     assert!(dir.join("file2_1.txt").exists());
     assert!(dir.join("file2_2.txt").exists() == false);
 }
+
+#[test]
+fn test_reorder_without_branches() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+    use git_staircase::model::{StaircaseMetadata, Step};
+    use uuid::Uuid;
+
+    run_git(dir, &["checkout", "-b", "step1"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    run_git(dir, &["checkout", "-b", "step2"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+    run_git(dir, &["checkout", "-b", "step3"]);
+    let c3 = commit(dir, "file3.txt", "3", "commit 3");
+
+    let metadata = StaircaseMetadata {
+        id: Uuid::new_v4().to_string(),
+        name: "mystaircase".to_string(),
+        target: "main".to_string(),
+        steps: vec![
+            Step {
+                name: "step1".to_string(),
+                cut: c1.clone(),
+                branch: Some("step1".to_string()),
+            },
+            Step {
+                name: "step2".to_string(),
+                cut: c2.clone(),
+                branch: Some("step2".to_string()),
+            },
+            Step {
+                name: "step3".to_string(),
+                cut: c3.clone(),
+                branch: Some("step3".to_string()),
+            },
+        ],
+        verification_policy: None,
+    };
+
+    core::adopt(&repo, &metadata).expect("Adoption failed");
+
+    // Delete branches step1 and step2, keeping only step3 (the top)
+    run_git(dir, &["branch", "-D", "step1"]);
+    run_git(dir, &["branch", "-D", "step2"]);
+
+    let rs = core::resolve_staircase(&repo, "mystaircase", None)
+        .expect("Resolve failed")
+        .expect("Staircase not found");
+
+    // Reorder: 1, 3, 2
+    core::reorder(&repo, &rs, &[0, 2, 1]).expect("Reorder failed");
+
+    let rs = core::resolve_staircase(&repo, "mystaircase", None)
+        .expect("Resolve failed")
+        .expect("Staircase not found");
+    let status = core::get_status_metadata(&repo, rs.metadata().clone()).unwrap();
+
+    assert_eq!(status.metadata.steps.len(), 3);
+    assert_eq!(status.metadata.steps[0].name, "step1");
+    assert_eq!(status.metadata.steps[1].name, "step3");
+    assert_eq!(status.metadata.steps[2].name, "step2");
+
+    // Verify ancestry
+    let main_oid = repo.resolve_ref("main").unwrap();
+    assert!(
+        repo.is_ancestor(&main_oid, &status.metadata.steps[0].cut)
+            .unwrap()
+    );
+    assert!(
+        repo.is_ancestor(&status.metadata.steps[0].cut, &status.metadata.steps[1].cut)
+            .unwrap()
+    );
+    assert!(
+        repo.is_ancestor(&status.metadata.steps[1].cut, &status.metadata.steps[2].cut)
+            .unwrap()
+    );
+
+    // Verify step refs are updated
+    assert_eq!(
+        repo.resolve_ref(&format!("refs/staircases/{}/steps/step1", metadata.id))
+            .unwrap(),
+        status.metadata.steps[0].cut
+    );
+    assert_eq!(
+        repo.resolve_ref(&format!("refs/staircases/{}/steps/step3", metadata.id))
+            .unwrap(),
+        status.metadata.steps[1].cut
+    );
+    assert_eq!(
+        repo.resolve_ref(&format!("refs/staircases/{}/steps/step2", metadata.id))
+            .unwrap(),
+        status.metadata.steps[2].cut
+    );
+}
+
+#[test]
+fn test_restack_without_branches() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+    use git_staircase::model::{StaircaseMetadata, Step};
+    use uuid::Uuid;
+
+    run_git(dir, &["checkout", "-b", "step1"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    run_git(dir, &["checkout", "-b", "step2"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    let metadata = StaircaseMetadata {
+        id: Uuid::new_v4().to_string(),
+        name: "mystaircase".to_string(),
+        target: "main".to_string(),
+        steps: vec![
+            Step {
+                name: "step1".to_string(),
+                cut: c1.clone(),
+                branch: Some("step1".to_string()),
+            },
+            Step {
+                name: "step2".to_string(),
+                cut: c2.clone(),
+                branch: Some("step2".to_string()),
+            },
+        ],
+        verification_policy: None,
+    };
+
+    core::adopt(&repo, &metadata).expect("Adoption failed");
+
+    // Amend step 1 branch
+    run_git(dir, &["checkout", "step1"]);
+    let c1_new = commit(dir, "file1.txt", "1.1", "commit 1 amended");
+
+    // Delete branch step2
+    run_git(dir, &["branch", "-D", "step2"]);
+
+    let rs = core::resolve_staircase(&repo, "mystaircase", None)
+        .expect("Resolve failed")
+        .expect("Staircase not found");
+
+    // ACT: restack
+    core::restack(&repo, &rs).expect("Restack failed");
+
+    let rs = core::resolve_staircase(&repo, "mystaircase", None)
+        .expect("Resolve failed")
+        .expect("Staircase not found");
+
+    assert_eq!(rs.metadata().steps[0].cut, c1_new);
+    assert!(
+        repo.is_ancestor(&c1_new, &rs.metadata().steps[1].cut)
+            .unwrap()
+    );
+}

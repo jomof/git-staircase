@@ -127,35 +127,38 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
             old_steps[old_idx - 1].cut.clone()
         };
 
-        if let Some(ref branch_name) = step.branch {
-            if current_base != old_parent_oid {
-                match repo.run_interactive(&[
-                    "rebase",
-                    "--onto",
-                    &current_base,
-                    &old_parent_oid,
-                    branch_name,
-                ]) {
-                    Ok(_) => {
-                        let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
-                        new_steps[i].cut = new_oid.clone();
-                        current_base = new_oid;
-                        success_count += 1;
-                    }
-                    Err(e) => {
-                        rebase_err = Some(e);
-                        break;
-                    }
+        if current_base != old_parent_oid {
+            let mut rebase_target = step.cut.clone();
+            if let Some(ref branch_name) = step.branch {
+                if repo
+                    .resolve_ref_opt(&format!("refs/heads/{}", branch_name))?
+                    .is_some()
+                {
+                    rebase_target = branch_name.clone();
                 }
-            } else {
-                current_base = actual_oid;
-                success_count += 1;
+            }
+
+            match repo.run_interactive(&[
+                "rebase",
+                "--onto",
+                &current_base,
+                &old_parent_oid,
+                &rebase_target,
+            ]) {
+                Ok(_) => {
+                    let new_oid = repo.resolve_ref("HEAD")?;
+                    new_steps[i].cut = new_oid.clone();
+                    current_base = new_oid;
+                    success_count += 1;
+                }
+                Err(e) => {
+                    rebase_err = Some(e);
+                    break;
+                }
             }
         } else {
-            return Err(StaircaseError::Other(format!(
-                "Step '{}' has no branch; reshaping requires branches",
-                step.name
-            )));
+            current_base = actual_oid;
+            success_count += 1;
         }
     }
 
@@ -268,19 +271,12 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
 
     for i in 0..status.steps.len() {
         let step_status = &status.steps[i];
-        let (step_name, step_branch) = {
-            let step = &status.metadata.steps[i];
-            (step.name.clone(), step.branch.clone())
-        };
+        let step_name = status.metadata.steps[i].name.clone();
+        let step_branch = status.metadata.steps[i].branch.clone();
 
         let actual_oid = match &step_status.actual_oid {
             Some(oid) => oid.clone(),
-            None => {
-                return Err(StaircaseError::Other(format!(
-                    "Cannot restack: branch for step '{}' is missing",
-                    step_name
-                )));
-            }
+            None => status.metadata.steps[i].cut.clone(),
         };
 
         let is_stale = !repo.is_ancestor(&current_base, &actual_oid)?;
@@ -291,19 +287,25 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                 original_cuts[i - 1].clone()
             };
 
-            let branch_name = step_branch.as_ref().ok_or_else(|| {
-                StaircaseError::Other(format!("Step '{}' has no branch associated", step_name))
-            })?;
+            let mut rebase_target = actual_oid.clone();
+            if let Some(ref branch_name) = step_branch {
+                if repo
+                    .resolve_ref_opt(&format!("refs/heads/{}", branch_name))?
+                    .is_some()
+                {
+                    rebase_target = branch_name.clone();
+                }
+            }
 
             match repo.run_interactive(&[
                 "rebase",
                 "--onto",
                 &current_base,
                 &old_parent_cut,
-                branch_name,
+                &rebase_target,
             ]) {
                 Ok(_) => {
-                    let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
+                    let new_oid = repo.resolve_ref("HEAD")?;
                     current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
                     status.metadata.steps[i].cut = new_oid.clone();
                     metadata_changed = true;
@@ -314,7 +316,8 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                         current_rs.commit_metadata(repo, status.metadata)?;
                     }
                     return Err(StaircaseError::Other(format!(
-                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
+                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.
+Error: {}",
                         step_name, e
                     )));
                 }
