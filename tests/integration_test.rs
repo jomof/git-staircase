@@ -1,5 +1,5 @@
 use git_staircase::core;
-use git_staircase::{Discovery, GitRepo, ResolvedStaircase, StaircaseMetadata, Step};
+use git_staircase::{Discovery, GitRepo, StaircaseMetadata, Step};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
