@@ -1,6 +1,8 @@
-use serde::Serialize;
-use crate::model::{StaircaseMetadata, StaircaseStatus, Discovery, VerificationResult, StaircaseFamily, Step};
 use crate::ResolvedStaircase;
+use crate::model::{
+    Discovery, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, VerificationResult,
+};
+use serde::Serialize;
 
 pub trait ToHuman {
     fn to_human(&self) -> String;
@@ -350,6 +352,90 @@ impl ToPorcelain for StepsList {
             .iter()
             .enumerate()
             .map(|(i, step)| format!("{}\t{}\t{}", i + 1, step.name, step.cut))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+#[derive(Serialize)]
+pub struct StaircaseCommits {
+    pub steps: Vec<StepCommits>,
+}
+
+#[derive(Serialize)]
+pub struct StepCommits {
+    pub index: usize,
+    pub name: String,
+    pub commits: Vec<CommitInfo>,
+}
+
+#[derive(Serialize)]
+pub struct CommitInfo {
+    pub hash: String,
+    pub subject: String,
+}
+
+impl ToHuman for StaircaseCommits {
+    fn to_human(&self) -> String {
+        let mut out = String::new();
+        for step in &self.steps {
+            out.push_str(&format!("Step {}: {}\n", step.index, step.name));
+            for commit in &step.commits {
+                out.push_str(&format!("  {} {}\n", commit.hash, commit.subject));
+            }
+        }
+        out
+    }
+}
+
+impl ToPorcelain for StaircaseCommits {
+    fn to_porcelain(&self) -> String {
+        let mut out = String::new();
+        for step in &self.steps {
+            out.push_str(&format!("step\t{}\t{}\n", step.index, step.name));
+            for commit in &step.commits {
+                out.push_str(&format!("commit\t{}\t{}\n", commit.hash, commit.subject));
+            }
+        }
+        out
+    }
+}
+
+#[derive(Serialize)]
+#[serde(transparent)]
+pub struct PlainOutput(pub String);
+
+impl ToHuman for PlainOutput {
+    fn to_human(&self) -> String {
+        self.0.clone()
+    }
+}
+
+impl ToPorcelain for PlainOutput {
+    fn to_porcelain(&self) -> String {
+        self.0.clone()
+    }
+}
+
+#[derive(Serialize)]
+#[serde(transparent)]
+pub struct LogOutput(pub Vec<CommitInfo>);
+
+impl ToHuman for LogOutput {
+    fn to_human(&self) -> String {
+        self.0
+            .iter()
+            .map(|c| format!("{} {}", c.hash, c.subject))
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
+
+impl ToPorcelain for LogOutput {
+    fn to_porcelain(&self) -> String {
+        self.0
+            .iter()
+            .map(|c| format!("{}\t{}", c.hash, c.subject))
             .collect::<Vec<_>>()
             .join("\n")
     }

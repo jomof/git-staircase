@@ -128,4 +128,3 @@ pub struct VerificationResult {
     pub stdout: String,
     pub stderr: String,
 }
-

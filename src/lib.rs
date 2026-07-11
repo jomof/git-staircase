@@ -5,13 +5,13 @@ pub mod git;
 pub mod model;
 
 pub use crate::core::ResolvedStaircase;
+pub use cli::formatting::{ToHuman, ToPorcelain};
 pub use error::{Result, StaircaseError};
 pub use git::GitRepo;
 pub use model::{
     Discovery, FamilyStep, IdentityKind, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step,
     StepStatus, VerificationPolicy, VerificationResult,
 };
-pub use cli::formatting::{ToHuman, ToPorcelain};
 
 pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
     let (name, num_str) = spec.rsplit_once(":").ok_or_else(|| {

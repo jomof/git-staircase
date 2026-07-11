@@ -25,7 +25,10 @@ pub mod status;
 pub mod steps;
 pub mod verify;
 
-pub use formatting::{ToHuman, ToPorcelain, Success, Summary, ReorderResult, StepsList};
+pub use formatting::{
+    CommitInfo, LogOutput, PlainOutput, ReorderResult, StaircaseCommits, StepCommits, StepsList,
+    Success, Summary, ToHuman, ToPorcelain,
+};
 
 #[derive(Clone, Copy, Debug)]
 pub enum OutputFormat {

@@ -1,8 +1,8 @@
 use super::Summary;
+use super::formatting::{ToHuman, ToPorcelain};
 use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;
-use super::formatting::{ToHuman, ToPorcelain};
 use crate::{Discovery, ResolvedStaircase};
 use serde::Serialize;
 

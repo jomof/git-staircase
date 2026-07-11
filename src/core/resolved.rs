@@ -173,4 +173,3 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     }
     Ok(staircase)
 }
-
