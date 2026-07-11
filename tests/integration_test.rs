@@ -447,18 +447,18 @@ fn test_split_implicit_staircase() {
 
     // Attempt to split the implicit staircase
     core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1"))
-        .expect("Split should succeed and auto-adopt");
+        .expect("Split should succeed and preserve implicit status");
 
-    // Verify it is now managed
+    // Verify it is still implicit
     let rs_after = core::resolve_staircase(&repo, "feature/auth-core")
         .unwrap()
         .expect("Should find staircase");
     assert!(
-        rs_after.is_managed(),
-        "Staircase should have been automatically adopted"
+        !rs_after.is_managed(),
+        "Staircase should have remained implicit"
     );
 
-    let status = core::get_status(&repo, &rs_after.metadata().id).unwrap();
+    let status = core::get_status_metadata(&repo, rs_after.metadata().clone()).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "feature/auth-core-part1");
 }
