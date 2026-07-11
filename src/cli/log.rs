@@ -1,5 +1,5 @@
-use crate::GitRepo;
 use super::OutputFormat;
+use crate::GitRepo;
 
 pub fn run(
     repo: &GitRepo,

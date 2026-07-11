@@ -1,6 +1,6 @@
 use anyhow::anyhow;
 use git_staircase::model::{ToHuman, ToPorcelain};
-use git_staircase::{GitRepo, core, ResolvedStaircase};
+use git_staircase::{GitRepo, ResolvedStaircase, core};
 use serde::Serialize;
 
 pub mod adopt;

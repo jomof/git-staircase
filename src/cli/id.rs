@@ -1,5 +1,5 @@
-use crate::GitRepo;
 use super::OutputFormat;
+use crate::GitRepo;
 use git_staircase::IdentityKind;
 use git_staircase::core;
 

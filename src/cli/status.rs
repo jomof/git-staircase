@@ -1,5 +1,5 @@
-use crate::GitRepo;
 use super::{OutputFormat, print_output};
+use crate::GitRepo;
 use git_staircase::core;
 
 pub fn run(

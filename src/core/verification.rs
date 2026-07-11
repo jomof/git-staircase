@@ -11,7 +11,7 @@ pub fn verify(
     aggregate_only: Option<bool>,
     each_prefix: Option<bool>,
 ) -> Result<Vec<VerificationResult>> {
-    let rs = super::discovery::resolve_staircase(repo, name, onto)?
+    let rs = super::resolve_staircase(repo, name, onto)?
         .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", name)))?;
 
     let s = rs.metadata();
@@ -103,7 +103,7 @@ pub fn verify(
         (s.id.clone(), IdentityKind::Lineage)
     } else {
         (
-            super::discovery::compute_identity(repo, &rs, IdentityKind::Revision)?,
+            super::compute_identity(repo, &rs, IdentityKind::Revision)?,
             IdentityKind::Revision,
         )
     };

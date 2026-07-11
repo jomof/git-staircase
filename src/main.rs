@@ -1,7 +1,7 @@
-use git_staircase::IdentityKind;
 use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::GitRepo;
+use git_staircase::IdentityKind;
 use std::path::PathBuf;
 
 pub mod cli;
