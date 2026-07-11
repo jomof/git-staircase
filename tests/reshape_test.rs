@@ -1,5 +1,5 @@
-use git_staircase::core;
 use git_staircase::GitRepo;
+use git_staircase::core;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -54,15 +54,19 @@ fn test_reorder() {
     run_git(dir, &["checkout", "-b", "step3"]);
     let _c3 = commit(dir, "file3.txt", "3", "commit 3");
 
-    let rs = core::resolve_staircase(&repo, "step", Some("main")).unwrap().expect("Staircase found");
-    
+    let rs = core::resolve_staircase(&repo, "step", Some("main"))
+        .unwrap()
+        .expect("Staircase found");
+
     // Reorder: 1, 3, 2
     core::reorder(&repo, &rs, &[0, 2, 1]).expect("Reorder failed");
 
-    let rs = core::resolve_staircase(&repo, "step", Some("main")).unwrap().expect("Staircase found");
+    let rs = core::resolve_staircase(&repo, "step", Some("main"))
+        .unwrap()
+        .expect("Staircase found");
     let status = core::get_status_metadata(&repo, rs.metadata().clone()).unwrap();
     assert_eq!(status.metadata.steps.len(), 3);
-    
+
     // Expected order: step1, step3, step2
     assert_eq!(status.metadata.steps[0].name, "step1");
     assert_eq!(status.metadata.steps[1].name, "step3");
@@ -74,7 +78,7 @@ fn test_reorder() {
 
     // c1 should remain the same as it's the first in reorder and it was first originally
     assert_eq!(new_c1, &c1);
-    
+
     // Check ancestry: main -> new_c1 -> new_c3 -> new_c2
     let main_oid = repo.resolve_ref("main").unwrap();
     assert!(repo.is_ancestor(&main_oid, new_c1).unwrap());
@@ -85,7 +89,7 @@ fn test_reorder() {
     assert_eq!(repo.resolve_ref("refs/heads/step1").unwrap(), *new_c1);
     assert_eq!(repo.resolve_ref("refs/heads/step3").unwrap(), *new_c3);
     assert_eq!(repo.resolve_ref("refs/heads/step2").unwrap(), *new_c2);
-    
+
     // Verify file contents at the top
     run_git(dir, &["checkout", "step2"]);
     assert_eq!(fs::read_to_string(dir.join("file1.txt")).unwrap(), "1");
@@ -106,12 +110,16 @@ fn test_drop() {
     run_git(dir, &["checkout", "-b", "step3"]);
     commit(dir, "file3.txt", "3", "commit 3");
 
-    let rs = core::resolve_staircase(&repo, "step", Some("main")).unwrap().expect("Staircase found");
-    
+    let rs = core::resolve_staircase(&repo, "step", Some("main"))
+        .unwrap()
+        .expect("Staircase found");
+
     // Drop step 2
     core::drop(&repo, &rs, 1).expect("Drop failed");
 
-    let rs = core::resolve_staircase(&repo, "step", Some("main")).unwrap().expect("Staircase found");
+    let rs = core::resolve_staircase(&repo, "step", Some("main"))
+        .unwrap()
+        .expect("Staircase found");
     let status = core::get_status_metadata(&repo, rs.metadata().clone()).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "step1");
@@ -144,12 +152,16 @@ fn test_move() {
     let c2_1 = commit(dir, "file2_1.txt", "2.1", "commit 2.1");
     let _c2_2 = commit(dir, "file2_2.txt", "2.2", "commit 2.2");
 
-    let rs = core::resolve_staircase(&repo, "step", Some("main")).unwrap().expect("Staircase found");
-    
+    let rs = core::resolve_staircase(&repo, "step", Some("main"))
+        .unwrap()
+        .expect("Staircase found");
+
     // Move c2_1 from step 2 to step 1
     core::move_commits(&repo, &rs, 1, 0, &[c2_1.clone()]).expect("Move failed");
 
-    let rs = core::resolve_staircase(&repo, "step", Some("main")).unwrap().expect("Staircase found");
+    let rs = core::resolve_staircase(&repo, "step", Some("main"))
+        .unwrap()
+        .expect("Staircase found");
     let status = core::get_status_metadata(&repo, rs.metadata().clone()).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "step1");
@@ -159,7 +171,7 @@ fn test_move() {
     let new_c2 = &status.metadata.steps[1].cut;
 
     assert_eq!(new_c1, &c2_1);
-    
+
     // Check ancestry: main -> c1 -> new_c1 (c2_1) -> new_c2
     let main_oid = repo.resolve_ref("main").unwrap();
     assert!(repo.is_ancestor(&main_oid, &c1).unwrap());

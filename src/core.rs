@@ -533,7 +533,6 @@ pub fn join(
     Ok(())
 }
 
-
 pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     let old_steps = metadata.steps.clone();
@@ -543,7 +542,9 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
     let mut seen = std::collections::HashSet::new();
     for &idx in new_order {
         if idx >= old_steps.len() || !seen.insert(idx) {
-            return Err(StaircaseError::Other("Invalid step indices in new order".to_string()));
+            return Err(StaircaseError::Other(
+                "Invalid step indices in new order".to_string(),
+            ));
         }
     }
 
@@ -583,7 +584,10 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
                 current_base = actual_oid;
             }
         } else {
-            return Err(StaircaseError::Other(format!("Step '{}' has no branch; reshaping requires branches", step.name)));
+            return Err(StaircaseError::Other(format!(
+                "Step '{}' has no branch; reshaping requires branches",
+                step.name
+            )));
         }
     }
 
@@ -603,7 +607,9 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
 pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) -> Result<()> {
     let metadata = staircase.metadata().clone();
     if step_index >= metadata.steps.len() {
-        return Err(StaircaseError::Other("Step index out of bounds".to_string()));
+        return Err(StaircaseError::Other(
+            "Step index out of bounds".to_string(),
+        ));
     }
 
     let mut new_order: Vec<usize> = (0..metadata.steps.len()).collect();
@@ -621,7 +627,9 @@ pub fn move_commits(
 ) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     if from_step_index >= metadata.steps.len() || to_step_index >= metadata.steps.len() {
-        return Err(StaircaseError::Other("Step index out of bounds".to_string()));
+        return Err(StaircaseError::Other(
+            "Step index out of bounds".to_string(),
+        ));
     }
 
     if from_step_index == to_step_index {
@@ -631,24 +639,29 @@ pub fn move_commits(
     if to_step_index + 1 == from_step_index {
         let commit_to_move = &commits[0];
         let oid_to_move = repo.resolve_ref(commit_to_move)?;
-        
+
         let prev_cut = if from_step_index == 0 {
             repo.resolve_ref(&metadata.target)?
         } else {
             metadata.steps[from_step_index - 1].cut.clone()
         };
-        
-        let commits_in_from_step = repo.commits_between(&prev_cut, &metadata.steps[from_step_index].cut)?;
+
+        let commits_in_from_step =
+            repo.commits_between(&prev_cut, &metadata.steps[from_step_index].cut)?;
         if commits_in_from_step.first() == Some(&oid_to_move) {
             metadata.steps[to_step_index].cut = oid_to_move.clone();
-            
+
             if let Some(ref branch) = metadata.steps[to_step_index].branch {
                 repo.update_branch(branch, &oid_to_move)?;
             }
-            
+
             if staircase.is_managed() {
                 repo.write_metadata(&metadata)?;
-                repo.update_step_ref(&metadata.id, &metadata.steps[to_step_index].name, &oid_to_move)?;
+                repo.update_step_ref(
+                    &metadata.id,
+                    &metadata.steps[to_step_index].name,
+                    &oid_to_move,
+                )?;
             } else {
                 adopt(repo, &metadata)?;
             }
@@ -656,7 +669,9 @@ pub fn move_commits(
         }
     }
 
-    Err(StaircaseError::Other("Complex move not yet implemented".to_string()))
+    Err(StaircaseError::Other(
+        "Complex move not yet implemented".to_string(),
+    ))
 }
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     let mut status = get_status_metadata(repo, staircase.metadata().clone())?;

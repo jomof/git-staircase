@@ -21,7 +21,6 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-
     /// Reorder steps of a staircase
     Reorder {
         name: String,
@@ -152,6 +151,42 @@ enum Commands {
         #[arg(long)]
         delete_branches: bool,
     },
+    /// Show log for a staircase
+    Log {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+        #[arg(last = true)]
+        git_args: Vec<String>,
+    },
+    /// Show diff for a staircase
+    Diff {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+        #[arg(last = true)]
+        git_args: Vec<String>,
+    },
+    /// Show graph for a staircase
+    Graph {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+        #[arg(last = true)]
+        git_args: Vec<String>,
+    },
+    /// List steps of a staircase
+    Steps {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+    },
+    /// List commits in each step of a staircase
+    Commits {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+    },
 }
 
 fn find_repo_root() -> anyhow::Result<PathBuf> {
@@ -175,7 +210,6 @@ fn main() -> anyhow::Result<()> {
     let repo = GitRepo::new(repo_root);
 
     match cli.command {
-
         Commands::Reorder { name, steps, onto } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
@@ -186,7 +220,13 @@ fn main() -> anyhow::Result<()> {
                 println!("Reordered staircase '{}'.", name);
             }
         }
-        Commands::Move { name, from, to, onto, commits } => {
+        Commands::Move {
+            name,
+            from,
+            to,
+            onto,
+            commits,
+        } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::move_commits(&repo, &rs, from - 1, to - 1, &commits)?;
@@ -440,19 +480,6 @@ fn main() -> anyhow::Result<()> {
                 println!("Restacked staircase '{}'.", name);
             }
         }
-        Commands::Id { name, kind, onto } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            let id = core::compute_identity(&repo, &rs, kind)?;
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({"id": id}))?
-                );
-            } else {
-                println!("{}", id);
-            }
-        }
         Commands::Verify {
             name,
             onto,
@@ -493,6 +520,19 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
+        Commands::Id { name, kind, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let id = core::compute_identity(&repo, &rs, kind)?;
+            if cli.json {
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({"id": id}))?
+                );
+            } else {
+                println!("{}", id);
+            }
+        }
         Commands::Delete {
             name,
             onto,
@@ -503,6 +543,88 @@ fn main() -> anyhow::Result<()> {
             core::delete(&repo, &rs.metadata().id, delete_branches)?;
             if !cli.json && !cli.porcelain {
                 println!("Deleted staircase '{}'.", name);
+            }
+        }
+        Commands::Log {
+            name,
+            onto,
+            git_args,
+        } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let mut args = vec!["log"];
+            let range = format!(
+                "{}..{}",
+                rs.metadata().target,
+                rs.metadata().steps.last().unwrap().cut
+            );
+            args.push(&range);
+            for arg in &git_args {
+                args.push(arg);
+            }
+            repo.run_interactive(&args)?;
+        }
+        Commands::Diff {
+            name,
+            onto,
+            git_args,
+        } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let mut args = vec!["diff"];
+            let range = format!(
+                "{}..{}",
+                rs.metadata().target,
+                rs.metadata().steps.last().unwrap().cut
+            );
+            args.push(&range);
+            for arg in &git_args {
+                args.push(arg);
+            }
+            repo.run_interactive(&args)?;
+        }
+        Commands::Graph {
+            name,
+            onto,
+            git_args,
+        } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let mut args = vec!["log", "--graph", "--oneline"];
+            let range = format!(
+                "{}..{}",
+                rs.metadata().target,
+                rs.metadata().steps.last().unwrap().cut
+            );
+            args.push(&range);
+            for arg in &git_args {
+                args.push(arg);
+            }
+            repo.run_interactive(&args)?;
+        }
+        Commands::Steps { name, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            for (i, step) in rs.metadata().steps.iter().enumerate() {
+                println!("Step {}: {} ({})", i + 1, step.name, &step.cut[..7]);
+            }
+        }
+        Commands::Commits { name, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let target_oid = repo.resolve_ref(&rs.metadata().target)?;
+            let mut current_base = target_oid;
+            for (i, step) in rs.metadata().steps.iter().enumerate() {
+                println!("Step {}: {}", i + 1, step.name);
+                let commits = repo.run(&[
+                    "log",
+                    "--oneline",
+                    &format!("{}..{}", current_base, step.cut),
+                ])?;
+                for line in commits.lines() {
+                    println!("  {}", line);
+                }
+                current_base = step.cut.clone();
             }
         }
     }

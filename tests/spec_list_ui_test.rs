@@ -66,10 +66,10 @@ fn test_list_implicit_flag_and_output() {
 
     // ACT: Run git staircase list --implicit
     let (success, stdout, stderr) = run_staircase(dir, &["list", "--implicit"]);
-    
+
     // ASSERT: Verify success and output format
     assert!(success, "list --implicit failed: {}", stderr);
-    
+
     let output = stdout.trim();
     assert_eq!(output, "feature/auth 2 steps clean (implicit)");
 }
@@ -88,9 +88,9 @@ fn test_list_managed_output() {
 
     // ACT: Run git staircase list --managed
     let (success, stdout, stderr) = run_staircase(dir, &["list", "--managed"]);
-    
+
     assert!(success, "list --managed failed: {}", stderr);
-    
+
     let output = stdout.trim();
     // Expected: auth 1 step clean
     assert_eq!(output, "auth 1 step clean");
