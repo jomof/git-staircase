@@ -1,0 +1,221 @@
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+use tempfile::TempDir;
+use git_staircase::GitRepo;
+use git_staircase::core;
+
+fn run_git(dir: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .env("GIT_TERMINAL_PROMPT", "0")
+        .output()
+        .unwrap();
+    assert!(output.status.success(), "git {:?} failed. Stderr: {}", args, String::from_utf8_lossy(&output.stderr));
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
+    let path = dir.join(file);
+    fs::write(path, contents).unwrap();
+    run_git(dir, &["add", "."]);
+    run_git(dir, &["commit", "-m", msg]);
+    run_git(dir, &["rev-parse", "HEAD"])
+}
+
+fn setup_repo() -> (TempDir, GitRepo) {
+    let tmp = TempDir::new().unwrap();
+    let path = tmp.path().to_path_buf();
+    run_git(&path, &["init", "-b", "main"]);
+    // Git needs at least one commit to do many operations
+    commit(&path, "init.txt", "initial", "initial commit");
+    (tmp, GitRepo::new(path))
+}
+
+#[test]
+fn test_discover_linear() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    // Create linear chain: main -> step1 -> step2 -> step3
+    // step1: c1
+    // step2: c2
+    // step3: c3
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    run_git(dir, &["checkout", "-b", "feature/auth-tests"]);
+    let c3 = commit(dir, "file3.txt", "3", "commit 3");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    assert_eq!(discovered.len(), 1);
+    
+    let s = &discovered[0];
+    assert_eq!(s.name, "feature/auth"); // Common prefix "feature/auth"
+    assert_eq!(s.target, "main");
+    assert_eq!(s.steps.len(), 3);
+    
+    assert_eq!(s.steps[0].name, "feature/auth-core");
+    assert_eq!(s.steps[0].cut, c1);
+    
+    assert_eq!(s.steps[1].name, "feature/auth-ui");
+    assert_eq!(s.steps[1].cut, c2);
+    
+    assert_eq!(s.steps[2].name, "feature/auth-tests");
+    assert_eq!(s.steps[2].cut, c3);
+}
+
+#[test]
+fn test_adopt_and_status() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    assert_eq!(discovered.len(), 1);
+    let mut s = discovered[0].clone();
+    s.name = "auth".to_string(); // Give it a custom name
+
+    core::adopt(&repo, &s).unwrap();
+
+    // Verify metadata was written
+    let read = repo.read_metadata(&s.id).unwrap();
+    assert_eq!(read.name, "auth");
+    assert_eq!(read.steps.len(), 2);
+
+    // Verify step refs
+    assert_eq!(repo.resolve_ref(&format!("refs/staircases/{}/steps/feature/auth-core", s.id)).unwrap(), c1);
+    assert_eq!(repo.resolve_ref(&format!("refs/staircases/{}/steps/feature/auth-ui", s.id)).unwrap(), c2);
+
+    // Verify status is clean
+    let status = core::get_status(&repo, &s.id).unwrap();
+    assert!(status.is_clean);
+    assert_eq!(status.steps[0].actual_oid, Some(c1.clone()));
+    assert_eq!(status.steps[1].actual_oid, Some(c2.clone()));
+    assert!(!status.steps[0].is_modified);
+    assert!(!status.steps[1].is_modified);
+    assert!(!status.steps[0].is_stale);
+    assert!(!status.steps[1].is_stale);
+
+    // Modify step 2 (commit more to feature/auth-ui)
+    run_git(dir, &["checkout", "feature/auth-ui"]);
+    let c2_new = commit(dir, "file2_mod.txt", "2 mod", "commit 2 mod");
+
+    let status = core::get_status(&repo, &s.id).unwrap();
+    assert!(!status.is_clean); // Not clean because step 2 is modified
+    assert_eq!(status.steps[1].actual_oid, Some(c2_new.clone()));
+    assert!(status.steps[1].is_modified);
+    assert!(!status.steps[1].is_stale); // Still descends from step 1 (c1)
+
+    // Verify we can find by name
+    let found = core::find_by_name(&repo, "auth").unwrap().unwrap();
+    assert_eq!(found.id, s.id);
+}
+
+#[test]
+fn test_status_stale_and_restack() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    let s = &discovered[0];
+    core::adopt(&repo, s).unwrap();
+
+    // Amend step 1 (feature/auth-core)
+    run_git(dir, &["checkout", "feature/auth-core"]);
+    // We need to amend. We can use commit --amend.
+    // To make a change, we overwrite file1.txt
+    fs::write(dir.join("file1.txt"), "1 amended").unwrap();
+    run_git(dir, &["add", "."]);
+    run_git(dir, &["commit", "--amend", "-m", "commit 1 amended"]);
+    let c1_amended = repo.resolve_ref("HEAD").unwrap();
+
+    assert_ne!(c1, c1_amended);
+
+    // Now status should show step 2 as stale because it descends from c1, not c1_amended.
+    // And actual of feature/auth-core is c1_amended.
+    // actual of feature/auth-ui is c2.
+    // Is c1_amended ancestor of c2? No.
+    let status = core::get_status(&repo, &s.id).unwrap();
+    assert!(!status.is_clean);
+    assert!(status.steps[0].is_modified); // c1_amended != c1
+    assert!(!status.steps[0].is_stale);
+    assert!(!status.steps[1].is_modified); // c2 == c2
+    assert!(status.steps[1].is_stale); // c1_amended is not ancestor of c2
+
+    // Restack
+    core::restack(&repo, &s.id).unwrap();
+
+    // Verify it is clean now
+    let status = core::get_status(&repo, &s.id).unwrap();
+    assert!(status.is_clean);
+    
+    let c1_new = status.steps[0].actual_oid.as_ref().unwrap();
+    let c2_new = status.steps[1].actual_oid.as_ref().unwrap();
+    
+    assert_eq!(c1_new, &c1_amended);
+    assert_ne!(c2_new, &c2); // c2 should have been rebased
+    
+    // Verify ancestry: c1_new -> c2_new
+    assert!(repo.is_ancestor(c1_new, c2_new).unwrap());
+}
+
+#[test]
+fn test_split_and_join() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    let c1_2 = commit(dir, "file1_2.txt", "1.2", "commit 1.2");
+    let c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    let s = &discovered[0];
+    core::adopt(&repo, s).unwrap();
+
+    // Staircase has 1 step: feature/auth-core pointing to c1_3.
+    // We want to split it at c1_2.
+    // c1_2 is between main (target) and c1_3.
+    core::split(&repo, &s.id, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
+
+    // Verify metadata
+    let read = repo.read_metadata(&s.id).unwrap();
+    assert_eq!(read.steps.len(), 2);
+    assert_eq!(read.steps[0].name, "feature/auth-core-part1");
+    assert_eq!(read.steps[0].cut, c1_2);
+    assert_eq!(read.steps[1].name, "feature/auth-core");
+    assert_eq!(read.steps[1].cut, c1_3);
+
+    // Verify status is clean
+    let status = core::get_status(&repo, &s.id).unwrap();
+    assert!(status.is_clean);
+
+    // Now join them back
+    core::join(&repo, &s.id, 0, 1).unwrap();
+
+    // Verify metadata
+    let read = repo.read_metadata(&s.id).unwrap();
+    assert_eq!(read.steps.len(), 1);
+    assert_eq!(read.steps[0].name, "feature/auth-core");
+    assert_eq!(read.steps[0].cut, c1_3);
+}
