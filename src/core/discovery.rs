@@ -309,9 +309,21 @@ fn resolve_managed(
     resolved_staircases: &mut HashMap<String, ResolvedStaircase>,
 ) -> Result<()> {
     let managed = persistence::list_staircases(repo)?;
-    for s in managed {
+    // Exact name or ID match
+    for s in &managed {
         if s.name == name || s.id == name {
-            resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s));
+            resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s.clone()));
+        }
+    }
+
+    // Component match (step branch name or OID)
+    if let Ok(oid) = repo.resolve_commit(name) {
+        for s in managed {
+            if s.steps.iter().any(|step| step.cut == oid) {
+                if !resolved_staircases.contains_key(&s.id) {
+                    resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s));
+                }
+            }
         }
     }
     Ok(())
@@ -356,34 +368,48 @@ fn resolve_git_revision(
         };
 
         let mut matched_staircase = false;
-        for d in discoveries {
-            match d {
-                Discovery::Linear(s) => {
-                    if let Some(pos) = s.steps.iter().position(|step| step.cut == oid) {
-                        let mut sub_s = s.clone();
-                        sub_s.steps.truncate(pos + 1);
-                        let id = compute_implicit_id(object_format, onto_oid, &sub_s.steps);
-                        if !resolved_staircases.contains_key(&id) {
-                            resolved_staircases.insert(id, ResolvedStaircase::Implicit(sub_s));
-                        }
-                        matched_staircase = true;
-                    }
+
+        // Check if already matched by managed staircase
+        for rs in resolved_staircases.values() {
+            if let ResolvedStaircase::Managed(m) = rs {
+                if m.steps.iter().any(|step| step.cut == oid) {
+                    matched_staircase = true;
                 }
-                Discovery::Ambiguous(f) => {
-                    if let Some(step_name) =
-                        f.steps.values().find(|s| s.cut == oid).map(|s| &s.name)
-                    {
-                        if let Some(path) = extract_path_to(f, step_name) {
-                            let id = compute_implicit_id(object_format, onto_oid, &path.steps);
+            }
+        }
+
+        if !matched_staircase {
+            for d in discoveries {
+                match d {
+                    Discovery::Linear(s) => {
+                        if let Some(pos) = s.steps.iter().position(|step| step.cut == oid) {
+                            let mut sub_s = s.clone();
+                            sub_s.steps.truncate(pos + 1);
+                            let id = compute_implicit_id(object_format, onto_oid, &sub_s.steps);
                             if !resolved_staircases.contains_key(&id) {
-                                resolved_staircases.insert(id, ResolvedStaircase::Implicit(path));
+                                resolved_staircases.insert(id, ResolvedStaircase::Implicit(sub_s));
                             }
                             matched_staircase = true;
+                        }
+                    }
+                    Discovery::Ambiguous(f) => {
+                        if let Some(step_name) =
+                            f.steps.values().find(|s| s.cut == oid).map(|s| &s.name)
+                        {
+                            if let Some(path) = extract_path_to(f, step_name) {
+                                let id = compute_implicit_id(object_format, onto_oid, &path.steps);
+                                if !resolved_staircases.contains_key(&id) {
+                                    resolved_staircases
+                                        .insert(id, ResolvedStaircase::Implicit(path));
+                                }
+                                matched_staircase = true;
+                            }
                         }
                     }
                 }
             }
         }
+
         if !matched_staircase {
             resolved_commits.insert(oid, full_name);
         }
@@ -473,7 +499,6 @@ fn report_ambiguity(
     }
     msg
 }
-
 pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetadata>> {
     Ok(resolve_staircase(repo, name, None)?.map(|r| r.metadata().clone()))
 }
