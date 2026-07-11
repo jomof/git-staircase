@@ -289,6 +289,21 @@ impl GitRepo {
         Ok(stdout.split_whitespace().next().unwrap_or("").to_string())
     }
 
+    pub fn current_branch(&self) -> Result<Option<String>> {
+        let output = Command::new("git")
+            .current_dir(&self.workdir)
+            .args(["symbolic-ref", "-q", "HEAD"])
+            .env("GIT_TERMINAL_PROMPT", "0")
+            .output()?;
+        if output.status.success() {
+            Ok(Some(
+                String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            ))
+        } else {
+            Ok(None)
+        }
+    }
+
     pub fn local_branches(&self) -> Result<Vec<BranchInfo>> {
         let stdout = self.run(&[
             "for-each-ref",

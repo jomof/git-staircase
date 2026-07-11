@@ -60,7 +60,7 @@ fn test_discover_linear() {
     run_git(dir, &["checkout", "-b", "feature/auth-tests"]);
     let c3 = commit(dir, "file3.txt", "3", "commit 3");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
     assert_eq!(discovered.len(), 1);
     let Discovery::Linear(ref s) = discovered[0] else {
         panic!("Expected linear discovery");
@@ -90,7 +90,7 @@ fn test_adopt_and_status() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
     assert_eq!(discovered.len(), 1);
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
@@ -152,7 +152,7 @@ fn test_status_stale_and_restack() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
     let Discovery::Linear(ref s) = discovered[0] else {
         panic!("Expected linear discovery");
     };
@@ -181,7 +181,9 @@ fn test_status_stale_and_restack() {
     assert!(status.steps[1].is_stale); // c1_amended is not ancestor of c2
 
     // Restack
-    let rs = core::resolve_staircase(&repo, &s.name).unwrap().unwrap();
+    let rs = core::resolve_staircase(&repo, &s.name, None)
+        .unwrap()
+        .unwrap();
     core::restack(&repo, &rs).unwrap();
 
     // Verify it is clean now
@@ -208,7 +210,7 @@ fn test_split_and_join() {
     let c1_2 = commit(dir, "file1_2.txt", "1.2", "commit 1.2");
     let c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
     let Discovery::Linear(ref s) = discovered[0] else {
         panic!("Expected linear discovery");
     };
@@ -217,7 +219,9 @@ fn test_split_and_join() {
     // Staircase has 1 step: feature/auth-core pointing to c1_3.
     // We want to split it at c1_2.
     // c1_2 is between main (target) and c1_3.
-    let rs = core::resolve_staircase(&repo, &s.name).unwrap().unwrap();
+    let rs = core::resolve_staircase(&repo, &s.name, None)
+        .unwrap()
+        .unwrap();
     core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
 
     // Verify metadata
@@ -233,7 +237,9 @@ fn test_split_and_join() {
     assert!(status.is_clean);
 
     // Now join them back
-    let rs = core::resolve_staircase(&repo, &s.name).unwrap().unwrap();
+    let rs = core::resolve_staircase(&repo, &s.name, None)
+        .unwrap()
+        .unwrap();
     core::join(&repo, &rs, 0, 1).unwrap();
 
     // Verify metadata
@@ -321,7 +327,7 @@ fn test_discover_forked() {
     run_git(dir, &["checkout", "-b", "step2b"]);
     let _c2b = commit(dir, "file2b.txt", "2b", "commit 2b");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
 
     // NEW BEHAVIOR: Returns one ambiguous family
     assert_eq!(discovered.len(), 1);
@@ -353,7 +359,7 @@ fn test_verification_aggregate() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -369,7 +375,7 @@ fn test_verification_aggregate() {
     core::adopt(&repo, &s).unwrap();
 
     // Verify aggregate
-    let results = core::verify(&repo, "auth", None, None, Some(true), None).unwrap();
+    let results = core::verify(None, &repo, "auth", None, None, Some(true), None).unwrap();
     assert_eq!(results.len(), 1);
     assert!(results[0].success);
     assert_eq!(results[0].step_name, "Aggregate");
@@ -381,6 +387,7 @@ fn test_verification_aggregate() {
 
     // Fail verification
     let results = core::verify(
+        None,
         &repo,
         "auth",
         Some("false".to_string()),
@@ -404,7 +411,7 @@ fn test_verification_each_prefix() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, "main").unwrap();
+    let discovered = core::discover(&repo, Some("main")).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -420,7 +427,7 @@ fn test_verification_each_prefix() {
     core::adopt(&repo, &s).unwrap();
 
     // Verify each prefix
-    let results = core::verify(&repo, "auth", None, None, None, Some(true)).unwrap();
+    let results = core::verify(None, &repo, "auth", None, None, None, Some(true)).unwrap();
     assert_eq!(results.len(), 2);
     assert!(results[0].success);
     assert_eq!(results[0].step_name, "feature/auth-core");
@@ -440,7 +447,7 @@ fn test_split_implicit_staircase() {
     let c1_2 = commit(dir, "file1_2.txt", "1.2", "commit 1.2");
     let _c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
 
-    let rs = core::resolve_staircase(&repo, "feature/auth-core")
+    let rs = core::resolve_staircase(&repo, "feature/auth-core", None)
         .unwrap()
         .expect("Should find implicit staircase");
     assert!(!rs.is_managed());
@@ -450,7 +457,7 @@ fn test_split_implicit_staircase() {
         .expect("Split should succeed and preserve implicit status");
 
     // Verify it is still implicit
-    let rs_after = core::resolve_staircase(&repo, "feature/auth-core")
+    let rs_after = core::resolve_staircase(&repo, "feature/auth-core", None)
         .unwrap()
         .expect("Should find staircase");
     assert!(
@@ -471,7 +478,7 @@ fn test_id_lineage_auto_adopt() {
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     let _c1 = commit(dir, "file1.txt", "1", "commit 1");
 
-    let rs = core::resolve_staircase(&repo, "feature/auth-core")
+    let rs = core::resolve_staircase(&repo, "feature/auth-core", None)
         .unwrap()
         .expect("Should find implicit staircase");
     assert!(!rs.is_managed());
@@ -482,7 +489,7 @@ fn test_id_lineage_auto_adopt() {
     assert!(!id.is_empty());
 
     // Verify it is now managed
-    let rs_after = core::resolve_staircase(&repo, "feature/auth-core")
+    let rs_after = core::resolve_staircase(&repo, "feature/auth-core", None)
         .unwrap()
         .expect("Should find staircase");
     assert!(rs_after.is_managed());

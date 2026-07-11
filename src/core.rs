@@ -8,22 +8,26 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Discover potential staircases relative to `onto`.
-pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
+pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
     let branches = repo.local_branches()?;
-    let onto_oid = match repo.resolve_ref(onto) {
+
+    let onto_final = match onto {
+        Some(o) => o.to_string(),
+        None => infer_onto(repo)?,
+    };
+    let onto_oid = match repo.resolve_ref(&onto_final) {
         Ok(oid) => oid,
         Err(_) => {
-            // If onto ref doesn't exist, we can't discover relative to it.
             return Err(StaircaseError::Other(format!(
                 "Onto ref '{}' not found",
-                onto
+                onto_final
             )));
         }
     };
 
     let mut active_branches = Vec::new();
     for b in branches {
-        if b.refname == onto {
+        if b.refname == onto_final {
             continue;
         }
         if !repo.is_ancestor(&b.oid, &onto_oid)? {
@@ -122,7 +126,7 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
                 id: Uuid::new_v4().to_string(),
                 verification_policy: None,
                 name,
-                target: onto.to_string(),
+                target: onto_final.to_string(),
                 steps,
             }));
         } else {
@@ -174,7 +178,7 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
                 id: Uuid::new_v4().to_string(),
                 verification_policy: None,
                 name: format!("Family starting at {}", root_short),
-                target: onto.to_string(),
+                target: onto_final.to_string(),
                 steps,
                 roots: vec![root_short],
             }));
@@ -304,7 +308,41 @@ pub fn get_status_metadata(repo: &GitRepo, metadata: StaircaseMetadata) -> Resul
     })
 }
 
-pub fn resolve_staircase(repo: &GitRepo, name: &str) -> Result<Option<ResolvedStaircase>> {
+pub fn infer_onto(repo: &GitRepo) -> Result<String> {
+    let mut inferred = None;
+
+    if let Ok(Some(head)) = repo.current_branch() {
+        let branches = repo.local_branches()?;
+        if let Some(b) = branches.iter().find(|b| b.refname == head) {
+            if let Some(ref u) = b.upstream {
+                println!("DEBUG: Found upstream: {}", u);
+                inferred = Some(u.clone());
+            }
+        }
+    }
+
+    if inferred.is_none() {
+        for common in &["main", "master", "trunk", "develop"] {
+            if let Ok(Some(_)) = repo.resolve_ref_opt(common) {
+                inferred = Some(common.to_string());
+                break;
+            }
+        }
+    }
+
+    inferred.ok_or_else(|| {
+        StaircaseError::Other(
+            "Could not infer integration boundary and none was provided. Use --onto to specify one."
+                .to_string(),
+        )
+    })
+}
+
+pub fn resolve_staircase(
+    repo: &GitRepo,
+    name: &str,
+    onto: Option<&str>,
+) -> Result<Option<ResolvedStaircase>> {
     let staircases = repo.list_staircases()?;
     let mut managed_matches = Vec::new();
     for s in staircases {
@@ -321,12 +359,23 @@ pub fn resolve_staircase(repo: &GitRepo, name: &str) -> Result<Option<ResolvedSt
     if let Some(s) = managed_matches.pop() {
         return Ok(Some(ResolvedStaircase::Managed(s)));
     }
-    let discoveries = discover(repo, "main")?;
+
+    let onto_final = match onto {
+        Some(o) => o.to_string(),
+        None => infer_onto(repo)?,
+    };
+
+    println!("DEBUG: onto_final = {}", onto_final);
+
+    let discoveries = discover(repo, Some(&onto_final))?;
     let mut implicit_matches = Vec::new();
     for d in discoveries {
         match d {
-            Discovery::Linear(s) if s.name == name => {
-                implicit_matches.push(s);
+            Discovery::Linear(s) => {
+                println!("DEBUG: Discovered linear staircase: {}", s.name);
+                if s.name == name {
+                    implicit_matches.push(s);
+                }
             }
             _ => {}
         }
@@ -344,7 +393,7 @@ pub fn resolve_staircase(repo: &GitRepo, name: &str) -> Result<Option<ResolvedSt
 }
 
 pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetadata>> {
-    Ok(resolve_staircase(repo, name)?.map(|r| r.metadata().clone()))
+    Ok(resolve_staircase(repo, name, None)?.map(|r| r.metadata().clone()))
 }
 
 pub fn split(
@@ -462,7 +511,6 @@ pub fn join(
     Ok(())
 }
 
-
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     let mut status = get_status_metadata(repo, staircase.metadata().clone())?;
 
@@ -555,8 +603,6 @@ Error: {}",
     Ok(())
 }
 
-
-
 pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     metadata.target = onto.to_string();
@@ -585,8 +631,6 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
     repo.delete_staircase_refs(id)?;
     Ok(())
 }
-
-
 
 pub fn compute_identity(
     repo: &GitRepo,
@@ -682,6 +726,7 @@ mod tests {
 }
 
 pub fn verify(
+    onto: Option<&str>,
     repo: &GitRepo,
     name: &str,
     build_command_override: Option<String>,
@@ -689,7 +734,7 @@ pub fn verify(
     aggregate_only: Option<bool>,
     each_prefix: Option<bool>,
 ) -> Result<Vec<VerificationResult>> {
-    let rs = resolve_staircase(repo, name)?
+    let rs = resolve_staircase(repo, name, onto)?
         .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", name)))?;
 
     let s = rs.metadata();
