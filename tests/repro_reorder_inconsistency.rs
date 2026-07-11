@@ -26,8 +26,8 @@ fn test_reorder_metadata_inconsistency() {
     let rs = resolve_staircase(&repo, "branch-c", Some("main"))
         .unwrap()
         .unwrap();
-    let id = rs.metadata().id.clone();
-    adopt(&repo, rs.metadata()).unwrap();
+    let adopted_meta = adopt(&repo, rs.metadata()).unwrap();
+    let id = adopted_meta.id.clone();
 
     // Resolve by ID to get the Managed variant
     let rs = resolve_staircase(&repo, &id, Some("main"))

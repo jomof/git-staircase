@@ -39,7 +39,7 @@ impl ResolvedStaircase {
                 repo.update_branch(branch, &step.cut)?;
                 Ok(ResolvedStaircase::Implicit(metadata))
             } else {
-                adopt(repo, &metadata)?;
+                let metadata = adopt(repo, &metadata)?;
                 Ok(ResolvedStaircase::Managed(metadata))
             }
         }
@@ -60,7 +60,7 @@ impl ResolvedStaircase {
             if metadata.steps.iter().all(|s| s.branch.is_some()) && is_clean(repo, &metadata)? {
                 Ok(ResolvedStaircase::Implicit(metadata))
             } else {
-                adopt(repo, &metadata)?;
+                let metadata = adopt(repo, &metadata)?;
                 Ok(ResolvedStaircase::Managed(metadata))
             }
         }
@@ -89,7 +89,7 @@ impl ResolvedStaircase {
                 // To avoid premature adoption during restack, we allow it to stay implicit if it has a branch.
                 Ok(ResolvedStaircase::Implicit(metadata))
             } else {
-                adopt(repo, &metadata)?;
+                let metadata = adopt(repo, &metadata)?;
                 Ok(ResolvedStaircase::Managed(metadata))
             }
         }
@@ -114,7 +114,7 @@ impl ResolvedStaircase {
             if metadata.steps.iter().all(|s| s.branch.is_some()) && is_clean(repo, &metadata)? {
                 Ok(ResolvedStaircase::Implicit(metadata))
             } else {
-                adopt(repo, &metadata)?;
+                let metadata = adopt(repo, &metadata)?;
                 Ok(ResolvedStaircase::Managed(metadata))
             }
         }
@@ -143,8 +143,12 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
     Ok(true)
 }
 
-pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
+pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
     let target_oid = repo.resolve_commit(&staircase.target)?;
+    let mut staircase = staircase.clone();
+    if staircase.id.starts_with("implicit@") {
+        staircase.id = uuid::Uuid::new_v4().to_string();
+    }
     let mut last_cut = target_oid;
     for step in &staircase.steps {
         let current_cut = repo.resolve_commit(&step.cut)?;
@@ -163,11 +167,11 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
         last_cut = current_cut;
     }
 
-    persistence::write_metadata(repo, staircase)?;
+    persistence::write_metadata(repo, &staircase)?;
     for step in &staircase.steps {
         repo.update_step_ref(&staircase.id, &step.name, &step.cut)?;
     }
-    Ok(())
+    Ok(staircase)
 }
 
 impl ToPorcelain for ResolvedStaircase {

@@ -22,7 +22,7 @@ fn test_staircase_storage_alignment() {
     };
     s.name = "auth".to_string();
 
-    core::adopt(&repo, &s).unwrap();
+    let s = core::adopt(&repo, &s).unwrap();
 
     // ACT: Resolve refs/staircases/auth
     let ref_name = "refs/staircases/auth";

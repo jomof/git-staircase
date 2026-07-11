@@ -54,8 +54,7 @@ fn test_adopt_and_status() {
         panic!("Expected linear discovery");
     };
     s.name = "auth".to_string();
-
-    core::adopt(&repo, &s).unwrap();
+    let s = core::adopt(&repo, &s).unwrap();
 
     let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
     assert_eq!(read.name, "auth");
@@ -87,10 +86,10 @@ fn test_status_stale_and_restack() {
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
     let discovered = core::discover(&repo, Some("main")).unwrap();
-    let Discovery::Linear(ref s) = discovered[0] else {
+    let Discovery::Linear(s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
-    core::adopt(&repo, s).unwrap();
+    let s = core::adopt(&repo, &s).unwrap();
 
     run_git(dir, &["checkout", "feature/auth-core"]);
     fs::write(dir.join("file1.txt"), "1 amended").unwrap();
@@ -123,10 +122,10 @@ fn test_split_and_join() {
     let c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
 
     let discovered = core::discover(&repo, Some("main")).unwrap();
-    let Discovery::Linear(ref s) = discovered[0] else {
+    let Discovery::Linear(s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
-    core::adopt(&repo, s).unwrap();
+    let s = core::adopt(&repo, &s).unwrap();
 
     let rs = core::resolve_staircase(&repo, &s.id, None)
         .unwrap()
