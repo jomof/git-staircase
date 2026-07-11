@@ -4,10 +4,14 @@ use crate::model::{StaircaseMetadata, StaircaseStatus, StepStatus};
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
     let metadata = repo.read_metadata(id)?;
-    get_status_metadata(repo, metadata)
+    get_status_metadata(repo, metadata, false)
 }
 
-pub fn get_status_metadata(repo: &GitRepo, metadata: StaircaseMetadata) -> Result<StaircaseStatus> {
+pub fn get_status_metadata(
+    repo: &GitRepo,
+    metadata: StaircaseMetadata,
+    is_implicit: bool,
+) -> Result<StaircaseStatus> {
     let mut steps = Vec::new();
     let mut is_clean = true;
 
@@ -62,5 +66,6 @@ pub fn get_status_metadata(repo: &GitRepo, metadata: StaircaseMetadata) -> Resul
         metadata,
         steps,
         is_clean,
+        is_implicit,
     })
 }

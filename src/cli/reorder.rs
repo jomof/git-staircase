@@ -28,7 +28,11 @@ pub fn run(
                 .ok_or_else(|| {
                 anyhow!("Staircase '{}' not found after reorder", rs.metadata().name)
             })?;
-            let status = core::get_status_metadata(repo, updated_rs.metadata().clone())?;
+            let status = core::get_status_metadata(
+                repo,
+                updated_rs.metadata().clone(),
+                !updated_rs.is_managed(),
+            )?;
             println!("{}", serde_json::to_string_pretty(&status)?);
             Ok(())
         }

@@ -105,3 +105,98 @@ fn test_inspection_commands_on_managed_staircase() {
     assert!(stdout.contains("feature/auth-ui"));
     assert!(stdout.contains(&c2[..7]));
 }
+
+#[test]
+fn test_status_output_format_alignment() {
+    // ARRANGE: Create implicit staircase
+    let (tmp, _repo) = setup_repo();
+    let dir = tmp.path();
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    commit(dir, "file1.txt", "1", "commit 1");
+
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    commit(dir, "file2.txt", "2", "commit 2");
+
+    let name = "feature/auth";
+
+    // ACT: Run status
+    let (success, stdout, stderr) = run_staircase(dir, &["status", name]);
+
+    // ASSERT
+    assert!(success, "status command failed: {}", stderr);
+
+    // Target format per spec:
+    // <name> (implicit)
+    //   target: <target>
+    //   state: <state>
+    //   steps: <count>
+    //   lineage: none
+
+    let expected =
+        "feature/auth (implicit)\n  target: main\n  state: clean\n  steps: 2\n  lineage: none";
+    assert_eq!(stdout, expected, "Status output does not match spec format");
+}
+
+#[test]
+fn test_status_output_format_alignment_managed() {
+    // ARRANGE: Create managed staircase
+    let (tmp, _repo) = setup_repo();
+    let dir = tmp.path();
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    commit(dir, "file1.txt", "1", "commit 1");
+
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    commit(dir, "file2.txt", "2", "commit 2");
+
+    // Adopt it to make it managed
+    let (success, _, stderr) = run_staircase(
+        dir,
+        &[
+            "adopt",
+            "auth",
+            "--onto",
+            "main",
+            "feature/auth-core",
+            "feature/auth-ui",
+        ],
+    );
+    assert!(success, "adopt failed: {}", stderr);
+
+    let name = "auth";
+
+    // ACT: Run status
+    let (success, stdout, stderr) = run_staircase(dir, &["status", name]);
+
+    // ASSERT
+    assert!(success, "status command failed: {}", stderr);
+
+    assert!(
+        stdout.starts_with("auth\n"),
+        "Output should start with name 'auth' (got: {})",
+        stdout
+    );
+    assert!(
+        stdout.contains("  target: main\n"),
+        "Output should contain target"
+    );
+    assert!(
+        stdout.contains("  state: clean\n"),
+        "Output should contain state"
+    );
+    assert!(
+        stdout.contains("  steps: 2\n"),
+        "Output should contain steps count"
+    );
+
+    let lineage_line = stdout
+        .lines()
+        .find(|l| l.contains("lineage:"))
+        .expect("Lineage line missing");
+    assert!(
+        !lineage_line.contains("none"),
+        "Managed staircase should have a lineage ID (got: {})",
+        lineage_line
+    );
+}

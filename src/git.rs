@@ -630,14 +630,21 @@ mod extra_tests {
         // ARRANGE
         let tmp = TempDir::new().unwrap();
         let repo = GitRepo::new(tmp.path().to_path_buf());
-        let _ = std::process::Command::new("git").current_dir(tmp.path()).arg("init").status();
+        let _ = std::process::Command::new("git")
+            .current_dir(tmp.path())
+            .arg("init")
+            .status();
 
         // ACT
         let result = repo.run(&["rev-parse", "HEAD"]);
 
         // ASSERT
         match result {
-            Err(StaircaseError::GitCommandFailed { command, stdout: _, stderr }) => {
+            Err(StaircaseError::GitCommandFailed {
+                command,
+                stdout: _,
+                stderr,
+            }) => {
                 assert!(command.contains("git rev-parse HEAD"));
                 assert!(stderr.contains("fatal: ambiguous argument 'HEAD'"));
             }

@@ -71,6 +71,7 @@ pub struct StaircaseStatus {
     pub metadata: StaircaseMetadata,
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
+    pub is_implicit: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
@@ -197,35 +198,28 @@ impl ToHuman for StaircaseMetadata {
 
 impl ToHuman for StaircaseStatus {
     fn to_human(&self) -> String {
-        let mut out = format!("Staircase: {}\n", self.metadata.name);
-        out.push_str(&format!("ID: {}\n", self.metadata.id));
-        out.push_str(&format!("Target: {}\n", self.metadata.target));
-        out.push_str(&format!("Clean: {}\n", self.is_clean));
-        out.push_str("Steps:\n");
-        for (i, step) in self.steps.iter().enumerate() {
-            let meta_step = &self.metadata.steps[i];
-            out.push_str(&format!("  Step {} ({}):", i + 1, step.name));
-            if step.is_modified {
-                out.push_str(" [MODIFIED]");
-            }
-            if step.is_stale {
-                out.push_str(" [STALE]");
-            }
-            out.push_str("\n");
-            out.push_str(&format!("    Expected Cut: {}\n", step.expected_cut));
-            if let Some(ref act) = step.actual_oid {
-                out.push_str(&format!("    Actual OID:   {}\n", act));
-            } else {
-                out.push_str("    Actual OID:   [MISSING BRANCH]\n");
-            }
-            if let Some(ref b) = meta_step.branch {
-                out.push_str(&format!("    Branch:       {}\n", b));
-            }
+        let mut out = self.metadata.name.to_string();
+        if self.is_implicit {
+            out.push_str(" (implicit)");
         }
+        out.push('\n');
+        out.push_str(&format!("  target: {}\n", self.metadata.target));
+        out.push_str(&format!(
+            "  state: {}\n",
+            if self.is_clean { "clean" } else { "modified" }
+        ));
+        out.push_str(&format!("  steps: {}\n", self.steps.len()));
+        out.push_str(&format!(
+            "  lineage: {}\n",
+            if self.is_implicit {
+                "none"
+            } else {
+                &self.metadata.id
+            }
+        ));
         out
     }
 }
-
 impl ToHuman for StaircaseFamily {
     fn to_human(&self) -> String {
         let mut out = format!("  Name: {}\n", self.name);

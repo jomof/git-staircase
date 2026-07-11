@@ -262,7 +262,11 @@ pub fn move_commits(
 }
 
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
-    let mut status = crate::core::status::get_status_metadata(repo, staircase.metadata().clone())?;
+    let mut status = crate::core::status::get_status_metadata(
+        repo,
+        staircase.metadata().clone(),
+        !staircase.is_managed(),
+    )?;
 
     if status.is_clean {
         return Ok(());

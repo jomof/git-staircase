@@ -10,9 +10,6 @@ pub fn run(
     onto: Option<String>,
 ) -> anyhow::Result<()> {
     let rs = super::resolve_rs(repo, name, steps, onto)?;
-    let status = core::get_status_metadata(repo, rs.metadata().clone())?;
-    if matches!(format, OutputFormat::Human) && !rs.is_managed() {
-        println!("(Implicit staircase)");
-    }
+    let status = core::get_status_metadata(repo, rs.metadata().clone(), !rs.is_managed())?;
     print_output(format, &status)
 }

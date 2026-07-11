@@ -35,7 +35,7 @@ pub fn run(
         } else {
             for r in all_results {
                 let m = r.metadata();
-                let status = core::get_status_metadata(repo, m.clone())?;
+                let status = core::get_status_metadata(repo, m.clone(), !r.is_managed())?;
                 let state = if status.steps.iter().any(|s| s.is_stale) {
                     "stale"
                 } else {
