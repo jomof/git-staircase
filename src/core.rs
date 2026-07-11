@@ -315,7 +315,6 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
         let branches = repo.local_branches()?;
         if let Some(b) = branches.iter().find(|b| b.refname == head) {
             if let Some(ref u) = b.upstream {
-                println!("DEBUG: Found upstream: {}", u);
                 inferred = Some(u.clone());
             }
         }
@@ -350,45 +349,68 @@ pub fn resolve_staircase(
             managed_matches.push(s);
         }
     }
-    if managed_matches.len() > 1 {
-        return Err(StaircaseError::Ambiguous(format!(
-            "Multiple managed staircases named '{}'",
-            name
-        )));
-    }
-    if let Some(s) = managed_matches.pop() {
-        return Ok(Some(ResolvedStaircase::Managed(s)));
-    }
 
     let onto_final = match onto {
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
 
-    println!("DEBUG: onto_final = {}", onto_final);
-
     let discoveries = discover(repo, Some(&onto_final))?;
     let mut implicit_matches = Vec::new();
     for d in discoveries {
         match d {
             Discovery::Linear(s) => {
-                println!("DEBUG: Discovered linear staircase: {}", s.name);
                 if s.name == name {
-                    implicit_matches.push(s);
+                    // Check if this implicit match is already covered by a managed match.
+                    // We consider it covered if there's a managed staircase with the same name
+                    // that shares at least one step (by name and cut).
+                    let is_duplicate = managed_matches.iter().any(|m| {
+                        m.steps.iter().any(|m_step| {
+                            s.steps.iter().any(|s_step| {
+                                m_step.name == s_step.name && m_step.cut == s_step.cut
+                            })
+                        })
+                    });
+                    if !is_duplicate {
+                        implicit_matches.push(s);
+                    }
                 }
             }
             _ => {}
         }
     }
-    if implicit_matches.len() > 1 {
-        return Err(StaircaseError::Ambiguous(format!(
-            "Multiple implicit staircases named '{}'",
-            name
-        )));
+
+    let total_matches = managed_matches.len() + implicit_matches.len();
+
+    if total_matches > 1 {
+        let mut msg = format!("staircase name '{}' is ambiguous", name);
+        msg.push_str("\n\ncandidates:");
+        for m in &managed_matches {
+            msg.push_str(&format!("\n  {} (managed)", m.name));
+        }
+        for m in &implicit_matches {
+            let desc = if let Some(step) = m.steps.last() {
+                format!(
+                    "{} -> {}",
+                    m.steps.first().map(|s| s.name.as_str()).unwrap_or("?"),
+                    step.name
+                )
+            } else {
+                "empty".to_string()
+            };
+            msg.push_str(&format!("\n  {} (implicit)  {}", m.name, desc));
+        }
+        return Err(StaircaseError::Ambiguous(msg));
     }
+
+    if let Some(s) = managed_matches.pop() {
+        return Ok(Some(ResolvedStaircase::Managed(s)));
+    }
+
     if let Some(s) = implicit_matches.pop() {
         return Ok(Some(ResolvedStaircase::Implicit(s)));
     }
+
     Ok(None)
 }
 

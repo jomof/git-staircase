@@ -2,7 +2,8 @@ use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::core;
 use git_staircase::{
-    Discovery, GitRepo, IdentityKind, StaircaseFamily, StaircaseMetadata, Step, VerificationPolicy, ToPorcelain,
+    Discovery, GitRepo, IdentityKind, StaircaseFamily, StaircaseMetadata, Step, ToPorcelain,
+    VerificationPolicy,
 };
 use std::path::PathBuf;
 
@@ -376,7 +377,10 @@ fn main() -> anyhow::Result<()> {
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             let id = core::compute_identity(&repo, &rs, kind)?;
             if cli.json {
-                println!("{}", serde_json::to_string_pretty(&serde_json::json!({"id": id}))?);
+                println!(
+                    "{}",
+                    serde_json::to_string_pretty(&serde_json::json!({"id": id}))?
+                );
             } else {
                 println!("{}", id);
             }

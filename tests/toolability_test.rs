@@ -66,8 +66,9 @@ fn test_list_json() {
 
     let (success, stdout, stderr) = run_staircase(dir, &["list", "--json"]);
     assert!(success, "list --json failed: {}", stderr);
-    
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
     assert!(json.is_array());
     let list = json.as_array().unwrap();
     assert!(!list.is_empty());
@@ -84,7 +85,7 @@ fn test_status_json() {
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     commit(dir, "file1.txt", "1", "commit 1");
-    
+
     // Discover and adopt
     let (success, _, stderr) = run_staircase(dir, &["adopt", "auth", "feature/auth-core"]);
     assert!(success, "adopt failed: {}", stderr);
@@ -92,7 +93,8 @@ fn test_status_json() {
     let (success, stdout, stderr) = run_staircase(dir, &["status", "auth", "--json"]);
     assert!(success, "status --json failed: {}", stderr);
 
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Output should be valid JSON");
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Output should be valid JSON");
     assert_eq!(json["metadata"]["name"], "auth");
     assert!(json["is_clean"].as_bool().unwrap());
 }
@@ -104,7 +106,7 @@ fn test_status_porcelain() {
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     commit(dir, "file1.txt", "1", "commit 1");
-    
+
     run_staircase(dir, &["adopt", "auth", "feature/auth-core"]);
 
     let (success, stdout, stderr) = run_staircase(dir, &["status", "auth", "--porcelain"]);

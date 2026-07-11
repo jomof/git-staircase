@@ -129,10 +129,15 @@ impl ToPorcelain for StaircaseMetadata {
 impl ToPorcelain for ResolvedStaircase {
     fn to_porcelain(&self) -> String {
         let m = self.metadata();
-        format!("{}\t{}\t{}\t{}", 
-            m.name, 
-            m.id, 
-            if self.is_managed() { "managed" } else { "implicit" },
+        format!(
+            "{}\t{}\t{}\t{}",
+            m.name,
+            m.id,
+            if self.is_managed() {
+                "managed"
+            } else {
+                "implicit"
+            },
             m.steps.len()
         )
     }
@@ -140,16 +145,22 @@ impl ToPorcelain for ResolvedStaircase {
 
 impl ToPorcelain for StaircaseStatus {
     fn to_porcelain(&self) -> String {
-        let mut out = format!("{}\t{}\t{}\n", 
-            self.metadata.name, 
-            self.metadata.id, 
+        let mut out = format!(
+            "{}\t{}\t{}\n",
+            self.metadata.name,
+            self.metadata.id,
             if self.is_clean { "clean" } else { "modified" }
         );
         for step in &self.steps {
-            out.push_str(&format!("step\t{}\t{}\t{}\t{}\n",
+            out.push_str(&format!(
+                "step\t{}\t{}\t{}\t{}\n",
                 step.name,
                 step.actual_oid.as_deref().unwrap_or("none"),
-                if step.is_modified { "modified" } else { "clean" },
+                if step.is_modified {
+                    "modified"
+                } else {
+                    "clean"
+                },
                 if step.is_stale { "stale" } else { "up-to-date" }
             ));
         }
@@ -168,8 +179,9 @@ impl ToPorcelain for Discovery {
 
 impl ToPorcelain for VerificationResult {
     fn to_porcelain(&self) -> String {
-        format!("{}\t{}\t{}", 
-            self.step_name, 
+        format!(
+            "{}\t{}\t{}",
+            self.step_name,
             if self.success { "pass" } else { "fail" },
             self.cut
         )
