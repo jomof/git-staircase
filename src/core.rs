@@ -1,8 +1,8 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
-    BranchInfo, Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step,
-    IdentityKind, StepStatus, VerificationResult,
+    BranchInfo, Discovery, FamilyStep, IdentityKind, ResolvedStaircase, StaircaseFamily,
+    StaircaseMetadata, StaircaseStatus, Step, StepStatus, VerificationResult,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -243,6 +243,10 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
     let metadata = repo.read_metadata(id)?;
+    get_status_metadata(repo, metadata)
+}
+
+pub fn get_status_metadata(repo: &GitRepo, metadata: StaircaseMetadata) -> Result<StaircaseStatus> {
     let mut steps = Vec::new();
     let mut is_clean = true;
 
@@ -300,24 +304,47 @@ pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
     })
 }
 
-pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetadata>> {
+pub fn resolve_staircase(repo: &GitRepo, name: &str) -> Result<Option<ResolvedStaircase>> {
     let staircases = repo.list_staircases()?;
-    let mut matches = Vec::new();
+    let mut managed_matches = Vec::new();
     for s in staircases {
         if s.name == name {
-            matches.push(s);
+            managed_matches.push(s);
         }
     }
-    if matches.is_empty() {
-        Ok(None)
-    } else if matches.len() > 1 {
-        Err(StaircaseError::Ambiguous(format!(
-            "Multiple staircases named '{}'",
+    if managed_matches.len() > 1 {
+        return Err(StaircaseError::Ambiguous(format!(
+            "Multiple managed staircases named '{}'",
             name
-        )))
-    } else {
-        Ok(Some(matches.remove(0)))
+        )));
     }
+    if let Some(s) = managed_matches.pop() {
+        return Ok(Some(ResolvedStaircase::Managed(s)));
+    }
+    let discoveries = discover(repo, "main")?;
+    let mut implicit_matches = Vec::new();
+    for d in discoveries {
+        match d {
+            Discovery::Linear(s) if s.name == name => {
+                implicit_matches.push(s);
+            }
+            _ => {}
+        }
+    }
+    if implicit_matches.len() > 1 {
+        return Err(StaircaseError::Ambiguous(format!(
+            "Multiple implicit staircases named '{}'",
+            name
+        )));
+    }
+    if let Some(s) = implicit_matches.pop() {
+        return Ok(Some(ResolvedStaircase::Implicit(s)));
+    }
+    Ok(None)
+}
+
+pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetadata>> {
+    Ok(resolve_staircase(repo, name)?.map(|r| r.metadata().clone()))
 }
 
 pub fn split(
@@ -585,9 +612,7 @@ pub fn compute_identity(
             }
             repo.hash_data(&patch_ids.join("\n"))
         }
-        IdentityKind::Review => {
-            Ok("".to_string())
-        }
+        IdentityKind::Review => Ok("".to_string()),
     }
 }
 
@@ -728,12 +753,12 @@ fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, Stri
 #[cfg(test)]
 mod identity_tests {
     use super::*;
-    use crate::model::{IdentityKind, StaircaseMetadata, Step};
     use crate::git::GitRepo;
-    use tempfile::TempDir;
+    use crate::model::{IdentityKind, StaircaseMetadata, Step};
     use std::fs;
     use std::path::Path;
     use std::process::Command;
+    use tempfile::TempDir;
 
     fn run_git(dir: &Path, args: &[&str]) -> String {
         let output = Command::new("git")
@@ -782,8 +807,14 @@ mod identity_tests {
             verification_policy: None,
         };
 
-        assert_eq!(compute_identity(&repo, &staircase, IdentityKind::Lineage).unwrap(), "test-uuid");
-        assert_eq!(compute_identity(&repo, &staircase, IdentityKind::Nominal).unwrap(), "test-name");
+        assert_eq!(
+            compute_identity(&repo, &staircase, IdentityKind::Lineage).unwrap(),
+            "test-uuid"
+        );
+        assert_eq!(
+            compute_identity(&repo, &staircase, IdentityKind::Nominal).unwrap(),
+            "test-name"
+        );
     }
 
     #[test]
@@ -791,18 +822,33 @@ mod identity_tests {
         let (_tmp, repo, target) = setup_repo();
         let dir = &repo.workdir;
         let c1 = commit(dir, "f1.txt", "1", "c1");
-        
+
         let s1 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
             verification_policy: None,
-            steps: vec![Step { name: "s1".to_string(), cut: c1.clone(), branch: None }],
+            steps: vec![Step {
+                name: "s1".to_string(),
+                cut: c1.clone(),
+                branch: None,
+            }],
         };
-        
+
         let id1 = compute_identity(&repo, &s1, IdentityKind::Revision).unwrap();
-        println!("ID1 PATCHES: {:?}", repo.run(&["diff-tree", "-p", "-r", "--no-commit-id", &target.clone(), &c1.clone()]).unwrap());
-        
+        println!(
+            "ID1 PATCHES: {:?}",
+            repo.run(&[
+                "diff-tree",
+                "-p",
+                "-r",
+                "--no-commit-id",
+                &target.clone(),
+                &c1.clone()
+            ])
+            .unwrap()
+        );
+
         // Change step cut, should change revision ID
         let c2 = commit(dir, "f2.txt", "2", "c2");
         let s2 = StaircaseMetadata {
@@ -810,7 +856,11 @@ mod identity_tests {
             name: "name".to_string(),
             target: target,
             verification_policy: None,
-            steps: vec![Step { name: "s1".to_string(), cut: c2.clone(), branch: None }],
+            steps: vec![Step {
+                name: "s1".to_string(),
+                cut: c2.clone(),
+                branch: None,
+            }],
         };
         let id2 = compute_identity(&repo, &s2, IdentityKind::Revision).unwrap();
         assert_ne!(id1, id2);
@@ -822,30 +872,51 @@ mod identity_tests {
         let dir = &repo.workdir;
         let c1 = commit(dir, "f1.txt", "1", "c1");
         let c2 = commit(dir, "f2.txt", "2", "c2");
-        
+
         let s1 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
             verification_policy: None,
             steps: vec![
-                Step { name: "s1".to_string(), cut: c1.clone(), branch: None },
-                Step { name: "s2".to_string(), cut: c2.clone(), branch: None }
+                Step {
+                    name: "s1".to_string(),
+                    cut: c1.clone(),
+                    branch: None,
+                },
+                Step {
+                    name: "s2".to_string(),
+                    cut: c2.clone(),
+                    branch: None,
+                },
             ],
         };
-        
+
         let id1 = compute_identity(&repo, &s1, IdentityKind::Body).unwrap();
-        println!("ID1 PATCHES: {:?}", repo.run(&["diff-tree", "-p", "-r", "--no-commit-id", &target.clone(), &c1.clone()]).unwrap());
-        
+        println!(
+            "ID1 PATCHES: {:?}",
+            repo.run(&[
+                "diff-tree",
+                "-p",
+                "-r",
+                "--no-commit-id",
+                &target.clone(),
+                &c1.clone()
+            ])
+            .unwrap()
+        );
+
         // Join steps, body ID should stay the same
         let s2 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target,
             verification_policy: None,
-            steps: vec![
-                Step { name: "s1+2".to_string(), cut: c2.clone(), branch: None }
-            ],
+            steps: vec![Step {
+                name: "s1+2".to_string(),
+                cut: c2.clone(),
+                branch: None,
+            }],
         };
         let id2 = compute_identity(&repo, &s2, IdentityKind::Body).unwrap();
         assert_eq!(id1, id2);
@@ -857,48 +928,77 @@ mod identity_tests {
         let dir = &repo.workdir;
         let c1 = commit(dir, "f1.txt", "1", "c1");
         let c2 = commit(dir, "f2.txt", "2", "c2");
-        
+
         let s1 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
             verification_policy: None,
             steps: vec![
-                Step { name: "s1".to_string(), cut: c1.clone(), branch: None },
-                Step { name: "s2".to_string(), cut: c2.clone(), branch: None }
+                Step {
+                    name: "s1".to_string(),
+                    cut: c1.clone(),
+                    branch: None,
+                },
+                Step {
+                    name: "s2".to_string(),
+                    cut: c2.clone(),
+                    branch: None,
+                },
             ],
         };
-        
+
         let id1 = compute_identity(&repo, &s1, IdentityKind::Decomposition).unwrap();
-        println!("ID1 PATCHES: {:?}", repo.run(&["diff-tree", "-p", "-r", "--no-commit-id", &target.clone(), &c1.clone()]).unwrap());
-        
+        println!(
+            "ID1 PATCHES: {:?}",
+            repo.run(&[
+                "diff-tree",
+                "-p",
+                "-r",
+                "--no-commit-id",
+                &target.clone(),
+                &c1.clone()
+            ])
+            .unwrap()
+        );
+
         // Rebase by committing same content with different messages on same target
         run_git(dir, &["checkout", &target]);
         let c1_new = commit(dir, "f1.txt", "1", "c1 rebased");
         let c2_new = commit(dir, "f2.txt", "2", "c2 rebased");
-        
+
         let s2 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
             verification_policy: None,
             steps: vec![
-                Step { name: "s1".to_string(), cut: c1_new.clone(), branch: None },
-                Step { name: "s2".to_string(), cut: c2_new.clone(), branch: None }
+                Step {
+                    name: "s1".to_string(),
+                    cut: c1_new.clone(),
+                    branch: None,
+                },
+                Step {
+                    name: "s2".to_string(),
+                    cut: c2_new.clone(),
+                    branch: None,
+                },
             ],
         };
         let id2 = compute_identity(&repo, &s2, IdentityKind::Decomposition).unwrap();
         assert_eq!(id1, id2);
-        
+
         // Squash steps, decomposition ID should change
         let s3 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
             verification_policy: None,
-            steps: vec![
-                Step { name: "s1+2".to_string(), cut: c2_new.clone(), branch: None }
-            ],
+            steps: vec![Step {
+                name: "s1+2".to_string(),
+                cut: c2_new.clone(),
+                branch: None,
+            }],
         };
         let id3 = compute_identity(&repo, &s3, IdentityKind::Decomposition).unwrap();
         assert_ne!(id2, id3);
@@ -910,21 +1010,40 @@ mod identity_tests {
         let dir = &repo.workdir;
         let c1 = commit(dir, "f1.txt", "1", "c1");
         let c2 = commit(dir, "f2.txt", "2", "c2");
-        
+
         let s1 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
             verification_policy: None,
             steps: vec![
-                Step { name: "s1".to_string(), cut: c1.clone(), branch: None },
-                Step { name: "s2".to_string(), cut: c2.clone(), branch: None }
+                Step {
+                    name: "s1".to_string(),
+                    cut: c1.clone(),
+                    branch: None,
+                },
+                Step {
+                    name: "s2".to_string(),
+                    cut: c2.clone(),
+                    branch: None,
+                },
             ],
         };
-        
+
         let id1 = compute_identity(&repo, &s1, IdentityKind::Outcome).unwrap();
-        println!("ID1 PATCHES: {:?}", repo.run(&["diff-tree", "-p", "-r", "--no-commit-id", &target.clone(), &c1.clone()]).unwrap());
-        
+        println!(
+            "ID1 PATCHES: {:?}",
+            repo.run(&[
+                "diff-tree",
+                "-p",
+                "-r",
+                "--no-commit-id",
+                &target.clone(),
+                &c1.clone()
+            ])
+            .unwrap()
+        );
+
         // Reorder commits to produce same final tree, outcome ID should stay the same
         run_git(dir, &["checkout", "main"]);
         // Start from initial commit again
@@ -932,15 +1051,17 @@ mod identity_tests {
         commit(dir, "f2.txt", "2", "c2 reordered");
         commit(dir, "f1.txt", "1", "c1 reordered");
         let top_new = run_git(dir, &["rev-parse", "HEAD"]);
-        
+
         let s2 = StaircaseMetadata {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target,
             verification_policy: None,
-            steps: vec![
-                Step { name: "reordered".to_string(), cut: top_new, branch: None }
-            ],
+            steps: vec![Step {
+                name: "reordered".to_string(),
+                cut: top_new,
+                branch: None,
+            }],
         };
         let id2 = compute_identity(&repo, &s2, IdentityKind::Outcome).unwrap();
         assert_eq!(id1, id2);

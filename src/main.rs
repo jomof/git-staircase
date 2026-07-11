@@ -240,14 +240,17 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Show { name } => {
-            let s = core::find_by_name(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            print_staircase(&s);
+            print_resolved_staircase(&rs);
         }
         Commands::Status { name } => {
-            let s = core::find_by_name(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            let status = core::get_status(&repo, &s.id)?;
+            let status = core::get_status_metadata(&repo, rs.metadata().clone())?;
+            if !rs.is_managed() {
+                println!("(Implicit staircase)");
+            }
             print_status(&status);
         }
         Commands::Split { step, at, name } => {
@@ -435,4 +438,14 @@ fn print_family(f: &StaircaseFamily) {
             println!("      Children: {}", step.children.join(", "));
         }
     }
+}
+
+fn print_resolved_staircase(rs: &git_staircase::ResolvedStaircase) {
+    let s = rs.metadata();
+    if rs.is_managed() {
+        println!("Managed Staircase: {}", s.name);
+    } else {
+        println!("Implicit Staircase: {}", s.name);
+    }
+    print_staircase(s);
 }

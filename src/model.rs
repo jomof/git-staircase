@@ -50,6 +50,25 @@ pub enum Discovery {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
+pub enum ResolvedStaircase {
+    Managed(StaircaseMetadata),
+    Implicit(StaircaseMetadata),
+}
+
+impl ResolvedStaircase {
+    pub fn metadata(&self) -> &StaircaseMetadata {
+        match self {
+            ResolvedStaircase::Managed(s) => s,
+            ResolvedStaircase::Implicit(s) => s,
+        }
+    }
+
+    pub fn is_managed(&self) -> bool {
+        matches!(self, ResolvedStaircase::Managed(_))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchInfo {
     pub refname: String, // e.g. "refs/heads/feature/auth-core"
     pub oid: String,
