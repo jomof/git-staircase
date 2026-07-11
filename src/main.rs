@@ -18,14 +18,14 @@ struct Cli {
 enum Commands {
     /// Discover potential staircases
     Discover {
-        #[arg(long, default_value = "main")]
-        onto: String,
+        #[arg(long)]
+        onto: Option<String>,
     },
     /// Adopt a discovered staircase
     Adopt {
         name: String,
-        #[arg(long, default_value = "main")]
-        onto: String,
+        #[arg(long)]
+        onto: Option<String>,
         /// List of branch names in order (root to tip)
         branches: Vec<String>,
         #[arg(long)]
@@ -41,17 +41,27 @@ enum Commands {
         managed: bool,
         #[arg(long)]
         discovered: bool,
-        #[arg(long, default_value = "main")]
-        onto: String,
+        #[arg(long)]
+        onto: Option<String>,
     },
     /// Show details of a staircase
-    Show { name: String },
+    Show {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+    },
     /// Show status of a staircase (clean/stale/modified)
-    Status { name: String },
+    Status {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+    },
     /// Split a step into two
     Split {
         /// Format: <staircase_name>:<step_number> (1-based)
         step: String,
+        #[arg(long)]
+        onto: Option<String>,
         #[arg(long)]
         at: String,
         #[arg(long)]
@@ -63,18 +73,28 @@ enum Commands {
         step1: String,
         /// Format: <staircase_name>:<step_number> (1-based)
         step2: String,
+        #[arg(long)]
+        onto: Option<String>,
     },
     /// Rebase the entire staircase onto a new target
     Rebase {
         name: String,
         #[arg(long)]
         onto: String,
+        #[arg(long)]
+        resolve_onto: Option<String>,
     },
     /// Restack stale steps
-    Restack { name: String },
+    Restack {
+        name: String,
+        #[arg(long)]
+        onto: Option<String>,
+    },
     /// Verify a staircase
     Verify {
         name: String,
+        #[arg(long)]
+        onto: Option<String>,
         #[arg(long)]
         aggregate: bool,
         #[arg(long)]
@@ -88,11 +108,15 @@ enum Commands {
     /// Show identities of a staircase
     Id {
         name: String,
+        #[arg(long)]
+        onto: Option<String>,
         #[arg(long, value_enum, default_value = "lineage")]
         kind: IdentityKind,
     },
     Delete {
         name: String,
+        #[arg(long)]
+        onto: Option<String>,
         #[arg(long)]
         delete_branches: bool,
     },
@@ -120,9 +144,9 @@ fn main() -> anyhow::Result<()> {
 
     match cli.command {
         Commands::Discover { onto } => {
-            let discovered = core::discover(&repo, &onto)?;
+            let discovered = core::discover(&repo, onto.as_deref())?;
             if discovered.is_empty() {
-                println!("No potential staircases discovered relative to '{}'.", onto);
+                println!("No potential staircases discovered.");
             } else {
                 for (i, d) in discovered.iter().enumerate() {
                     match d {
@@ -178,10 +202,14 @@ fn main() -> anyhow::Result<()> {
                 None
             };
 
+            let target = match onto {
+                Some(o) => o,
+                None => core::infer_onto(&repo)?,
+            };
             let staircase = StaircaseMetadata {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: name.clone(),
-                target: onto,
+                target,
                 steps,
                 verification_policy,
             };
@@ -209,9 +237,9 @@ fn main() -> anyhow::Result<()> {
             }
 
             if discovered || show_all {
-                let list = core::discover(&repo, &onto)?;
+                let list = core::discover(&repo, onto.as_deref())?;
                 if !list.is_empty() {
-                    println!("Discovered Staircases (relative to {}):", onto);
+                    println!("Discovered Staircases:");
                     for d in list {
                         match d {
                             Discovery::Linear(s) => {
@@ -239,13 +267,13 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Show { name } => {
-            let rs = core::resolve_staircase(&repo, &name)?
+        Commands::Show { name, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             print_resolved_staircase(&rs);
         }
-        Commands::Status { name } => {
-            let rs = core::resolve_staircase(&repo, &name)?
+        Commands::Status { name, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             let status = core::get_status_metadata(&repo, rs.metadata().clone())?;
             if !rs.is_managed() {
@@ -253,9 +281,14 @@ fn main() -> anyhow::Result<()> {
             }
             print_status(&status);
         }
-        Commands::Split { step, at, name } => {
+        Commands::Split {
+            step,
+            at,
+            name,
+            onto,
+        } => {
             let (sc_name, step_num) = parse_step_spec(&step)?;
-            let rs = core::resolve_staircase(&repo, &sc_name)?
+            let rs = core::resolve_staircase(&repo, &sc_name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
 
             if step_num == 0 {
@@ -267,7 +300,7 @@ fn main() -> anyhow::Result<()> {
                 step_num, sc_name, at
             );
         }
-        Commands::Join { step1, step2 } => {
+        Commands::Join { step1, step2, onto } => {
             let (sc_name1, step_num1) = parse_step_spec(&step1)?;
             let (sc_name2, step_num2) = parse_step_spec(&step2)?;
 
@@ -279,7 +312,7 @@ fn main() -> anyhow::Result<()> {
                 ));
             }
 
-            let rs = core::resolve_staircase(&repo, &sc_name1)?
+            let rs = core::resolve_staircase(&repo, &sc_name1, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name1))?;
 
             if step_num1 == 0 || step_num2 == 0 {
@@ -292,26 +325,31 @@ fn main() -> anyhow::Result<()> {
                 step_num1, step_num2, sc_name1
             );
         }
-        Commands::Rebase { name, onto } => {
-            let rs = core::resolve_staircase(&repo, &name)?
+        Commands::Rebase {
+            name,
+            onto,
+            resolve_onto,
+        } => {
+            let rs = core::resolve_staircase(&repo, &name, resolve_onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::rebase(&repo, &rs, &onto)?;
             println!("Rebased staircase '{}' onto '{}'.", name, onto);
         }
-        Commands::Restack { name } => {
-            let rs = core::resolve_staircase(&repo, &name)?
+        Commands::Restack { name, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::restack(&repo, &rs)?;
             println!("Restacked staircase '{}'.", name);
         }
-        Commands::Id { name, kind } => {
-            let rs = core::resolve_staircase(&repo, &name)?
+        Commands::Id { name, kind, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             let id = core::compute_identity(&repo, &rs, kind)?;
             println!("{}", id);
         }
         Commands::Verify {
             name,
+            onto,
             aggregate,
             each_prefix,
             build_command,
@@ -320,6 +358,7 @@ fn main() -> anyhow::Result<()> {
             let aggregate_opt = if aggregate { Some(true) } else { None };
             let each_prefix_opt = if each_prefix { Some(true) } else { None };
             let results = core::verify(
+                onto.as_deref(),
                 &repo,
                 &name,
                 build_command,
@@ -342,9 +381,10 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Delete {
             name,
+            onto,
             delete_branches,
         } => {
-            let rs = core::resolve_staircase(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::delete(&repo, &rs.metadata().id, delete_branches)?;
             println!("Deleted staircase '{}'.", name);

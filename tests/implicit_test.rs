@@ -56,7 +56,7 @@ fn test_implicit_staircase_operations() {
     let name = "feature/auth";
 
     // 1. resolve_staircase
-    let rs = core::resolve_staircase(&repo, name)
+    let rs = core::resolve_staircase(&repo, name, None)
         .unwrap()
         .expect("Should find implicit staircase");
     assert!(!rs.is_managed());
@@ -78,7 +78,7 @@ fn test_implicit_staircase_operations() {
     assert!(!id_revision.is_empty());
 
     // 4. verify (just check it doesn't crash, since we don't have policy)
-    let results = core::verify(&repo, name, None, None, Some(false), Some(true)).unwrap();
+    let results = core::verify(None, &repo, name, None, None, Some(false), Some(true)).unwrap();
     assert_eq!(results.len(), 2); // No steps to verify if no policy and no aggregate?
     // Wait, verify without policy might just return empty or error.
 }
