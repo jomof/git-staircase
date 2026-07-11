@@ -1,8 +1,8 @@
+use crate::error::{Result, StaircaseError};
+use crate::model::{BranchInfo, StaircaseMetadata};
+use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::io::Write;
-use crate::error::{StaircaseError, Result};
-use crate::model::{StaircaseMetadata, BranchInfo};
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
@@ -93,7 +93,9 @@ impl GitRepo {
             .output()?;
 
         if output.status.success() {
-            Ok(Some(String::from_utf8_lossy(&output.stdout).trim().to_string()))
+            Ok(Some(
+                String::from_utf8_lossy(&output.stdout).trim().to_string(),
+            ))
         } else {
             Ok(None)
         }
@@ -128,7 +130,7 @@ impl GitRepo {
 
     pub fn write_metadata(&self, metadata: &StaircaseMetadata) -> Result<String> {
         let json = serde_json::to_string_pretty(metadata)?;
-        
+
         // 1. Hash and write the metadata JSON blob
         let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
         let blob_oid = blob_oid.trim();
@@ -141,7 +143,7 @@ impl GitRepo {
         // 3. Create a commit
         let commit_msg = format!("Update staircase {}", metadata.name);
         let mut commit_args = vec!["commit-tree", tree_oid, "-m", &commit_msg];
-        
+
         // Check if ref already exists to use as parent
         let ref_name = format!("refs/staircases/{}/meta", metadata.id);
         let parent_oid = self.resolve_ref(&ref_name).ok();
@@ -163,7 +165,7 @@ impl GitRepo {
         let ref_name = format!("refs/staircases/{}/meta", id);
         // Verify ref exists
         self.resolve_ref(&ref_name)?;
-        
+
         let json = self.run(&["cat-file", "-p", &format!("{}:staircase.json", ref_name)])?;
         let metadata: StaircaseMetadata = serde_json::from_str(&json)?;
         Ok(metadata)
@@ -187,7 +189,11 @@ impl GitRepo {
                 // Check if it is a main staircase ref (not a step ref)
                 // Main ref is refs/staircases/<id>
                 // Step ref is refs/staircases/<id>/steps/<name>
-                let parts: Vec<&str> = refname.strip_prefix("refs/staircases/").unwrap().split('/').collect();
+                let parts: Vec<&str> = refname
+                    .strip_prefix("refs/staircases/")
+                    .unwrap()
+                    .split('/')
+                    .collect();
                 if parts.len() == 2 && parts[1] == "meta" {
                     let id = parts[0];
                     if let Ok(meta) = self.read_metadata(id) {
@@ -233,7 +239,11 @@ impl GitRepo {
                 } else {
                     None
                 };
-                branches.push(BranchInfo { refname, oid, upstream });
+                branches.push(BranchInfo {
+                    refname,
+                    oid,
+                    upstream,
+                });
             }
         }
         Ok(branches)

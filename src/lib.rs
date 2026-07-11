@@ -1,8 +1,10 @@
-pub mod error;
-pub mod model;
-pub mod git;
 pub mod core;
+pub mod error;
+pub mod git;
+pub mod model;
 
-pub use error::{StaircaseError, Result};
-pub use model::{StaircaseMetadata, Step, StepStatus, StaircaseStatus};
+pub use error::{Result, StaircaseError};
 pub use git::GitRepo;
+pub use model::{
+    Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, StepStatus,
+};

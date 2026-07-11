@@ -1,18 +1,42 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Step {
     pub name: String,
-    pub cut: String, // Commit OID
+    pub cut: String,            // Commit OID
     pub branch: Option<String>, // Optional local branch name (ref name without refs/heads/)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseMetadata {
-    pub id: String, // UUID
-    pub name: String, // Nominal name
+    pub id: String,     // UUID
+    pub name: String,   // Nominal name
     pub target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
     pub steps: Vec<Step>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct FamilyStep {
+    pub name: String,
+    pub cut: String,
+    pub branch: Option<String>,
+    pub children: Vec<String>, // Names of child steps
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct StaircaseFamily {
+    pub id: String,
+    pub name: String,
+    pub target: String,
+    pub steps: HashMap<String, FamilyStep>,
+    pub roots: Vec<String>, // Names of root steps
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Discovery {
+    Linear(StaircaseMetadata),
+    Ambiguous(StaircaseFamily),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -37,5 +61,3 @@ pub struct StaircaseStatus {
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
 }
-
-

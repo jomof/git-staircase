@@ -4,6 +4,7 @@ use std::process::Command;
 use tempfile::TempDir;
 use git_staircase::GitRepo;
 use git_staircase::core;
+use git_staircase::Discovery;
 
 fn run_git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -58,7 +59,7 @@ fn test_discover_linear() {
     let discovered = core::discover(&repo, "main").unwrap();
     assert_eq!(discovered.len(), 1);
     
-    let s = &discovered[0];
+    let Discovery::Linear(ref s) = discovered[0] else { panic!("Expected linear discovery"); };
     assert_eq!(s.name, "feature/auth"); // Common prefix "feature/auth"
     assert_eq!(s.target, "main");
     assert_eq!(s.steps.len(), 3);
@@ -86,7 +87,7 @@ fn test_adopt_and_status() {
 
     let discovered = core::discover(&repo, "main").unwrap();
     assert_eq!(discovered.len(), 1);
-    let mut s = discovered[0].clone();
+    let Discovery::Linear(mut s) = discovered[0].clone() else { panic!("Expected linear discovery"); };
     s.name = "auth".to_string(); // Give it a custom name
 
     core::adopt(&repo, &s).unwrap();
@@ -137,7 +138,7 @@ fn test_status_stale_and_restack() {
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
     let discovered = core::discover(&repo, "main").unwrap();
-    let s = &discovered[0];
+    let Discovery::Linear(ref s) = discovered[0] else { panic!("Expected linear discovery"); };
     core::adopt(&repo, s).unwrap();
 
     // Amend step 1 (feature/auth-core)
@@ -190,7 +191,7 @@ fn test_split_and_join() {
     let c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
 
     let discovered = core::discover(&repo, "main").unwrap();
-    let s = &discovered[0];
+    let Discovery::Linear(ref s) = discovered[0] else { panic!("Expected linear discovery"); };
     core::adopt(&repo, s).unwrap();
 
     // Staircase has 1 step: feature/auth-core pointing to c1_3.
@@ -218,4 +219,45 @@ fn test_split_and_join() {
     assert_eq!(read.steps.len(), 1);
     assert_eq!(read.steps[0].name, "feature/auth-core");
     assert_eq!(read.steps[0].cut, c1_3);
+}
+
+#[test]
+fn test_discover_forked() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    // Create forked structure:
+    // main -> step1
+    // step1 -> step2a
+    // step1 -> step2b
+    
+    run_git(dir, &["checkout", "-b", "step1"]);
+    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    
+    run_git(dir, &["checkout", "-b", "step2a"]);
+    let _c2a = commit(dir, "file2a.txt", "2a", "commit 2a");
+    
+    run_git(dir, &["checkout", "step1"]);
+    run_git(dir, &["checkout", "-b", "step2b"]);
+    let _c2b = commit(dir, "file2b.txt", "2b", "commit 2b");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    
+    // NEW BEHAVIOR: Returns one ambiguous family
+    assert_eq!(discovered.len(), 1);
+    
+    match &discovered[0] {
+        Discovery::Ambiguous(f) => {
+            assert_eq!(f.steps.len(), 3); // step1, step2a, step2b
+            assert!(f.steps.contains_key("step1"));
+            assert!(f.steps.contains_key("step2a"));
+            assert!(f.steps.contains_key("step2b"));
+            
+            let step1 = &f.steps["step1"];
+            assert_eq!(step1.children.len(), 2);
+            assert!(step1.children.contains(&"step2a".to_string()));
+            assert!(step1.children.contains(&"step2b".to_string()));
+        }
+        _ => panic!("Expected ambiguous family discovery"),
+    }
 }
