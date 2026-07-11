@@ -2,7 +2,7 @@ use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::core;
 use git_staircase::{
-    Discovery, GitRepo, IdentityKind, StaircaseFamily, StaircaseMetadata, Step, VerificationPolicy,
+    Discovery, GitRepo, IdentityKind, StaircaseFamily, StaircaseMetadata, Step, VerificationPolicy, ToPorcelain,
 };
 use std::path::PathBuf;
 
@@ -12,6 +12,10 @@ use std::path::PathBuf;
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+    #[arg(long, global = true)]
+    json: bool,
+    #[arg(long, global = true)]
+    porcelain: bool,
 }
 
 #[derive(Subcommand)]
@@ -104,7 +108,6 @@ enum Commands {
         #[arg(long)]
         test_command: Option<String>,
     },
-    /// Delete a managed staircase
     /// Show identities of a staircase
     Id {
         name: String,
@@ -113,6 +116,7 @@ enum Commands {
         #[arg(long, value_enum, default_value = "lineage")]
         kind: IdentityKind,
     },
+    /// Delete a managed staircase
     Delete {
         name: String,
         #[arg(long)]
@@ -145,21 +149,29 @@ fn main() -> anyhow::Result<()> {
     match cli.command {
         Commands::Discover { onto } => {
             let discovered = core::discover(&repo, onto.as_deref())?;
-            if discovered.is_empty() {
-                println!("No potential staircases discovered.");
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&discovered)?);
+            } else if cli.porcelain {
+                for d in &discovered {
+                    println!("{}", d.to_porcelain());
+                }
             } else {
-                for (i, d) in discovered.iter().enumerate() {
-                    match d {
-                        Discovery::Linear(s) => {
-                            println!("Discovered Staircase {}:", i + 1);
-                            print_staircase(s);
+                if discovered.is_empty() {
+                    println!("No potential staircases discovered.");
+                } else {
+                    for (i, d) in discovered.iter().enumerate() {
+                        match d {
+                            Discovery::Linear(s) => {
+                                println!("Discovered Staircase {}:", i + 1);
+                                print_staircase(s);
+                            }
+                            Discovery::Ambiguous(f) => {
+                                println!("Discovered Ambiguous Family {}:", i + 1);
+                                print_family(f);
+                            }
                         }
-                        Discovery::Ambiguous(f) => {
-                            println!("Discovered Ambiguous Family {}:", i + 1);
-                            print_family(f);
-                        }
+                        println!();
                     }
-                    println!();
                 }
             }
         }
@@ -215,7 +227,13 @@ fn main() -> anyhow::Result<()> {
             };
 
             core::adopt(&repo, &staircase)?;
-            println!("Adopted staircase '{}' (ID: {}).", name, staircase.id);
+            if !cli.json && !cli.porcelain {
+                println!("Adopted staircase '{}' (ID: {}).", name, staircase.id);
+            } else if cli.json {
+                println!("{}", serde_json::to_string_pretty(&staircase)?);
+            } else if cli.porcelain {
+                println!("{}", staircase.to_porcelain());
+            }
         }
         Commands::List {
             managed,
@@ -223,63 +241,67 @@ fn main() -> anyhow::Result<()> {
             onto,
         } => {
             let show_all = !managed && !discovered;
+            let mut all_results = Vec::new();
 
             if managed || show_all {
                 let list = repo.list_staircases()?;
-                if !list.is_empty() {
-                    println!("Managed Staircases:");
-                    for s in list {
-                        println!("  {} (id: {})", s.name, s.id);
-                    }
-                } else if managed {
-                    println!("No managed staircases found.");
+                for s in list {
+                    all_results.push(git_staircase::ResolvedStaircase::Managed(s));
                 }
             }
 
             if discovered || show_all {
                 let list = core::discover(&repo, onto.as_deref())?;
-                if !list.is_empty() {
-                    println!("Discovered Staircases:");
-                    for d in list {
-                        match d {
-                            Discovery::Linear(s) => {
-                                println!(
-                                    "  {} (branches: {})",
-                                    s.name,
-                                    s.steps
-                                        .iter()
-                                        .map(|s| s.name.as_str())
-                                        .collect::<Vec<&str>>()
-                                        .join(" -> ")
-                                );
-                            }
-                            Discovery::Ambiguous(f) => {
-                                println!(
-                                    "  {} [AMBIGUOUS FAMILY] ({} branches)",
-                                    f.name,
-                                    f.steps.len()
-                                );
-                            }
-                        }
+                for d in list {
+                    if let Discovery::Linear(s) = d {
+                        all_results.push(git_staircase::ResolvedStaircase::Implicit(s));
                     }
-                } else if discovered {
-                    println!("No potential staircases discovered.");
+                }
+            }
+
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&all_results)?);
+            } else if cli.porcelain {
+                for r in &all_results {
+                    println!("{}", r.to_porcelain());
+                }
+            } else {
+                if all_results.is_empty() {
+                    println!("No staircases found.");
+                } else {
+                    for r in all_results {
+                        let m = r.metadata();
+                        let implicit_marker = if r.is_managed() { "" } else { " (implicit)" };
+                        println!("{} (id: {}){}", m.name, m.id, implicit_marker);
+                    }
                 }
             }
         }
         Commands::Show { name, onto } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            print_resolved_staircase(&rs);
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&rs)?);
+            } else if cli.porcelain {
+                println!("{}", rs.to_porcelain());
+            } else {
+                print_resolved_staircase(&rs);
+            }
         }
         Commands::Status { name, onto } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             let status = core::get_status_metadata(&repo, rs.metadata().clone())?;
-            if !rs.is_managed() {
-                println!("(Implicit staircase)");
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            } else if cli.porcelain {
+                println!("{}", status.to_porcelain());
+            } else {
+                if !rs.is_managed() {
+                    println!("(Implicit staircase)");
+                }
+                print_status(&status);
             }
-            print_status(&status);
         }
         Commands::Split {
             step,
@@ -295,10 +317,12 @@ fn main() -> anyhow::Result<()> {
                 return Err(anyhow!("Step number must be 1-based"));
             }
             core::split(&repo, &rs, step_num - 1, &at, name.as_deref())?;
-            println!(
-                "Split step {} of staircase '{}' at {}.",
-                step_num, sc_name, at
-            );
+            if !cli.json && !cli.porcelain {
+                println!(
+                    "Split step {} of staircase '{}' at {}.",
+                    step_num, sc_name, at
+                );
+            }
         }
         Commands::Join { step1, step2, onto } => {
             let (sc_name1, step_num1) = parse_step_spec(&step1)?;
@@ -320,10 +344,12 @@ fn main() -> anyhow::Result<()> {
             }
 
             core::join(&repo, &rs, step_num1 - 1, step_num2 - 1)?;
-            println!(
-                "Joined steps {} and {} of staircase '{}'.",
-                step_num1, step_num2, sc_name1
-            );
+            if !cli.json && !cli.porcelain {
+                println!(
+                    "Joined steps {} and {} of staircase '{}'.",
+                    step_num1, step_num2, sc_name1
+                );
+            }
         }
         Commands::Rebase {
             name,
@@ -333,19 +359,27 @@ fn main() -> anyhow::Result<()> {
             let rs = core::resolve_staircase(&repo, &name, resolve_onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::rebase(&repo, &rs, &onto)?;
-            println!("Rebased staircase '{}' onto '{}'.", name, onto);
+            if !cli.json && !cli.porcelain {
+                println!("Rebased staircase '{}' onto '{}'.", name, onto);
+            }
         }
         Commands::Restack { name, onto } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::restack(&repo, &rs)?;
-            println!("Restacked staircase '{}'.", name);
+            if !cli.json && !cli.porcelain {
+                println!("Restacked staircase '{}'.", name);
+            }
         }
         Commands::Id { name, kind, onto } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             let id = core::compute_identity(&repo, &rs, kind)?;
-            println!("{}", id);
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&serde_json::json!({"id": id}))?);
+            } else {
+                println!("{}", id);
+            }
         }
         Commands::Verify {
             name,
@@ -367,15 +401,23 @@ fn main() -> anyhow::Result<()> {
                 each_prefix_opt,
             )?;
 
-            for result in results {
-                println!(
-                    "Step {}: {}",
-                    result.step_name,
-                    if result.success { "PASSED" } else { "FAILED" }
-                );
-                if !result.success {
-                    println!("Stdout:\n{}", result.stdout);
-                    println!("Stderr:\n{}", result.stderr);
+            if cli.json {
+                println!("{}", serde_json::to_string_pretty(&results)?);
+            } else if cli.porcelain {
+                for r in &results {
+                    println!("{}", r.to_porcelain());
+                }
+            } else {
+                for result in results {
+                    println!(
+                        "Step {}: {}",
+                        result.step_name,
+                        if result.success { "PASSED" } else { "FAILED" }
+                    );
+                    if !result.success {
+                        println!("Stdout:\n{}", result.stdout);
+                        println!("Stderr:\n{}", result.stderr);
+                    }
                 }
             }
         }
@@ -387,7 +429,9 @@ fn main() -> anyhow::Result<()> {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::delete(&repo, &rs.metadata().id, delete_branches)?;
-            println!("Deleted staircase '{}'.", name);
+            if !cli.json && !cli.porcelain {
+                println!("Deleted staircase '{}'.", name);
+            }
         }
     }
 

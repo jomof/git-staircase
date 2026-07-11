@@ -43,13 +43,15 @@ pub struct StaircaseFamily {
     pub verification_policy: Option<VerificationPolicy>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "type", rename_all = "kebab-case")]
 pub enum Discovery {
     Linear(StaircaseMetadata),
     Ambiguous(StaircaseFamily),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+#[serde(tag = "management", rename_all = "kebab-case")]
 pub enum ResolvedStaircase {
     Managed(StaircaseMetadata),
     Implicit(StaircaseMetadata),
@@ -75,7 +77,7 @@ pub struct BranchInfo {
     pub upstream: Option<String>, // e.g. "refs/remotes/origin/main" or "refs/heads/feature/auth-core"
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StepStatus {
     pub name: String,
     pub expected_cut: String,
@@ -84,7 +86,7 @@ pub struct StepStatus {
     pub is_modified: bool,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq)]
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseStatus {
     pub metadata: StaircaseMetadata,
     pub steps: Vec<StepStatus>,
@@ -112,4 +114,73 @@ pub struct VerificationResult {
     pub success: bool,
     pub stdout: String,
     pub stderr: String,
+}
+
+pub trait ToPorcelain {
+    fn to_porcelain(&self) -> String;
+}
+
+impl ToPorcelain for StaircaseMetadata {
+    fn to_porcelain(&self) -> String {
+        format!("{} {}", self.name, self.id)
+    }
+}
+
+impl ToPorcelain for ResolvedStaircase {
+    fn to_porcelain(&self) -> String {
+        let m = self.metadata();
+        format!("{}\t{}\t{}\t{}", 
+            m.name, 
+            m.id, 
+            if self.is_managed() { "managed" } else { "implicit" },
+            m.steps.len()
+        )
+    }
+}
+
+impl ToPorcelain for StaircaseStatus {
+    fn to_porcelain(&self) -> String {
+        let mut out = format!("{}\t{}\t{}\n", 
+            self.metadata.name, 
+            self.metadata.id, 
+            if self.is_clean { "clean" } else { "modified" }
+        );
+        for step in &self.steps {
+            out.push_str(&format!("step\t{}\t{}\t{}\t{}\n",
+                step.name,
+                step.actual_oid.as_deref().unwrap_or("none"),
+                if step.is_modified { "modified" } else { "clean" },
+                if step.is_stale { "stale" } else { "up-to-date" }
+            ));
+        }
+        out
+    }
+}
+
+impl ToPorcelain for Discovery {
+    fn to_porcelain(&self) -> String {
+        match self {
+            Discovery::Linear(s) => format!("linear\t{}\t{}", s.name, s.steps.len()),
+            Discovery::Ambiguous(f) => format!("ambiguous\t{}\t{}", f.name, f.steps.len()),
+        }
+    }
+}
+
+impl ToPorcelain for VerificationResult {
+    fn to_porcelain(&self) -> String {
+        format!("{}\t{}\t{}", 
+            self.step_name, 
+            if self.success { "pass" } else { "fail" },
+            self.cut
+        )
+    }
+}
+
+impl<T: ToPorcelain> ToPorcelain for Vec<T> {
+    fn to_porcelain(&self) -> String {
+        self.iter()
+            .map(|x| x.to_porcelain())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
 }
