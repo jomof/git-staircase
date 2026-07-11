@@ -3,6 +3,7 @@ use crate::model::{BranchInfo, IdentityKind, StaircaseMetadata, VerificationResu
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::thread;
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
@@ -81,14 +82,17 @@ impl GitRepo {
             .stderr(Stdio::piped())
             .spawn()?;
 
-        {
-            let child_stdin = child.stdin.as_mut().ok_or_else(|| {
-                StaircaseError::Other("Failed to open stdin for git command".into())
-            })?;
-            child_stdin.write_all(stdin.as_bytes())?;
-        }
+        let mut child_stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| StaircaseError::Other("Failed to open stdin for git command".into()))?;
 
-        let output = child.wait_with_output()?;
+        let output = thread::scope(|s| {
+            s.spawn(move || {
+                let _ = child_stdin.write_all(stdin.as_bytes());
+            });
+            child.wait_with_output()
+        })?;
 
         if !output.status.success() {
             return Err(StaircaseError::GitCommandFailed {
@@ -170,7 +174,7 @@ impl GitRepo {
         descriptor.push_str(&format!("lineage {}\n", metadata.id));
         descriptor.push_str("state clean\n");
         descriptor.push_str(&format!("target-ref {}\n", metadata.target));
-        
+
         let target_oid = self.resolve_ref(&metadata.target)?;
         descriptor.push_str(&format!("target-oid {}\n", target_oid));
 
@@ -191,7 +195,7 @@ impl GitRepo {
 
         let state_ref = format!("refs/staircase-state/{}/descriptor", metadata.id);
         self.run(&["update-ref", &state_ref, &blob_oid])?;
-        
+
         // Also update step refs for reachability
         for step in &metadata.steps {
             let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, step.name);
@@ -204,25 +208,29 @@ impl GitRepo {
     pub fn read_metadata(&self, id_or_name: &str) -> Result<StaircaseMetadata> {
         let name_ref = format!("refs/staircases/{}", id_or_name);
         let id_ref = format!("refs/staircase-state/{}/descriptor", id_or_name);
-        
+
         let (ref_name, is_name) = if self.resolve_ref_opt(&name_ref)?.is_some() {
             (name_ref, true)
         } else if self.resolve_ref_opt(&id_ref)?.is_some() {
             (id_ref, false)
         } else {
-             return Err(crate::error::StaircaseError::Other(format!("Staircase not found: {}", id_or_name)));
+            return Err(crate::error::StaircaseError::Other(format!(
+                "Staircase not found: {}",
+                id_or_name
+            )));
         };
 
         let content = self.run(&["cat-file", "-p", &ref_name])?;
         let mut meta = self.parse_descriptor(&content)?;
-        
+
         if is_name {
-             meta.name = id_or_name.to_string();
+            meta.name = id_or_name.to_string();
         } else {
             // If we read from ID, we might need to find the name elsewhere
             // For now, let's see if we can find a ref in refs/staircases/ pointing to this descriptor
             let oid = self.resolve_ref(&ref_name)?;
-            if let Ok(stdout) = self.run(&["for-each-ref", "--points-at", &oid, "refs/staircases/"]) {
+            if let Ok(stdout) = self.run(&["for-each-ref", "--points-at", &oid, "refs/staircases/"])
+            {
                 if let Some(line) = stdout.lines().next() {
                     let refname = line.split_whitespace().last().unwrap_or("");
                     if let Some(name) = refname.strip_prefix("refs/staircases/") {
@@ -341,11 +349,19 @@ impl GitRepo {
         }
 
         // Check internal state for any missed ones (unnamed managed staircases)
-        if let Ok(stdout) = self.run(&["for-each-ref", "--format=%(refname)", "refs/staircase-state/"]) {
+        if let Ok(stdout) = self.run(&[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/staircase-state/",
+        ]) {
             for line in stdout.lines() {
                 let refname = line.trim();
                 if refname.ends_with("/descriptor") {
-                    let parts: Vec<&str> = refname.strip_prefix("refs/staircase-state/").unwrap().split('/').collect();
+                    let parts: Vec<&str> = refname
+                        .strip_prefix("refs/staircase-state/")
+                        .unwrap()
+                        .split('/')
+                        .collect();
                     if parts.len() == 2 && parts[1] == "descriptor" {
                         let id = parts[0];
                         if !seen_ids.contains(id) {
