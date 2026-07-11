@@ -8,15 +8,24 @@ use uuid::Uuid;
 use super::inference::{extract_path_to, infer_onto};
 use super::utils::common_prefix;
 
-fn compute_implicit_id(steps: &[Step]) -> String {
-    use std::collections::hash_map::DefaultHasher;
-    use std::hash::{Hash, Hasher};
-    let mut hasher = DefaultHasher::new();
+pub fn compute_implicit_id(object_format: &str, target_oid: &str, steps: &[Step]) -> String {
+    use sha2::{Digest, Sha256};
+    let mut hasher = Sha256::new();
+    // Canonical representation per spec addendum naming Section 3.11
+    hasher.update(b"1"); // Discovery schema version
+    hasher.update(object_format.as_bytes());
+    hasher.update(target_oid.as_bytes());
+    hasher.update(&(steps.len() as u32).to_be_bytes());
     for step in steps {
-        step.cut.hash(&mut hasher);
-        step.name.hash(&mut hasher);
+        hasher.update(step.cut.as_bytes());
+        hasher.update(step.name.as_bytes());
     }
-    format!("implicit@{:016x}", hasher.finish())
+    let hash = hasher.finalize();
+    // Truncate to 16 hex characters (8 bytes) for brevity
+    format!(
+        "implicit@{:016x}",
+        u64::from_be_bytes(hash[..8].try_into().unwrap())
+    )
 }
 
 /// Discover potential staircases relative to `onto`.
@@ -135,7 +144,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
                 common_prefix(&branch_names).unwrap_or_else(|| steps.last().unwrap().name.clone());
 
             discoveries.push(Discovery::Linear(StaircaseMetadata {
-                id: compute_implicit_id(&steps),
+                id: compute_implicit_id(&repo.get_object_format()?, &onto_oid, &steps),
                 verification_policy: None,
                 name,
                 target: onto_final.to_string(),
@@ -220,6 +229,8 @@ pub fn resolve_staircase(
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
+    let onto_oid = repo.resolve_ref(&onto_final)?;
+    let object_format = repo.get_object_format()?;
     let discoveries = discover(repo, Some(&onto_final))?;
 
     // Interpretation 3: Implicit Name
@@ -258,7 +269,7 @@ pub fn resolve_staircase(
                     if let Some(pos) = s.steps.iter().position(|step| step.cut == oid) {
                         let mut sub_s = s.clone();
                         sub_s.steps.truncate(pos + 1);
-                        let id = compute_implicit_id(&sub_s.steps);
+                        let id = compute_implicit_id(&object_format, &onto_oid, &sub_s.steps);
                         // Prefer Managed if already present
                         if !resolved_staircases.contains_key(&id) {
                             resolved_staircases.insert(id, ResolvedStaircase::Implicit(sub_s));
@@ -271,7 +282,7 @@ pub fn resolve_staircase(
                         f.steps.values().find(|s| s.cut == oid).map(|s| &s.name)
                     {
                         if let Some(path) = extract_path_to(f, step_name) {
-                            let id = compute_implicit_id(&path.steps);
+                            let id = compute_implicit_id(&object_format, &onto_oid, &path.steps);
                             if !resolved_staircases.contains_key(&id) {
                                 resolved_staircases.insert(id, ResolvedStaircase::Implicit(path));
                             }
@@ -380,6 +391,8 @@ pub fn resolve_explicit_staircase(
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
+    let onto_oid = repo.resolve_ref(&onto_final)?;
+    let object_format = repo.get_object_format()?;
     let mut staircase_steps = Vec::new();
     for s in steps {
         let oid = repo.resolve_ref(s)?;
@@ -390,7 +403,7 @@ pub fn resolve_explicit_staircase(
             branch: Some(short_name),
         });
     }
-    let id = compute_implicit_id(&staircase_steps);
+    let id = compute_implicit_id(&object_format, &onto_oid, &staircase_steps);
     Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
         id,
         name: steps

@@ -1,20 +1,54 @@
+use git_staircase::core::discovery::compute_implicit_id;
 use git_staircase::model::Step;
-use std::collections::hash_map::DefaultHasher;
-use std::hash::{Hash, Hasher};
 
 #[test]
-fn test_id_uses_unstable_hasher() {
-    // This test confirms that DefaultHasher is used in the discovery logic.
-    // While we can't easily force it to change in a single run, we can
-    // verify the implementation in src/core/discovery.rs line 12.
-    // However, we can also check if we can reproduce it by comparing against a known SHA-256 (if that's the goal).
-    // The proposal says "verify the implementation in src/core/discovery.rs line 12".
-
-    // For now, let's just make it a placeholder that we can use to remind ourselves to check the code.
+fn test_id_stability_and_format() {
     let steps = vec![Step {
-        name: "s".to_string(),
-        cut: "o".to_string(),
-        branch: None,
+        name: "step1".to_string(),
+        cut: "1111111111111111111111111111111111111111".to_string(),
+        branch: Some("step1".to_string()),
     }];
-    // The bug is the choice of DefaultHasher for a persistent/portable ID.
+    let target_oid = "0000000000000000000000000000000000000000";
+    let object_format = "sha1";
+
+    // This will fail to compile initially because compute_implicit_id only takes steps
+    let id = compute_implicit_id(object_format, target_oid, &steps);
+
+    assert!(
+        id.starts_with("implicit@"),
+        "ID should start with implicit@, got {}",
+        id
+    );
+
+    // We expect a stable hash. For version 1, target_oid, 1 step, step1 cut and name.
+    // Let's say we expect a specific value once we implement it.
+    // For now, let's just assert it's 16 hex chars after implicit@
+    let hash_part = &id["implicit@".len()..];
+    assert_eq!(
+        hash_part.len(),
+        16,
+        "Hash part should be 16 hex chars, got {}",
+        hash_part
+    );
+    assert!(
+        hash_part.chars().all(|c| c.is_ascii_hexdigit()),
+        "Hash part should be hex, got {}",
+        hash_part
+    );
+}
+
+#[test]
+fn test_id_is_stable_across_calls() {
+    let steps = vec![Step {
+        name: "step1".to_string(),
+        cut: "1111111111111111111111111111111111111111".to_string(),
+        branch: Some("step1".to_string()),
+    }];
+    let target_oid = "0000000000000000000000000000000000000000";
+    let object_format = "sha1";
+
+    let id1 = compute_implicit_id(object_format, target_oid, &steps);
+    let id2 = compute_implicit_id(object_format, target_oid, &steps);
+
+    assert_eq!(id1, id2, "IDs should be identical for same input");
 }
