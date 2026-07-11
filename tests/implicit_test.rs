@@ -40,6 +40,6 @@ fn test_implicit_staircase_operations() {
     assert!(!id_revision.is_empty());
 
     // 4. verify (just check it doesn't crash, since we don't have policy)
-    let results = core::verify(None, &repo, name, None, None, Some(false), Some(true)).unwrap();
+    let results = core::verify(&repo, &rs, None, None, Some(false), Some(true)).unwrap();
     assert_eq!(results.len(), 2);
 }

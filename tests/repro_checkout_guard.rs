@@ -1,5 +1,6 @@
 mod common;
 use common::*;
+use git_staircase::core::resolve_staircase;
 use git_staircase::core::verification::verify;
 
 #[test]
@@ -19,8 +20,11 @@ fn test_checkout_guard_detached_head() -> anyhow::Result<()> {
     run_git(repo_path, &["branch", "-f", "main", &oid1]);
     run_git(repo_path, &["branch", "step1", &oid2]);
 
+    let rs = resolve_staircase(&repo, "step1", Some("main"))?
+        .expect("Staircase step1 not found");
+
     // ACT: Run verify (this will checkout oid2 and then try to restore)
-    let _ = verify(Some("main"), &repo, "step1", None, None, None, None)?;
+    let _ = verify(&repo, &rs, None, None, None, None)?;
 
     // ASSERT: Check if we are back at oid1
     let current_oid = run_git(repo_path, &["rev-parse", "HEAD"]);

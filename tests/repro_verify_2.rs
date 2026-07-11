@@ -49,7 +49,14 @@ fn test_verify_leaves_detached_head() {
     // Force a checkout failure on s2 by creating an untracked file that conflicts
     fs::write(repo_dir.join("s2.txt"), "blocker").unwrap();
 
-    let res = git_staircase::core::verify(None, &repo, "test", None, None, None, None);
+    let res = git_staircase::core::verify(
+        &repo,
+        &ResolvedStaircase::Managed(sc),
+        None,
+        None,
+        None,
+        None,
+    );
     assert!(res.is_err());
 
     let current = run_git(repo_dir, &["rev-parse", "--abbrev-ref", "HEAD"]);

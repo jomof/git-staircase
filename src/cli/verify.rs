@@ -1,6 +1,5 @@
 use super::{OutputFormat, print_output};
 use crate::GitRepo;
-use anyhow::anyhow;
 use git_staircase::core;
 
 pub fn run(
@@ -17,19 +16,11 @@ pub fn run(
     let aggregate_opt = if aggregate { Some(true) } else { None };
     let each_prefix_opt = if each_prefix { Some(true) } else { None };
 
-    let name = if let Some(s) = steps {
-        core::resolve_explicit_staircase(repo, &s, onto.as_deref())?
-            .metadata()
-            .name
-            .clone()
-    } else {
-        name.ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?
-    };
+    let rs = super::resolve_rs(repo, name, steps, onto)?;
 
     let results = core::verify(
-        onto.as_deref(),
         repo,
-        &name,
+        &rs,
         build_command,
         test_command,
         aggregate_opt,

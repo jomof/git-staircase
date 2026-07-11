@@ -1,20 +1,17 @@
+use super::ResolvedStaircase;
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{IdentityKind, VerificationResult};
 
 pub fn verify(
-    onto: Option<&str>,
     repo: &GitRepo,
-    name: &str,
+    rs: &ResolvedStaircase,
     build_command_override: Option<String>,
     test_command_override: Option<String>,
     aggregate_only: Option<bool>,
     each_prefix: Option<bool>,
 ) -> Result<Vec<VerificationResult>> {
-    let rs = super::resolve_staircase(repo, name, onto)?
-        .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", name)))?;
-
     let s = rs.metadata();
 
     let policy = s.verification_policy.as_ref();
@@ -108,7 +105,7 @@ pub fn verify(
         (s.id.clone(), IdentityKind::Lineage)
     } else {
         (
-            super::compute_identity(repo, &rs, IdentityKind::Revision)?,
+            super::compute_identity(repo, rs, IdentityKind::Revision)?,
             IdentityKind::Revision,
         )
     };

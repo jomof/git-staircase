@@ -1,7 +1,7 @@
 mod common;
 use common::*;
 use git_staircase::core;
-use git_staircase::{Discovery, StaircaseMetadata, Step, VerificationPolicy};
+use git_staircase::{Discovery, ResolvedStaircase, StaircaseMetadata, Step, VerificationPolicy};
 use std::fs;
 
 #[test]
@@ -222,7 +222,15 @@ fn test_verification_aggregate() {
 
     core::adopt(&repo, &s).unwrap();
 
-    let results = core::verify(None, &repo, &s.id, None, None, Some(true), None).unwrap();
+    let results = core::verify(
+        &repo,
+        &ResolvedStaircase::Managed(s.clone()),
+        None,
+        None,
+        Some(true),
+        None,
+    )
+    .unwrap();
     assert_eq!(results.len(), 1);
     assert!(results[0].success);
 }
@@ -251,7 +259,15 @@ fn test_verification_each_prefix() {
 
     core::adopt(&repo, &s).unwrap();
 
-    let results = core::verify(None, &repo, &s.id, None, None, None, Some(true)).unwrap();
+    let results = core::verify(
+        &repo,
+        &ResolvedStaircase::Managed(s.clone()),
+        None,
+        None,
+        None,
+        Some(true),
+    )
+    .unwrap();
     assert_eq!(results.len(), 2);
 }
 
