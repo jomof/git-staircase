@@ -101,18 +101,18 @@ fn test_resolve_from_ambiguous_family() {
     //              -> step2b
     run_git(&path, &["checkout", "-b", "step1"]);
     let c1 = commit(&path, "file1.txt", "1", "commit 1");
-    
+
     run_git(&path, &["checkout", "-b", "step2a"]);
     let c2a = commit(&path, "file2a.txt", "2a", "commit 2a");
-    
+
     run_git(&path, &["checkout", "step1"]);
     run_git(&path, &["checkout", "-b", "step2b"]);
     let _c2b = commit(&path, "file2b.txt", "2b", "commit 2b");
 
-    // Resolving by name "step" should be ambiguous (multiple implicit staircases if we try to linearize? 
+    // Resolving by name "step" should be ambiguous (multiple implicit staircases if we try to linearize?
     // Actually, discover returns Ambiguous(Family) because of the fork.
     // If we try to resolve by name "step2a" or by OID c2a, it should extract the path to it.
-    
+
     // Resolve by OID c2a
     let rs = core::resolve_staircase(&repo, &c2a, Some("main"))
         .unwrap()

@@ -2,7 +2,7 @@ use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
     BranchInfo, Discovery, FamilyStep, IdentityKind, ResolvedStaircase, StaircaseFamily,
-    StaircaseMetadata, StaircaseStatus, Step, StepStatus, VerificationResult,
+    StaircaseMetadata, Step,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -188,7 +188,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
     Ok(discoveries)
 }
 
-fn common_prefix(names: &[&str]) -> Option<String> {
+pub fn common_prefix(names: &[&str]) -> Option<String> {
     if names.is_empty() {
         return None;
     }
@@ -212,100 +212,6 @@ fn common_prefix(names: &[&str]) -> Option<String> {
     } else {
         Some(trimmed.to_string())
     }
-}
-
-/// Adopt a staircase by writing its metadata and creating step refs.
-pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
-    // Verify that the cuts exist and form a valid ancestry chain
-    let target_oid = repo.resolve_ref(&staircase.target)?;
-    let mut last_cut = target_oid;
-    for step in &staircase.steps {
-        let current_cut = repo.resolve_ref(&step.cut)?;
-
-        if current_cut == last_cut {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
-                step.name, step.cut
-            )));
-        }
-
-        if !repo.is_ancestor(&last_cut, &current_cut)? {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
-                step.name, step.cut
-            )));
-        }
-        last_cut = current_cut;
-    }
-
-    repo.write_metadata(staircase)?;
-    for step in &staircase.steps {
-        repo.update_step_ref(&staircase.id, &step.name, &step.cut)?;
-    }
-    Ok(())
-}
-
-pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
-    let metadata = repo.read_metadata(id)?;
-    get_status_metadata(repo, metadata)
-}
-
-pub fn get_status_metadata(repo: &GitRepo, metadata: StaircaseMetadata) -> Result<StaircaseStatus> {
-    let mut steps = Vec::new();
-    let mut is_clean = true;
-
-    let mut actual_oids = Vec::new();
-
-    for step in &metadata.steps {
-        let actual_oid = if let Some(ref branch) = step.branch {
-            repo.resolve_ref_opt(&format!("refs/heads/{}", branch))?
-        } else {
-            Some(step.cut.clone())
-        };
-
-        let is_modified = match &actual_oid {
-            Some(oid) => oid != &step.cut,
-            None => true,
-        };
-
-        if is_modified {
-            is_clean = false;
-        }
-
-        actual_oids.push(actual_oid.clone());
-
-        steps.push(StepStatus {
-            name: step.name.clone(),
-            expected_cut: step.cut.clone(),
-            actual_oid,
-            is_stale: false,
-            is_modified,
-        });
-    }
-
-    let target_oid = repo.resolve_ref(&metadata.target)?;
-
-    for i in 0..steps.len() {
-        let parent_oid = if i == 0 {
-            Some(target_oid.clone())
-        } else {
-            actual_oids[i - 1].clone()
-        };
-
-        if let (Some(actual), Some(parent)) = (&actual_oids[i], &parent_oid) {
-            let is_ancestor = repo.is_ancestor(parent, actual)?;
-            if !is_ancestor {
-                steps[i].is_stale = true;
-                is_clean = false;
-            }
-        }
-    }
-
-    Ok(StaircaseStatus {
-        metadata,
-        steps,
-        is_clean,
-    })
 }
 
 pub fn infer_onto(repo: &GitRepo) -> Result<String> {
@@ -367,10 +273,6 @@ pub fn resolve_staircase(
         }
     }
 
-    // If no matches by name yet, or if we want to find ref/OID matches too
-    // The spec says "if no managed staircase matches the name", but it also says 
-    // we should report ambiguity if multiple matches exist. 
-    // Let's try to resolve as ref/OID and see if it hits any cuts.
     if let Ok(oid) = repo.resolve_ref(name) {
         for d in &discoveries {
             match d {
@@ -378,16 +280,15 @@ pub fn resolve_staircase(
                     if let Some(pos) = s.steps.iter().position(|step| step.cut == oid) {
                         let mut sub_s = s.clone();
                         sub_s.steps.truncate(pos + 1);
-                        // If it's a sub-staircase, we might need a better name, 
-                        // but for now let's use the step name if it matches the requested name.
                         if !implicit_matches.iter().any(|m| m.steps == sub_s.steps) {
                             implicit_matches.push(sub_s);
                         }
                     }
                 }
                 Discovery::Ambiguous(f) => {
-                    // If the OID is in the family, extract the linear path to it
-                    if let Some(step_name) = f.steps.values().find(|s| s.cut == oid).map(|s| &s.name) {
+                    if let Some(step_name) =
+                        f.steps.values().find(|s| s.cut == oid).map(|s| &s.name)
+                    {
                         if let Some(path) = extract_path_to(f, step_name) {
                             if !implicit_matches.iter().any(|m| m.steps == path.steps) {
                                 implicit_matches.push(path);
@@ -403,9 +304,9 @@ pub fn resolve_staircase(
     implicit_matches.retain(|s| {
         !managed_matches.iter().any(|m| {
             m.steps.iter().any(|m_step| {
-                s.steps.iter().any(|s_step| {
-                    m_step.name == s_step.name && m_step.cut == s_step.cut
-                })
+                s.steps
+                    .iter()
+                    .any(|s_step| m_step.name == s_step.name && m_step.cut == s_step.cut)
             })
         })
     });
@@ -444,10 +345,13 @@ pub fn resolve_staircase(
     Ok(None)
 }
 
-fn extract_path_to(family: &StaircaseFamily, target_step_name: &str) -> Option<StaircaseMetadata> {
+pub fn extract_path_to(
+    family: &StaircaseFamily,
+    target_step_name: &str,
+) -> Option<StaircaseMetadata> {
     let mut path_steps = Vec::new();
     let mut current = target_step_name.to_string();
-    
+
     loop {
         let step = family.steps.get(&current)?;
         path_steps.push(Step {
@@ -455,18 +359,21 @@ fn extract_path_to(family: &StaircaseFamily, target_step_name: &str) -> Option<S
             cut: step.cut.clone(),
             branch: step.branch.clone(),
         });
-        
+
         // Find parent
-        let parent = family.steps.values().find(|s| s.children.contains(&current));
+        let parent = family
+            .steps
+            .values()
+            .find(|s| s.children.contains(&current));
         if let Some(p) = parent {
             current = p.name.clone();
         } else {
             break;
         }
     }
-    
+
     path_steps.reverse();
-    
+
     Some(StaircaseMetadata {
         id: uuid::Uuid::new_v4().to_string(),
         name: target_step_name.to_string(),
@@ -480,380 +387,37 @@ pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetada
     Ok(resolve_staircase(repo, name, None)?.map(|r| r.metadata().clone()))
 }
 
-pub fn split(
+pub fn resolve_explicit_staircase(
     repo: &GitRepo,
-    staircase: &ResolvedStaircase,
-    step_index: usize,
-    at_commit: &str,
-    new_step_name: Option<&str>,
-) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-
-    if step_index >= metadata.steps.len() {
-        return Err(StaircaseError::InvalidStructure(format!(
-            "Step index {} out of bounds",
-            step_index
-        )));
-    }
-
-    let at_oid = repo.resolve_ref(at_commit)?;
-
-    let cut_oid = &metadata.steps[step_index].cut;
-    let prev_cut_oid = if step_index == 0 {
-        repo.resolve_ref(&metadata.target)?
-    } else {
-        metadata.steps[step_index - 1].cut.clone()
+    steps: &[String],
+    onto: Option<&str>,
+) -> Result<ResolvedStaircase> {
+    let onto_final = match onto {
+        Some(o) => o.to_string(),
+        None => infer_onto(repo)?,
     };
 
-    if !repo.is_ancestor(&prev_cut_oid, &at_oid)? {
-        return Err(StaircaseError::InvalidStructure(format!(
-            "Commit {} is not a descendant of previous step cut {}",
-            at_commit, prev_cut_oid
-        )));
-    }
-    if !repo.is_ancestor(&at_oid, cut_oid)? {
-        return Err(StaircaseError::InvalidStructure(format!(
-            "Commit {} is not an ancestor of step cut {}",
-            at_commit, cut_oid
-        )));
-    }
-    if at_oid == prev_cut_oid || at_oid == *cut_oid {
-        return Err(StaircaseError::InvalidStructure(
-            "Cannot split at step boundaries".to_string(),
-        ));
+    let mut staircase_steps = Vec::new();
+    for s in steps {
+        let oid = repo.resolve_ref(s)?;
+        let short_name = s.strip_prefix("refs/heads/").unwrap_or(s).to_string();
+        staircase_steps.push(Step {
+            name: short_name.clone(),
+            cut: oid,
+            branch: Some(short_name),
+        });
     }
 
-    let name = match new_step_name {
-        Some(n) => n.to_string(),
-        None => format!("{}-split", metadata.steps[step_index].name),
-    };
-
-    let new_step = Step {
-        name: name.clone(),
-        cut: at_oid.clone(),
-        branch: if staircase.is_managed() {
-            None
-        } else {
-            new_step_name.map(|n| n.to_string())
-        },
-    };
-
-    metadata.steps.insert(step_index, new_step);
-
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-        repo.update_step_ref(&metadata.id, &name, &at_oid)?;
-    } else {
-        if let Some(branch_name) = new_step_name {
-            repo.update_branch(branch_name, &at_oid)?;
-        } else {
-            adopt(repo, &metadata)?;
-        }
-    }
-
-    Ok(())
-}
-pub fn join(
-    repo: &GitRepo,
-    staircase: &ResolvedStaircase,
-    step_index_1: usize,
-    step_index_2: usize,
-) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-
-    let (low, high) = if step_index_1 < step_index_2 {
-        (step_index_1, step_index_2)
-    } else {
-        (step_index_2, step_index_1)
-    };
-
-    if low + 1 != high {
-        return Err(StaircaseError::InvalidStructure(format!(
-            "Steps to join must be adjacent: {} and {}",
-            low, high
-        )));
-    }
-
-    if high >= metadata.steps.len() {
-        return Err(StaircaseError::InvalidStructure(format!(
-            "Step index {} out of bounds",
-            high
-        )));
-    }
-
-    let removed_step = metadata.steps.remove(low);
-
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-        repo.delete_step_ref(&metadata.id, &removed_step.name)?;
-    } else {
-        if removed_step.branch.is_some() {
-            adopt(repo, &metadata)?;
-        }
-    }
-
-    Ok(())
-}
-
-pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-    let old_steps = metadata.steps.clone();
-
-    // Allowing different number of steps for drop/filter operations
-
-    let mut seen = std::collections::HashSet::new();
-    for &idx in new_order {
-        if idx >= old_steps.len() || !seen.insert(idx) {
-            return Err(StaircaseError::Other(
-                "Invalid step indices in new order".to_string(),
-            ));
-        }
-    }
-
-    let mut new_steps = Vec::new();
-    for &idx in new_order {
-        new_steps.push(old_steps[idx].clone());
-    }
-
-    let target_oid = repo.resolve_ref(&metadata.target)?;
-    let mut current_base = target_oid;
-
-    for i in 0..new_steps.len() {
-        let step = &new_steps[i];
-        let actual_oid = repo.resolve_ref(&step.cut)?;
-
-        // Find old parent of this step in the ORIGINAL staircase
-        let old_idx = new_order[i];
-        let old_parent_oid = if old_idx == 0 {
-            repo.merge_base(&actual_oid, &repo.resolve_ref(&metadata.target)?)?
-        } else {
-            old_steps[old_idx - 1].cut.clone()
-        };
-
-        if let Some(ref branch_name) = step.branch {
-            if current_base != old_parent_oid {
-                repo.run_interactive(&[
-                    "rebase",
-                    "--onto",
-                    &current_base,
-                    &old_parent_oid,
-                    branch_name,
-                ])?;
-                let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
-                new_steps[i].cut = new_oid.clone();
-                current_base = new_oid;
-            } else {
-                current_base = actual_oid;
-            }
-        } else {
-            return Err(StaircaseError::Other(format!(
-                "Step '{}' has no branch; reshaping requires branches",
-                step.name
-            )));
-        }
-    }
-
-    metadata.steps = new_steps;
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-        for step in &metadata.steps {
-            repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
-        }
-    } else {
-        adopt(repo, &metadata)?;
-    }
-
-    Ok(())
-}
-
-pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) -> Result<()> {
-    let metadata = staircase.metadata().clone();
-    if step_index >= metadata.steps.len() {
-        return Err(StaircaseError::Other(
-            "Step index out of bounds".to_string(),
-        ));
-    }
-
-    let mut new_order: Vec<usize> = (0..metadata.steps.len()).collect();
-    new_order.remove(step_index);
-
-    reorder(repo, staircase, &new_order)
-}
-
-pub fn move_commits(
-    repo: &GitRepo,
-    staircase: &ResolvedStaircase,
-    from_step_index: usize,
-    to_step_index: usize,
-    commits: &[String],
-) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-    if from_step_index >= metadata.steps.len() || to_step_index >= metadata.steps.len() {
-        return Err(StaircaseError::Other(
-            "Step index out of bounds".to_string(),
-        ));
-    }
-
-    if from_step_index == to_step_index {
-        return Ok(());
-    }
-
-    if to_step_index + 1 == from_step_index {
-        let commit_to_move = &commits[0];
-        let oid_to_move = repo.resolve_ref(commit_to_move)?;
-
-        let prev_cut = if from_step_index == 0 {
-            repo.resolve_ref(&metadata.target)?
-        } else {
-            metadata.steps[from_step_index - 1].cut.clone()
-        };
-
-        let commits_in_from_step =
-            repo.commits_between(&prev_cut, &metadata.steps[from_step_index].cut)?;
-        if commits_in_from_step.first() == Some(&oid_to_move) {
-            metadata.steps[to_step_index].cut = oid_to_move.clone();
-
-            if let Some(ref branch) = metadata.steps[to_step_index].branch {
-                repo.update_branch(branch, &oid_to_move)?;
-            }
-
-            if staircase.is_managed() {
-                repo.write_metadata(&metadata)?;
-                repo.update_step_ref(
-                    &metadata.id,
-                    &metadata.steps[to_step_index].name,
-                    &oid_to_move,
-                )?;
-            } else {
-                adopt(repo, &metadata)?;
-            }
-            return Ok(());
-        }
-    }
-
-    Err(StaircaseError::Other(
-        "Complex move not yet implemented".to_string(),
-    ))
-}
-pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
-    let mut status = get_status_metadata(repo, staircase.metadata().clone())?;
-
-    if status.is_clean {
-        return Ok(());
-    }
-
-    let target_oid = repo.resolve_ref(&status.metadata.target)?;
-    let mut current_base = target_oid;
-    let mut metadata_changed = false;
-
-    let original_cuts: Vec<String> = status
-        .metadata
-        .steps
-        .iter()
-        .map(|s| s.cut.clone())
-        .collect();
-
-    for i in 0..status.steps.len() {
-        let step_status = &status.steps[i];
-        let (step_name, step_branch, _step_cut) = {
-            let step = &status.metadata.steps[i];
-            (step.name.clone(), step.branch.clone(), step.cut.clone())
-        };
-
-        let actual_oid = match &step_status.actual_oid {
-            Some(oid) => oid.clone(),
-            None => {
-                return Err(StaircaseError::Other(format!(
-                    "Cannot restack: branch for step '{}' is missing",
-                    step_name
-                )));
-            }
-        };
-
-        if step_status.is_stale {
-            let old_parent_cut = if i == 0 {
-                repo.merge_base(&actual_oid, &current_base)?
-            } else {
-                original_cuts[i - 1].clone()
-            };
-
-            let branch_name = step_branch.as_ref().ok_or_else(|| {
-                StaircaseError::Other(format!("Step '{}' has no branch associated", step_name))
-            })?;
-
-            match repo.run_interactive(&[
-                "rebase",
-                "--onto",
-                &current_base,
-                &old_parent_cut,
-                branch_name,
-            ]) {
-                Ok(_) => {
-                    let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
-                    status.metadata.steps[i].cut = new_oid.clone();
-                    if staircase.is_managed() {
-                        repo.update_step_ref(&status.metadata.id, &step_name, &new_oid)?;
-                    }
-                    metadata_changed = true;
-                    current_base = new_oid;
-                }
-                Err(e) => {
-                    if metadata_changed && staircase.is_managed() {
-                        repo.write_metadata(&status.metadata)?;
-                    }
-                    return Err(StaircaseError::Other(format!(
-                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.
-Error: {}",
-                        step_name, e
-                    )));
-                }
-            }
-        } else {
-            current_base = actual_oid.clone();
-            if status.metadata.steps[i].cut != actual_oid {
-                status.metadata.steps[i].cut = actual_oid.clone();
-                if staircase.is_managed() {
-                    repo.update_step_ref(&status.metadata.id, &step_name, &actual_oid)?;
-                }
-                metadata_changed = true;
-            }
-        }
-    }
-
-    if metadata_changed && staircase.is_managed() {
-        repo.write_metadata(&status.metadata)?;
-    }
-
-    Ok(())
-}
-
-pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
-    let mut metadata = staircase.metadata().clone();
-    metadata.target = onto.to_string();
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-    }
-    let updated_rs = if staircase.is_managed() {
-        ResolvedStaircase::Managed(metadata)
-    } else {
-        ResolvedStaircase::Implicit(metadata)
-    };
-    restack(repo, &updated_rs)
-}
-
-pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
-    let metadata = repo.read_metadata(id)?;
-
-    if delete_branches {
-        for step in &metadata.steps {
-            if let Some(ref branch) = step.branch {
-                let _ = repo.run(&["branch", "-D", branch]);
-            }
-        }
-    }
-
-    repo.delete_staircase_refs(id)?;
-    Ok(())
+    Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
+        id: Uuid::new_v4().to_string(),
+        name: steps
+            .last()
+            .map(|s| s.strip_prefix("refs/heads/").unwrap_or(s).to_string())
+            .unwrap_or_else(|| "explicit".to_string()),
+        target: onto_final,
+        steps: staircase_steps,
+        verification_policy: None,
+    }))
 }
 
 pub fn compute_identity(
@@ -862,7 +426,7 @@ pub fn compute_identity(
     kind: IdentityKind,
 ) -> Result<String> {
     if kind == IdentityKind::Lineage && !staircase.is_managed() {
-        adopt(repo, staircase.metadata())?;
+        super::manipulation::adopt(repo, staircase.metadata())?;
     }
     let staircase = staircase.metadata();
     match kind {
@@ -947,127 +511,6 @@ mod tests {
         assert_eq!(common_prefix(&["/a", "/b"]), None);
         assert_eq!(common_prefix(&[]), None);
     }
-}
-
-pub fn verify(
-    onto: Option<&str>,
-    repo: &GitRepo,
-    name: &str,
-    build_command_override: Option<String>,
-    test_command_override: Option<String>,
-    aggregate_only: Option<bool>,
-    each_prefix: Option<bool>,
-) -> Result<Vec<VerificationResult>> {
-    let rs = resolve_staircase(repo, name, onto)?
-        .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", name)))?;
-
-    let s = rs.metadata();
-
-    let policy = s.verification_policy.as_ref();
-
-    let build_cmd = build_command_override.or(policy.and_then(|p| p.build_command.clone()));
-    let test_cmd = test_command_override.or(policy.and_then(|p| p.test_command.clone()));
-
-    let verify_each = each_prefix.unwrap_or_else(|| {
-        if aggregate_only.unwrap_or(false) {
-            false
-        } else {
-            policy.map(|p| p.verify_each_prefix).unwrap_or(false)
-        }
-    });
-
-    let mut results = Vec::new();
-
-    let mut targets = Vec::new();
-    if verify_each {
-        for step in &s.steps {
-            targets.push((step.name.clone(), step.cut.clone()));
-        }
-    } else {
-        if let Some(last_step) = s.steps.last() {
-            targets.push(("Aggregate".to_string(), last_step.cut.clone()));
-        }
-    }
-
-    if targets.is_empty() {
-        return Err(StaircaseError::Other("No steps to verify".to_string()));
-    }
-
-    // Save current branch to restore later
-    let original_branch = repo
-        .run(&["rev-parse", "--abbrev-ref", "HEAD"])?
-        .trim()
-        .to_string();
-
-    for (step_name, cut) in targets {
-        // Checkout the cut
-        repo.run(&["checkout", &cut])?;
-
-        let mut success = true;
-        let mut stdout = String::new();
-        let mut stderr = String::new();
-
-        if let Some(ref cmd) = build_cmd {
-            let (ok, out, err) = run_shell_command(&repo.workdir, cmd)?;
-            stdout.push_str(&out);
-            stderr.push_str(&err);
-            if !ok {
-                success = false;
-            }
-        }
-
-        if success {
-            if let Some(ref cmd) = test_cmd {
-                let (ok, out, err) = run_shell_command(&repo.workdir, cmd)?;
-                stdout.push_str(&out);
-                stderr.push_str(&err);
-                if !ok {
-                    success = false;
-                }
-            }
-        }
-
-        results.push(VerificationResult {
-            step_name,
-            cut,
-            success,
-            stdout,
-            stderr,
-        });
-
-        if !success {
-            break;
-        }
-    }
-
-    // Restore original branch
-    let _ = repo.run(&["checkout", &original_branch]);
-
-    // Record results
-    let (key, kind) = if rs.is_managed() {
-        (s.id.clone(), IdentityKind::Lineage)
-    } else {
-        (
-            compute_identity(repo, &rs, IdentityKind::Revision)?,
-            IdentityKind::Revision,
-        )
-    };
-    repo.record_verification(&key, kind, &results)?;
-
-    Ok(results)
-}
-
-fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, String, String)> {
-    let output = std::process::Command::new("sh")
-        .current_dir(dir)
-        .arg("-c")
-        .arg(command)
-        .output()?;
-
-    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
-    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
-
-    Ok((output.status.success(), stdout, stderr))
 }
 
 #[cfg(test)]
@@ -1171,18 +614,6 @@ mod identity_tests {
             IdentityKind::Revision,
         )
         .unwrap();
-        println!(
-            "ID1 PATCHES: {:?}",
-            repo.run(&[
-                "diff-tree",
-                "-p",
-                "-r",
-                "--no-commit-id",
-                &target.clone(),
-                &c1.clone()
-            ])
-            .unwrap()
-        );
 
         // Change step cut, should change revision ID
         let c2 = commit(dir, "f2.txt", "2", "c2");
@@ -1238,18 +669,6 @@ mod identity_tests {
             IdentityKind::Body,
         )
         .unwrap();
-        println!(
-            "ID1 PATCHES: {:?}",
-            repo.run(&[
-                "diff-tree",
-                "-p",
-                "-r",
-                "--no-commit-id",
-                &target.clone(),
-                &c1.clone()
-            ])
-            .unwrap()
-        );
 
         // Join steps, body ID should stay the same
         let s2 = StaircaseMetadata {
@@ -1304,18 +723,6 @@ mod identity_tests {
             IdentityKind::Decomposition,
         )
         .unwrap();
-        println!(
-            "ID1 PATCHES: {:?}",
-            repo.run(&[
-                "diff-tree",
-                "-p",
-                "-r",
-                "--no-commit-id",
-                &target.clone(),
-                &c1.clone()
-            ])
-            .unwrap()
-        );
 
         // Rebase by committing same content with different messages on same target
         run_git(dir, &["checkout", &target]);
@@ -1401,18 +808,6 @@ mod identity_tests {
             IdentityKind::Outcome,
         )
         .unwrap();
-        println!(
-            "ID1 PATCHES: {:?}",
-            repo.run(&[
-                "diff-tree",
-                "-p",
-                "-r",
-                "--no-commit-id",
-                &target.clone(),
-                &c1.clone()
-            ])
-            .unwrap()
-        );
 
         // Reorder commits to produce same final tree, outcome ID should stay the same
         run_git(dir, &["checkout", "main"]);
@@ -1441,34 +836,4 @@ mod identity_tests {
         .unwrap();
         assert_eq!(id1, id2);
     }
-}
-
-pub fn resolve_explicit_staircase(
-    repo: &GitRepo,
-    steps: &[String],
-    onto: Option<&str>,
-) -> Result<ResolvedStaircase> {
-    let onto_final = match onto {
-        Some(o) => o.to_string(),
-        None => infer_onto(repo)?,
-    };
-
-    let mut staircase_steps = Vec::new();
-    for s in steps {
-        let oid = repo.resolve_ref(s)?;
-        let short_name = s.strip_prefix("refs/heads/").unwrap_or(s).to_string();
-        staircase_steps.push(Step {
-            name: short_name.clone(),
-            cut: oid,
-            branch: Some(short_name),
-        });
-    }
-
-    Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
-        id: Uuid::new_v4().to_string(),
-        name: steps.last().map(|s| s.strip_prefix("refs/heads/").unwrap_or(s).to_string()).unwrap_or_else(|| "explicit".to_string()),
-        target: onto_final,
-        steps: staircase_steps,
-        verification_policy: None,
-    }))
 }

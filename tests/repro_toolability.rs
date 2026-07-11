@@ -40,13 +40,7 @@ fn test_reorder_json() {
     let bin = env!("CARGO_BIN_EXE_git-staircase");
     let output = Command::new(bin)
         .current_dir(dir)
-        .args([
-            "--json",
-            "reorder",
-            "feature/auth",
-            "--steps",
-            "2,1",
-        ])
+        .args(["--json", "reorder", "feature/auth", "--steps", "2,1"])
         .output()
         .unwrap();
 

@@ -238,21 +238,36 @@ fn main() -> anyhow::Result<()> {
     let repo = GitRepo::new(repo_root);
 
     match cli.command {
-        Commands::Reorder { name, steps, staircase_steps, onto } => {
+        Commands::Reorder {
+            name,
+            steps,
+            staircase_steps,
+            onto,
+        } => {
             let rs = resolve_rs(&repo, name, staircase_steps, onto.clone())?;
             let steps = steps.ok_or_else(|| anyhow!("--steps (indices) must be provided"))?;
             let zero_based_steps: Vec<usize> = steps.iter().map(|s| s - 1).collect();
             core::reorder(&repo, &rs, &zero_based_steps)?;
             if cli.json {
-                let updated_rs = core::resolve_staircase(&repo, &rs.metadata().name, onto.as_deref())?
-                    .ok_or_else(|| anyhow!("Staircase '{}' not found after reorder", rs.metadata().name))?;
+                let updated_rs =
+                    core::resolve_staircase(&repo, &rs.metadata().name, onto.as_deref())?
+                        .ok_or_else(|| {
+                            anyhow!("Staircase '{}' not found after reorder", rs.metadata().name)
+                        })?;
                 let status = core::get_status_metadata(&repo, updated_rs.metadata().clone())?;
                 println!("{}", serde_json::to_string_pretty(&status)?);
             } else if !cli.porcelain {
                 println!("Reordered staircase.");
             }
         }
-        Commands::Move { name, steps, from, to, onto, commits } => {
+        Commands::Move {
+            name,
+            steps,
+            from,
+            to,
+            onto,
+            commits,
+        } => {
             let rs = resolve_rs(&repo, name, steps, onto)?;
             core::move_commits(&repo, &rs, from - 1, to - 1, &commits)?;
             if !cli.json && !cli.porcelain {
@@ -545,7 +560,12 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Id { name, steps, kind, onto } => {
+        Commands::Id {
+            name,
+            steps,
+            kind,
+            onto,
+        } => {
             let rs = resolve_rs(&repo, name, steps, onto)?;
             let was_implicit = !rs.is_managed();
             let id = core::compute_identity(&repo, &rs, kind)?;
