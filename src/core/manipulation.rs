@@ -2,6 +2,7 @@ use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::Step;
+use std::collections::{HashMap, HashSet};
 
 pub fn split(
     repo: &GitRepo,
@@ -96,7 +97,7 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
     let mut metadata = staircase.metadata().clone();
     let old_steps = metadata.steps.clone();
 
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     for &idx in new_order {
         if idx >= old_steps.len() || !seen.insert(idx) {
             return Err(StaircaseError::Other(
@@ -110,10 +111,19 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         new_steps.push(old_steps[idx].clone());
     }
 
+    // Save original branch OIDs for rollback
+    let mut original_branch_oids = HashMap::new();
+    for step in &old_steps {
+        if let Some(ref branch) = step.branch {
+            if let Some(oid) = repo.resolve_ref_opt(&format!("refs/heads/{}", branch))? {
+                original_branch_oids.insert(branch.clone(), oid);
+            }
+        }
+    }
+
     let target_oid = repo.resolve_ref(&metadata.target)?;
     let mut current_base = target_oid;
 
-    let mut success_count = 0;
     let mut rebase_err = None;
 
     for i in 0..new_steps.len() {
@@ -149,7 +159,6 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
                     let new_oid = repo.resolve_ref("HEAD")?;
                     new_steps[i].cut = new_oid.clone();
                     current_base = new_oid;
-                    success_count += 1;
                 }
                 Err(e) => {
                     rebase_err = Some(e);
@@ -158,18 +167,20 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
             }
         } else {
             current_base = actual_oid;
-            success_count += 1;
         }
     }
 
-    if success_count > 0 {
-        metadata.steps = new_steps;
-        staircase.commit_metadata(repo, metadata)?;
-    }
-
     if let Some(err) = rebase_err {
+        // ROLLBACK
+        let _ = repo.run(&["rebase", "--abort"]);
+        for (branch, oid) in original_branch_oids {
+            let _ = repo.update_branch(&branch, &oid);
+        }
         return Err(StaircaseError::Other(format!("Reorder failed: {}", err)));
     }
+
+    metadata.steps = new_steps;
+    staircase.commit_metadata(repo, metadata)?;
 
     Ok(())
 }
