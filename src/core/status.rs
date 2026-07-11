@@ -1,7 +1,7 @@
 use super::persistence;
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::model::{StaircaseMetadata, StaircaseStatus, StepStatus};
+use crate::model::{IdentityKind, StaircaseMetadata, StaircaseStatus, StepStatus};
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
     let metadata = persistence::read_metadata(repo, id)?;
@@ -63,10 +63,17 @@ pub fn get_status_metadata(
         }
     }
 
+    let verification_results = if is_implicit {
+        None
+    } else {
+        persistence::read_verification(repo, &metadata.id, IdentityKind::Lineage)?
+    };
+
     Ok(StaircaseStatus {
         metadata,
         steps,
         is_clean,
         is_implicit,
+        verification_results,
     })
 }

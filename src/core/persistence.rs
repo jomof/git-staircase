@@ -299,3 +299,23 @@ pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMeta
     }
     Ok(meta)
 }
+
+pub fn read_verification(
+    repo: &GitRepo,
+    key: &str,
+    kind: IdentityKind,
+) -> Result<Option<Vec<VerificationResult>>> {
+    let ref_name = match kind {
+        IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
+        IdentityKind::Revision => format!("refs/staircases/by-revision/{}/verification", key),
+        _ => return Ok(None),
+    };
+
+    if repo.resolve_ref_opt(&ref_name)?.is_none() {
+        return Ok(None);
+    }
+
+    let content = repo.run(&["cat-file", "-p", &format!("{}:verification.json", ref_name)])?;
+    let results: Vec<VerificationResult> = serde_json::from_str(&content)?;
+    Ok(Some(results))
+}

@@ -87,6 +87,7 @@ impl fmt::Display for StaircaseState {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseStatus {
+    pub verification_results: Option<Vec<VerificationResult>>,
     pub metadata: StaircaseMetadata,
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
@@ -158,6 +159,16 @@ impl ToPorcelain for StaircaseStatus {
                 },
                 if step.is_stale { "stale" } else { "up-to-date" }
             ));
+        }
+        if let Some(ref results) = self.verification_results {
+            for result in results {
+                out.push_str(&format!(
+                    "verify\t{}\t{}\t{}\n",
+                    result.step_name,
+                    if result.success { "pass" } else { "fail" },
+                    result.cut
+                ));
+            }
         }
         out
     }
@@ -245,6 +256,17 @@ impl ToHuman for StaircaseStatus {
                 &self.metadata.id
             }
         ));
+
+        if let Some(ref results) = self.verification_results {
+            out.push_str("  verification:\n");
+            for result in results {
+                out.push_str(&format!(
+                    "    {}: {}\n",
+                    result.step_name,
+                    if result.success { "PASS" } else { "FAIL" }
+                ));
+            }
+        }
         out
     }
 }
