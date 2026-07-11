@@ -45,7 +45,7 @@ enum Commands {
         #[arg(long)]
         managed: bool,
         #[arg(long)]
-        discovered: bool,
+        implicit: bool,
         #[arg(long)]
         onto: Option<String>,
     },
@@ -238,10 +238,10 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::List {
             managed,
-            discovered,
+            implicit,
             onto,
         } => {
-            let show_all = !managed && !discovered;
+            let show_all = !managed && !implicit;
             let mut all_results = Vec::new();
 
             if managed || show_all {
@@ -251,7 +251,7 @@ fn main() -> anyhow::Result<()> {
                 }
             }
 
-            if discovered || show_all {
+            if implicit || show_all {
                 let list = core::discover(&repo, onto.as_deref())?;
                 for d in list {
                     if let Discovery::Linear(s) = d {
@@ -271,9 +271,22 @@ fn main() -> anyhow::Result<()> {
                     println!("No staircases found.");
                 } else {
                     for r in all_results {
-                        let m = r.metadata();
+                        let m = r.metadata().clone();
+                        let status = core::get_status_metadata(&repo, m.clone())?;
+                        let state = if status.steps.iter().any(|s| s.is_stale) {
+                            "stale"
+                        } else {
+                            "clean"
+                        };
+                        let steps_count = m.steps.len();
+                        let steps_word = if steps_count == 1 { "step" } else { "steps" };
                         let implicit_marker = if r.is_managed() { "" } else { " (implicit)" };
-                        println!("{} (id: {}){}", m.name, m.id, implicit_marker);
+                        print!("{} {} {} {}", m.name, steps_count, steps_word, state);
+                        if !implicit_marker.is_empty() {
+                            println!("{}", implicit_marker);
+                        } else {
+                            println!();
+                        }
                     }
                 }
             }
