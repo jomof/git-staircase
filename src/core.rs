@@ -345,7 +345,7 @@ pub fn resolve_staircase(
     let staircases = repo.list_staircases()?;
     let mut managed_matches = Vec::new();
     for s in staircases {
-        if s.name == name {
+        if s.name == name || s.id == name {
             managed_matches.push(s);
         }
     }
@@ -357,28 +357,58 @@ pub fn resolve_staircase(
 
     let discoveries = discover(repo, Some(&onto_final))?;
     let mut implicit_matches = Vec::new();
-    for d in discoveries {
-        match d {
-            Discovery::Linear(s) => {
-                if s.name == name {
-                    // Check if this implicit match is already covered by a managed match.
-                    // We consider it covered if there's a managed staircase with the same name
-                    // that shares at least one step (by name and cut).
-                    let is_duplicate = managed_matches.iter().any(|m| {
-                        m.steps.iter().any(|m_step| {
-                            s.steps.iter().any(|s_step| {
-                                m_step.name == s_step.name && m_step.cut == s_step.cut
-                            })
-                        })
-                    });
-                    if !is_duplicate {
-                        implicit_matches.push(s);
+
+    // Try matching by nominal name
+    for d in &discoveries {
+        if let Discovery::Linear(s) = d {
+            if s.name == name {
+                implicit_matches.push(s.clone());
+            }
+        }
+    }
+
+    // If no matches by name yet, or if we want to find ref/OID matches too
+    // The spec says "if no managed staircase matches the name", but it also says 
+    // we should report ambiguity if multiple matches exist. 
+    // Let's try to resolve as ref/OID and see if it hits any cuts.
+    if let Ok(oid) = repo.resolve_ref(name) {
+        for d in &discoveries {
+            match d {
+                Discovery::Linear(s) => {
+                    if let Some(pos) = s.steps.iter().position(|step| step.cut == oid) {
+                        let mut sub_s = s.clone();
+                        sub_s.steps.truncate(pos + 1);
+                        // If it's a sub-staircase, we might need a better name, 
+                        // but for now let's use the step name if it matches the requested name.
+                        if !implicit_matches.iter().any(|m| m.steps == sub_s.steps) {
+                            implicit_matches.push(sub_s);
+                        }
+                    }
+                }
+                Discovery::Ambiguous(f) => {
+                    // If the OID is in the family, extract the linear path to it
+                    if let Some(step_name) = f.steps.values().find(|s| s.cut == oid).map(|s| &s.name) {
+                        if let Some(path) = extract_path_to(f, step_name) {
+                            if !implicit_matches.iter().any(|m| m.steps == path.steps) {
+                                implicit_matches.push(path);
+                            }
+                        }
                     }
                 }
             }
-            _ => {}
         }
     }
+
+    // De-duplicate implicit matches that are already managed
+    implicit_matches.retain(|s| {
+        !managed_matches.iter().any(|m| {
+            m.steps.iter().any(|m_step| {
+                s.steps.iter().any(|s_step| {
+                    m_step.name == s_step.name && m_step.cut == s_step.cut
+                })
+            })
+        })
+    });
 
     let total_matches = managed_matches.len() + implicit_matches.len();
 
@@ -412,6 +442,38 @@ pub fn resolve_staircase(
     }
 
     Ok(None)
+}
+
+fn extract_path_to(family: &StaircaseFamily, target_step_name: &str) -> Option<StaircaseMetadata> {
+    let mut path_steps = Vec::new();
+    let mut current = target_step_name.to_string();
+    
+    loop {
+        let step = family.steps.get(&current)?;
+        path_steps.push(Step {
+            name: step.name.clone(),
+            cut: step.cut.clone(),
+            branch: step.branch.clone(),
+        });
+        
+        // Find parent
+        let parent = family.steps.values().find(|s| s.children.contains(&current));
+        if let Some(p) = parent {
+            current = p.name.clone();
+        } else {
+            break;
+        }
+    }
+    
+    path_steps.reverse();
+    
+    Some(StaircaseMetadata {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: target_step_name.to_string(),
+        target: family.target.clone(),
+        steps: path_steps,
+        verification_policy: family.verification_policy.clone(),
+    })
 }
 
 pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetadata>> {
@@ -1364,4 +1426,34 @@ mod identity_tests {
         .unwrap();
         assert_eq!(id1, id2);
     }
+}
+
+pub fn resolve_explicit_staircase(
+    repo: &GitRepo,
+    steps: &[String],
+    onto: Option<&str>,
+) -> Result<ResolvedStaircase> {
+    let onto_final = match onto {
+        Some(o) => o.to_string(),
+        None => infer_onto(repo)?,
+    };
+
+    let mut staircase_steps = Vec::new();
+    for s in steps {
+        let oid = repo.resolve_ref(s)?;
+        let short_name = s.strip_prefix("refs/heads/").unwrap_or(s).to_string();
+        staircase_steps.push(Step {
+            name: short_name.clone(),
+            cut: oid,
+            branch: Some(short_name),
+        });
+    }
+
+    Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
+        id: Uuid::new_v4().to_string(),
+        name: steps.last().map(|s| s.strip_prefix("refs/heads/").unwrap_or(s).to_string()).unwrap_or_else(|| "explicit".to_string()),
+        target: onto_final,
+        steps: staircase_steps,
+        verification_policy: None,
+    }))
 }

@@ -21,18 +21,21 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
-
     /// Reorder steps of a staircase
     Reorder {
-        name: String,
+        name: Option<String>,
         #[arg(long, value_delimiter = ',')]
-        steps: Vec<usize>,
+        steps: Option<Vec<usize>>,
+        #[arg(long, value_delimiter = ',')]
+        staircase_steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
     },
     /// Move commits between steps
     Move {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         from: usize,
         #[arg(long)]
@@ -78,13 +81,17 @@ enum Commands {
     },
     /// Show details of a staircase
     Show {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
     },
     /// Show status of a staircase (clean/stale/modified)
     Status {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
     },
@@ -110,7 +117,9 @@ enum Commands {
     },
     /// Rebase the entire staircase onto a new target
     Rebase {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: String,
         #[arg(long)]
@@ -118,13 +127,17 @@ enum Commands {
     },
     /// Restack stale steps
     Restack {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
     },
     /// Verify a staircase
     Verify {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
         #[arg(long)]
@@ -138,7 +151,9 @@ enum Commands {
     },
     /// Show identities of a staircase
     Id {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
         #[arg(long, value_enum, default_value = "lineage")]
@@ -146,7 +161,9 @@ enum Commands {
     },
     /// Delete a managed staircase
     Delete {
-        name: String,
+        name: Option<String>,
+        #[arg(long, value_delimiter = ',')]
+        steps: Option<Vec<String>>,
         #[arg(long)]
         onto: Option<String>,
         #[arg(long)]
@@ -175,23 +192,20 @@ fn main() -> anyhow::Result<()> {
     let repo = GitRepo::new(repo_root);
 
     match cli.command {
-
-        Commands::Reorder { name, steps, onto } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            // Convert 1-based steps to 0-based
+        Commands::Reorder { name, steps, staircase_steps, onto } => {
+            let rs = resolve_rs(&repo, name, staircase_steps, onto)?;
+            let steps = steps.ok_or_else(|| anyhow!("--steps (indices) must be provided"))?;
             let zero_based_steps: Vec<usize> = steps.iter().map(|s| s - 1).collect();
             core::reorder(&repo, &rs, &zero_based_steps)?;
             if !cli.json && !cli.porcelain {
-                println!("Reordered staircase '{}'.", name);
+                println!("Reordered staircase.");
             }
         }
-        Commands::Move { name, from, to, onto, commits } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+        Commands::Move { name, steps, from, to, onto, commits } => {
+            let rs = resolve_rs(&repo, name, steps, onto)?;
             core::move_commits(&repo, &rs, from - 1, to - 1, &commits)?;
             if !cli.json && !cli.porcelain {
-                println!("Moved commits in staircase '{}'.", name);
+                println!("Moved commits.");
             }
         }
         Commands::Drop { step, onto } => {
@@ -346,9 +360,8 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Show { name, onto } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+        Commands::Show { name, steps, onto } => {
+            let rs = resolve_rs(&repo, name, steps, onto)?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&rs)?);
             } else if cli.porcelain {
@@ -357,9 +370,8 @@ fn main() -> anyhow::Result<()> {
                 print_resolved_staircase(&rs);
             }
         }
-        Commands::Status { name, onto } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+        Commands::Status { name, steps, onto } => {
+            let rs = resolve_rs(&repo, name, steps, onto)?;
             let status = core::get_status_metadata(&repo, rs.metadata().clone())?;
             if cli.json {
                 println!("{}", serde_json::to_string_pretty(&status)?);
@@ -422,27 +434,25 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Rebase {
             name,
+            steps,
             onto,
             resolve_onto,
         } => {
-            let rs = core::resolve_staircase(&repo, &name, resolve_onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let rs = resolve_rs(&repo, name, steps, resolve_onto)?;
             core::rebase(&repo, &rs, &onto)?;
             if !cli.json && !cli.porcelain {
-                println!("Rebased staircase '{}' onto '{}'.", name, onto);
+                println!("Rebased staircase onto '{}'.", onto);
             }
         }
-        Commands::Restack { name, onto } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+        Commands::Restack { name, steps, onto } => {
+            let rs = resolve_rs(&repo, name, steps, onto)?;
             core::restack(&repo, &rs)?;
             if !cli.json && !cli.porcelain {
-                println!("Restacked staircase '{}'.", name);
+                println!("Restacked staircase.");
             }
         }
-        Commands::Id { name, kind, onto } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+        Commands::Id { name, steps, kind, onto } => {
+            let rs = resolve_rs(&repo, name, steps, onto)?;
             let id = core::compute_identity(&repo, &rs, kind)?;
             if cli.json {
                 println!(
@@ -455,6 +465,7 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Verify {
             name,
+            steps,
             onto,
             aggregate,
             each_prefix,
@@ -463,10 +474,11 @@ fn main() -> anyhow::Result<()> {
         } => {
             let aggregate_opt = if aggregate { Some(true) } else { None };
             let each_prefix_opt = if each_prefix { Some(true) } else { None };
+            let rs = resolve_rs(&repo, name, steps, onto.clone())?;
             let results = core::verify(
                 onto.as_deref(),
                 &repo,
-                &name,
+                &rs.metadata().name,
                 build_command,
                 test_command,
                 aggregate_opt,
@@ -495,14 +507,14 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Delete {
             name,
+            steps,
             onto,
             delete_branches,
         } => {
-            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let rs = resolve_rs(&repo, name, steps, onto)?;
             core::delete(&repo, &rs.metadata().id, delete_branches)?;
             if !cli.json && !cli.porcelain {
-                println!("Deleted staircase '{}'.", name);
+                println!("Deleted staircase.");
             }
         }
     }
@@ -604,4 +616,19 @@ fn print_resolved_staircase(rs: &git_staircase::ResolvedStaircase) {
         println!("Implicit Staircase: {}", s.name);
     }
     print_staircase(s);
+}
+
+fn resolve_rs(
+    repo: &GitRepo,
+    name: Option<String>,
+    steps: Option<Vec<String>>,
+    onto: Option<String>,
+) -> anyhow::Result<git_staircase::ResolvedStaircase> {
+    if let Some(s) = steps {
+        Ok(core::resolve_explicit_staircase(repo, &s, onto.as_deref())?)
+    } else {
+        let name = name.ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
+        core::resolve_staircase(repo, &name, onto.as_deref())?
+            .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
+    }
 }
