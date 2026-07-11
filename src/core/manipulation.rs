@@ -170,6 +170,9 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
     let target_oid = repo.resolve_ref(&metadata.target)?;
     let mut current_base = target_oid;
 
+    let mut success_count = 0;
+    let mut rebase_err = None;
+
     for i in 0..new_steps.len() {
         let step = &new_steps[i];
         let actual_oid = repo.resolve_ref(&step.cut)?;
@@ -183,18 +186,27 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
 
         if let Some(ref branch_name) = step.branch {
             if current_base != old_parent_oid {
-                repo.run_interactive(&[
+                match repo.run_interactive(&[
                     "rebase",
                     "--onto",
                     &current_base,
                     &old_parent_oid,
                     branch_name,
-                ])?;
-                let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
-                new_steps[i].cut = new_oid.clone();
-                current_base = new_oid;
+                ]) {
+                    Ok(_) => {
+                        let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
+                        new_steps[i].cut = new_oid.clone();
+                        current_base = new_oid;
+                        success_count += 1;
+                    }
+                    Err(e) => {
+                        rebase_err = Some(e);
+                        break;
+                    }
+                }
             } else {
                 current_base = actual_oid;
+                success_count += 1;
             }
         } else {
             return Err(StaircaseError::Other(format!(
@@ -204,14 +216,22 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         }
     }
 
-    metadata.steps = new_steps;
-    if staircase.is_managed() {
-        repo.write_metadata(&metadata)?;
-        for step in &metadata.steps {
-            repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
+    if success_count > 0 {
+        metadata.steps = new_steps;
+        if staircase.is_managed() {
+            repo.write_metadata(&metadata)?;
+            for step in &metadata.steps {
+                repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
+            }
+        } else {
+            adopt(repo, &metadata)?;
         }
-    } else {
-        adopt(repo, &metadata)?;
+    }
+
+    if let Some(err) = rebase_err {
+        return Err(StaircaseError::Other(format!(
+            "Reorder failed: {}", err
+        )));
     }
 
     Ok(())
@@ -238,6 +258,9 @@ pub fn move_commits(
     to_step_index: usize,
     commits: &[String],
 ) -> Result<()> {
+    if commits.is_empty() {
+        return Ok(());
+    }
     let mut metadata = staircase.metadata().clone();
     if from_step_index >= metadata.steps.len() || to_step_index >= metadata.steps.len() {
         return Err(StaircaseError::Other(
