@@ -1,7 +1,7 @@
 mod common;
 use common::*;
-use git_staircase::core;
 use git_staircase::ResolvedStaircase;
+use git_staircase::core;
 use git_staircase::model::{StaircaseMetadata, Step};
 
 #[test]

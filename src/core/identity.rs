@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::model::{IdentityKind};
+use crate::model::IdentityKind;
 
 use super::ResolvedStaircase;
 pub fn compute_identity(

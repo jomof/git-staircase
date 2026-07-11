@@ -52,17 +52,24 @@ impl ResolvedStaircase {
             repo.delete_step_ref(&metadata.id, &removed.name)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
-            if removed.branch.is_some() {
+            // If all remaining steps have branches, it can stay implicit.
+            // But if it becomes stale, it must be managed.
+            if metadata.steps.iter().all(|s| s.branch.is_some()) && is_clean(repo, &metadata)? {
+                Ok(ResolvedStaircase::Implicit(metadata))
+            } else {
                 adopt(repo, &metadata)?;
                 Ok(ResolvedStaircase::Managed(metadata))
-            } else {
-                Ok(ResolvedStaircase::Implicit(metadata))
             }
         }
     }
 
     /// Update a step's OID and persist.
-    pub fn update_step_oid(&self, repo: &GitRepo, index: usize, new_oid: String) -> Result<ResolvedStaircase> {
+    pub fn update_step_oid(
+        &self,
+        repo: &GitRepo,
+        index: usize,
+        new_oid: String,
+    ) -> Result<ResolvedStaircase> {
         let mut metadata = self.metadata().clone();
         metadata.steps[index].cut = new_oid.clone();
 
@@ -73,6 +80,10 @@ impl ResolvedStaircase {
         } else {
             if let Some(ref branch) = metadata.steps[index].branch {
                 repo.update_branch(branch, &new_oid)?;
+                // Check if the entire staircase is still clean.
+                // If we are restacking, it might be transiently stale.
+                // But update_step_oid is usually called by restack which then calls commit_metadata.
+                // To avoid premature adoption during restack, we allow it to stay implicit if it has a branch.
                 Ok(ResolvedStaircase::Implicit(metadata))
             } else {
                 adopt(repo, &metadata)?;
@@ -83,7 +94,11 @@ impl ResolvedStaircase {
 
     /// Update the entire metadata and persist it.
     /// This is used for operations like reorder where multiple things change.
-    pub fn commit_metadata(&self, repo: &GitRepo, metadata: StaircaseMetadata) -> Result<ResolvedStaircase> {
+    pub fn commit_metadata(
+        &self,
+        repo: &GitRepo,
+        metadata: StaircaseMetadata,
+    ) -> Result<ResolvedStaircase> {
         if self.is_managed() {
             repo.write_metadata(&metadata)?;
             for step in &metadata.steps {
@@ -91,10 +106,38 @@ impl ResolvedStaircase {
             }
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
-            adopt(repo, &metadata)?;
-            Ok(ResolvedStaircase::Managed(metadata))
+            // An implicit staircase can stay implicit if it remains discoverable (all steps have branches)
+            // and it is clean. Stale staircases must be managed.
+            if metadata.steps.iter().all(|s| s.branch.is_some()) && is_clean(repo, &metadata)? {
+                Ok(ResolvedStaircase::Implicit(metadata))
+            } else {
+                adopt(repo, &metadata)?;
+                Ok(ResolvedStaircase::Managed(metadata))
+            }
         }
     }
+}
+
+pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
+    let target_oid = match repo.resolve_ref(&staircase.target) {
+        Ok(oid) => oid,
+        Err(_) => return Ok(false),
+    };
+    let mut last_cut = target_oid;
+    for step in &staircase.steps {
+        let current_cut = match repo.resolve_ref(&step.cut) {
+            Ok(oid) => oid,
+            Err(_) => return Ok(false),
+        };
+        if current_cut == last_cut {
+            return Ok(false);
+        }
+        if !repo.is_ancestor(&last_cut, &current_cut)? {
+            return Ok(false);
+        }
+        last_cut = current_cut;
+    }
+    Ok(true)
 }
 
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
@@ -131,7 +174,11 @@ impl ToPorcelain for ResolvedStaircase {
             "{}\t{}\t{}\t{}",
             m.name,
             m.id,
-            if self.is_managed() { "managed" } else { "implicit" },
+            if self.is_managed() {
+                "managed"
+            } else {
+                "implicit"
+            },
             m.steps.len()
         )
     }

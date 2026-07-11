@@ -1,7 +1,7 @@
 use git_staircase::GitRepo;
 use git_staircase::core;
-use git_staircase::model::{StaircaseMetadata, Step};
 use git_staircase::core::ResolvedStaircase;
+use git_staircase::model::{StaircaseMetadata, Step};
 use std::fs;
 use std::process::Command;
 use tempfile::TempDir;
@@ -29,23 +29,63 @@ fn setup_repo() -> (TempDir, GitRepo) {
 
     // Initial commit
     fs::write(repo_path.join("f"), "root\n").unwrap();
-    Command::new("git").current_dir(&repo_path).args(["add", "f"]).status().unwrap();
-    Command::new("git").current_dir(&repo_path).args(["commit", "-m", "initial"]).status().unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["add", "f"])
+        .status()
+        .unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["commit", "-m", "initial"])
+        .status()
+        .unwrap();
 
     // Step A
-    Command::new("git").current_dir(&repo_path).args(["checkout", "-b", "branch-a"]).status().unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["checkout", "-b", "branch-a"])
+        .status()
+        .unwrap();
     fs::write(repo_path.join("f"), "A1\n").unwrap();
-    Command::new("git").current_dir(&repo_path).args(["add", "f"]).status().unwrap();
-    Command::new("git").current_dir(&repo_path).args(["commit", "-m", "commit A1"]).status().unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["add", "f"])
+        .status()
+        .unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["commit", "-m", "commit A1"])
+        .status()
+        .unwrap();
     fs::write(repo_path.join("f"), "A2\n").unwrap();
-    Command::new("git").current_dir(&repo_path).args(["add", "f"]).status().unwrap();
-    Command::new("git").current_dir(&repo_path).args(["commit", "-m", "commit A2"]).status().unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["add", "f"])
+        .status()
+        .unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["commit", "-m", "commit A2"])
+        .status()
+        .unwrap();
 
     // Step B
-    Command::new("git").current_dir(&repo_path).args(["checkout", "-b", "branch-b"]).status().unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["checkout", "-b", "branch-b"])
+        .status()
+        .unwrap();
     fs::write(repo_path.join("f"), "B\n").unwrap();
-    Command::new("git").current_dir(&repo_path).args(["add", "f"]).status().unwrap();
-    Command::new("git").current_dir(&repo_path).args(["commit", "-m", "commit B"]).status().unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["add", "f"])
+        .status()
+        .unwrap();
+    Command::new("git")
+        .current_dir(&repo_path)
+        .args(["commit", "-m", "commit B"])
+        .status()
+        .unwrap();
 
     (tmp, GitRepo::new(repo_path))
 }
@@ -62,8 +102,16 @@ fn test_managed_staircase_updates() {
         name: "Managed".to_string(),
         target: "main".to_string(),
         steps: vec![
-            Step { name: "A".to_string(), cut: a2_oid.clone(), branch: Some("branch-a".to_string()) },
-            Step { name: "B".to_string(), cut: b_oid.clone(), branch: Some("branch-b".to_string()) },
+            Step {
+                name: "A".to_string(),
+                cut: a2_oid.clone(),
+                branch: Some("branch-a".to_string()),
+            },
+            Step {
+                name: "B".to_string(),
+                cut: b_oid.clone(),
+                branch: Some("branch-b".to_string()),
+            },
         ],
         verification_policy: None,
     };
@@ -73,16 +121,26 @@ fn test_managed_staircase_updates() {
 
     // Split Step A
     core::split(&repo, &rs, 0, &a1_oid, Some("A-part1")).unwrap();
-    let rs = core::resolve_staircase(&repo, "test-managed", None).unwrap().unwrap();
+    let rs = core::resolve_staircase(&repo, "test-managed", None)
+        .unwrap()
+        .unwrap();
     assert_eq!(rs.metadata().steps.len(), 3);
     assert_eq!(rs.metadata().steps[0].name, "A-part1");
-    assert!(repo.resolve_ref("refs/staircases/test-managed/steps/A-part1").is_ok());
+    assert!(
+        repo.resolve_ref("refs/staircases/test-managed/steps/A-part1")
+            .is_ok()
+    );
 
     // Join Step A-part1 and A
     core::join(&repo, &rs, 0, 1).unwrap();
-    let rs = core::resolve_staircase(&repo, "test-managed", None).unwrap().unwrap();
+    let rs = core::resolve_staircase(&repo, "test-managed", None)
+        .unwrap()
+        .unwrap();
     assert_eq!(rs.metadata().steps.len(), 2);
-    assert!(repo.resolve_ref("refs/staircases/test-managed/steps/A-part1").is_err());
+    assert!(
+        repo.resolve_ref("refs/staircases/test-managed/steps/A-part1")
+            .is_err()
+    );
 
     // Restack (no-op here)
     core::restack(&repo, &rs).unwrap();
@@ -100,8 +158,16 @@ fn test_implicit_staircase_updates() {
         name: "Implicit".to_string(),
         target: "main".to_string(),
         steps: vec![
-            Step { name: "A".to_string(), cut: a2_oid.clone(), branch: Some("branch-a".to_string()) },
-            Step { name: "B".to_string(), cut: b_oid.clone(), branch: Some("branch-b".to_string()) },
+            Step {
+                name: "A".to_string(),
+                cut: a2_oid.clone(),
+                branch: Some("branch-a".to_string()),
+            },
+            Step {
+                name: "B".to_string(),
+                cut: b_oid.clone(),
+                branch: Some("branch-b".to_string()),
+            },
         ],
         verification_policy: None,
     };

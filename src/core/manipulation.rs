@@ -1,7 +1,7 @@
+use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{StaircaseMetadata, Step};
-use crate::core::ResolvedStaircase;
+use crate::model::Step;
 
 pub fn split(
     repo: &GitRepo,
@@ -179,10 +179,22 @@ pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) ->
         ));
     }
 
+    let branch_to_delete = if !staircase.is_managed() {
+        metadata.steps[step_index].branch.clone()
+    } else {
+        None
+    };
+
     let mut new_order: Vec<usize> = (0..metadata.steps.len()).collect();
     new_order.remove(step_index);
 
-    reorder(repo, staircase, &new_order)
+    reorder(repo, staircase, &new_order)?;
+
+    if let Some(branch) = branch_to_delete {
+        let _ = repo.run(&["branch", "-D", &branch]);
+    }
+
+    Ok(())
 }
 
 pub fn move_commits(
@@ -327,8 +339,12 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
 pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     metadata.target = onto.to_string();
-    
-    let updated_rs = staircase.commit_metadata(repo, metadata)?;
+
+    let updated_rs = if staircase.is_managed() {
+        staircase.commit_metadata(repo, metadata)?
+    } else {
+        ResolvedStaircase::Implicit(metadata)
+    };
     restack(repo, &updated_rs)
 }
 

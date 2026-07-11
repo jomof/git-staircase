@@ -50,7 +50,6 @@ pub enum Discovery {
     Ambiguous(StaircaseFamily),
 }
 
-
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchInfo {
     pub refname: String, // e.g. "refs/heads/feature/auth-core"
@@ -106,7 +105,6 @@ impl ToPorcelain for StaircaseMetadata {
         format!("{} {}", self.name, self.id)
     }
 }
-
 
 impl ToPorcelain for StaircaseStatus {
     fn to_porcelain(&self) -> String {
@@ -248,7 +246,6 @@ impl ToHuman for StaircaseFamily {
         out
     }
 }
-
 
 impl ToHuman for Discovery {
     fn to_human(&self) -> String {
