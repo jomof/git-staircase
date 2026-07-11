@@ -1,5 +1,7 @@
 use crate::error::{Result, StaircaseError};
-use crate::model::{BranchInfo, IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult};
+use crate::model::{
+    BranchInfo, IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult,
+};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -59,9 +61,47 @@ impl GitRepo {
         Ok(commit_oid.to_string())
     }
 
-    pub fn run(&self, args: &[&str]) -> Result<String> {
-        let output = self.git_cmd().args(args).output()?;
+    fn exec(
+        &self,
+        args: &[&str],
+        stdin: Option<&str>,
+        interactive: bool,
+    ) -> Result<std::process::Output> {
+        let mut cmd = self.git_cmd();
+        cmd.args(args);
 
+        if interactive {
+            let status = cmd.status()?;
+            Ok(std::process::Output {
+                status,
+                stdout: Vec::new(),
+                stderr: Vec::new(),
+            })
+        } else if let Some(input) = stdin {
+            let mut child = cmd
+                .stdin(Stdio::piped())
+                .stdout(Stdio::piped())
+                .stderr(Stdio::piped())
+                .spawn()?;
+
+            let mut child_stdin = child.stdin.take().ok_or_else(|| {
+                StaircaseError::Other("Failed to open stdin for git command".into())
+            })?;
+
+            let input = input.to_string();
+            thread::scope(|s| {
+                s.spawn(move || {
+                    let _ = child_stdin.write_all(input.as_bytes());
+                });
+                child.wait_with_output()
+            })
+            .map_err(Into::into)
+        } else {
+            cmd.output().map_err(Into::into)
+        }
+    }
+
+    fn check_status(&self, output: &std::process::Output, args: &[&str]) -> Result<()> {
         if !output.status.success() {
             return Err(StaircaseError::GitCommandFailed {
                 command: format!("git {}", args.join(" ")),
@@ -69,53 +109,24 @@ impl GitRepo {
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             });
         }
+        Ok(())
+    }
 
+    pub fn run(&self, args: &[&str]) -> Result<String> {
+        let output = self.exec(args, None, false)?;
+        self.check_status(&output, args)?;
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
     pub fn run_with_stdin(&self, args: &[&str], stdin: &str) -> Result<String> {
-        let mut child = self
-            .git_cmd()
-            .args(args)
-            .stdin(Stdio::piped())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .spawn()?;
-
-        let mut child_stdin = child
-            .stdin
-            .take()
-            .ok_or_else(|| StaircaseError::Other("Failed to open stdin for git command".into()))?;
-
-        let output = thread::scope(|s| {
-            s.spawn(move || {
-                let _ = child_stdin.write_all(stdin.as_bytes());
-            });
-            child.wait_with_output()
-        })?;
-
-        if !output.status.success() {
-            return Err(StaircaseError::GitCommandFailed {
-                command: format!("git {}", args.join(" ")),
-                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            });
-        }
-
+        let output = self.exec(args, Some(stdin), false)?;
+        self.check_status(&output, args)?;
         Ok(String::from_utf8_lossy(&output.stdout).into_owned())
     }
 
     pub fn run_interactive(&self, args: &[&str]) -> Result<()> {
-        let status = self.git_cmd().args(args).status()?;
-
-        if !status.success() {
-            return Err(StaircaseError::GitCommandFailed {
-                command: format!("git {}", args.join(" ")),
-                stdout: String::new(),
-                stderr: String::new(),
-            });
-        }
-
+        let output = self.exec(args, None, true)?;
+        self.check_status(&output, args)?;
         Ok(())
     }
 
@@ -125,10 +136,8 @@ impl GitRepo {
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
-        let output = self
-            .git_cmd()
-            .args(["rev-parse", "--verify", rev])
-            .output()?;
+        let args = ["rev-parse", "--verify", rev];
+        let output = self.exec(&args, None, false)?;
 
         if output.status.success() {
             Ok(Some(
@@ -140,19 +149,16 @@ impl GitRepo {
     }
 
     pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool> {
-        let output = self
-            .git_cmd()
-            .args(["merge-base", "--is-ancestor", ancestor, descendant])
-            .output()?;
+        let args = ["merge-base", "--is-ancestor", ancestor, descendant];
+        let output = self.exec(&args, None, false)?;
 
         match output.status.code() {
             Some(0) => Ok(true),
             Some(1) => Ok(false),
-            _ => Err(StaircaseError::GitCommandFailed {
-                command: format!("git merge-base --is-ancestor {} {}", ancestor, descendant),
-                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-            }),
+            _ => {
+                self.check_status(&output, &args)?;
+                Ok(false)
+            }
         }
     }
 
@@ -279,32 +285,26 @@ impl GitRepo {
                 "lineage" => id = parts[1].to_string(),
                 "target-ref" => target = parts[1].to_string(),
                 "build-command" => {
-                    let policy = verification_policy.get_or_insert_with(|| {
-                        VerificationPolicy {
-                            build_command: None,
-                            test_command: None,
-                            verify_each_prefix: false,
-                        }
+                    let policy = verification_policy.get_or_insert_with(|| VerificationPolicy {
+                        build_command: None,
+                        test_command: None,
+                        verify_each_prefix: false,
                     });
                     policy.build_command = Some(parts[1].to_string());
                 }
                 "test-command" => {
-                    let policy = verification_policy.get_or_insert_with(|| {
-                        VerificationPolicy {
-                            build_command: None,
-                            test_command: None,
-                            verify_each_prefix: false,
-                        }
+                    let policy = verification_policy.get_or_insert_with(|| VerificationPolicy {
+                        build_command: None,
+                        test_command: None,
+                        verify_each_prefix: false,
                     });
                     policy.test_command = Some(parts[1].to_string());
                 }
                 "verify-each-prefix" => {
-                    let policy = verification_policy.get_or_insert_with(|| {
-                        VerificationPolicy {
-                            build_command: None,
-                            test_command: None,
-                            verify_each_prefix: false,
-                        }
+                    let policy = verification_policy.get_or_insert_with(|| VerificationPolicy {
+                        build_command: None,
+                        test_command: None,
+                        verify_each_prefix: false,
                     });
                     policy.verify_each_prefix = parts[1] == "true";
                 }
@@ -460,10 +460,8 @@ impl GitRepo {
     }
 
     pub fn current_branch(&self) -> Result<Option<String>> {
-        let output = self
-            .git_cmd()
-            .args(["symbolic-ref", "-q", "HEAD"])
-            .output()?;
+        let args = ["symbolic-ref", "-q", "HEAD"];
+        let output = self.exec(&args, None, false)?;
         if output.status.success() {
             Ok(Some(
                 String::from_utf8_lossy(&output.stdout).trim().to_string(),
@@ -618,5 +616,32 @@ mod tests {
         let parts: Vec<&str> = parents.split_whitespace().collect();
         assert_eq!(parts.len(), 2);
         assert_eq!(parts[1], commit_oid);
+    }
+}
+
+#[cfg(test)]
+mod extra_tests {
+    use super::*;
+    use crate::error::StaircaseError;
+    use tempfile::TempDir;
+
+    #[test]
+    fn test_git_command_failed_captures_info() {
+        // ARRANGE
+        let tmp = TempDir::new().unwrap();
+        let repo = GitRepo::new(tmp.path().to_path_buf());
+        let _ = std::process::Command::new("git").current_dir(tmp.path()).arg("init").status();
+
+        // ACT
+        let result = repo.run(&["rev-parse", "HEAD"]);
+
+        // ASSERT
+        match result {
+            Err(StaircaseError::GitCommandFailed { command, stdout: _, stderr }) => {
+                assert!(command.contains("git rev-parse HEAD"));
+                assert!(stderr.contains("fatal: ambiguous argument 'HEAD'"));
+            }
+            _ => panic!("Expected GitCommandFailed error, got {:?}", result),
+        }
     }
 }
