@@ -533,6 +533,131 @@ pub fn join(
     Ok(())
 }
 
+
+pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
+    let mut metadata = staircase.metadata().clone();
+    let old_steps = metadata.steps.clone();
+
+    // Allowing different number of steps for drop/filter operations
+
+    let mut seen = std::collections::HashSet::new();
+    for &idx in new_order {
+        if idx >= old_steps.len() || !seen.insert(idx) {
+            return Err(StaircaseError::Other("Invalid step indices in new order".to_string()));
+        }
+    }
+
+    let mut new_steps = Vec::new();
+    for &idx in new_order {
+        new_steps.push(old_steps[idx].clone());
+    }
+
+    let target_oid = repo.resolve_ref(&metadata.target)?;
+    let mut current_base = target_oid;
+
+    for i in 0..new_steps.len() {
+        let step = &new_steps[i];
+        let actual_oid = repo.resolve_ref(&step.cut)?;
+
+        // Find old parent of this step in the ORIGINAL staircase
+        let old_idx = new_order[i];
+        let old_parent_oid = if old_idx == 0 {
+            repo.merge_base(&actual_oid, &repo.resolve_ref(&metadata.target)?)?
+        } else {
+            old_steps[old_idx - 1].cut.clone()
+        };
+
+        if let Some(ref branch_name) = step.branch {
+            if current_base != old_parent_oid {
+                repo.run_interactive(&[
+                    "rebase",
+                    "--onto",
+                    &current_base,
+                    &old_parent_oid,
+                    branch_name,
+                ])?;
+                let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
+                new_steps[i].cut = new_oid.clone();
+                current_base = new_oid;
+            } else {
+                current_base = actual_oid;
+            }
+        } else {
+            return Err(StaircaseError::Other(format!("Step '{}' has no branch; reshaping requires branches", step.name)));
+        }
+    }
+
+    metadata.steps = new_steps;
+    if staircase.is_managed() {
+        repo.write_metadata(&metadata)?;
+        for step in &metadata.steps {
+            repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
+        }
+    } else {
+        adopt(repo, &metadata)?;
+    }
+
+    Ok(())
+}
+
+pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) -> Result<()> {
+    let metadata = staircase.metadata().clone();
+    if step_index >= metadata.steps.len() {
+        return Err(StaircaseError::Other("Step index out of bounds".to_string()));
+    }
+
+    let mut new_order: Vec<usize> = (0..metadata.steps.len()).collect();
+    new_order.remove(step_index);
+
+    reorder(repo, staircase, &new_order)
+}
+
+pub fn move_commits(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    from_step_index: usize,
+    to_step_index: usize,
+    commits: &[String],
+) -> Result<()> {
+    let mut metadata = staircase.metadata().clone();
+    if from_step_index >= metadata.steps.len() || to_step_index >= metadata.steps.len() {
+        return Err(StaircaseError::Other("Step index out of bounds".to_string()));
+    }
+
+    if from_step_index == to_step_index {
+        return Ok(());
+    }
+
+    if to_step_index + 1 == from_step_index {
+        let commit_to_move = &commits[0];
+        let oid_to_move = repo.resolve_ref(commit_to_move)?;
+        
+        let prev_cut = if from_step_index == 0 {
+            repo.resolve_ref(&metadata.target)?
+        } else {
+            metadata.steps[from_step_index - 1].cut.clone()
+        };
+        
+        let commits_in_from_step = repo.commits_between(&prev_cut, &metadata.steps[from_step_index].cut)?;
+        if commits_in_from_step.first() == Some(&oid_to_move) {
+            metadata.steps[to_step_index].cut = oid_to_move.clone();
+            
+            if let Some(ref branch) = metadata.steps[to_step_index].branch {
+                repo.update_branch(branch, &oid_to_move)?;
+            }
+            
+            if staircase.is_managed() {
+                repo.write_metadata(&metadata)?;
+                repo.update_step_ref(&metadata.id, &metadata.steps[to_step_index].name, &oid_to_move)?;
+            } else {
+                adopt(repo, &metadata)?;
+            }
+            return Ok(());
+        }
+    }
+
+    Err(StaircaseError::Other("Complex move not yet implemented".to_string()))
+}
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     let mut status = get_status_metadata(repo, staircase.metadata().clone())?;
 

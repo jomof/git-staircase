@@ -21,6 +21,33 @@ struct Cli {
 
 #[derive(Subcommand)]
 enum Commands {
+
+    /// Reorder steps of a staircase
+    Reorder {
+        name: String,
+        #[arg(long, value_delimiter = ',')]
+        steps: Vec<usize>,
+        #[arg(long)]
+        onto: Option<String>,
+    },
+    /// Move commits between steps
+    Move {
+        name: String,
+        #[arg(long)]
+        from: usize,
+        #[arg(long)]
+        to: usize,
+        #[arg(long)]
+        onto: Option<String>,
+        commits: Vec<String>,
+    },
+    /// Drop a step from a staircase
+    Drop {
+        /// Format: <staircase_name>:<step_number> (1-based)
+        step: String,
+        #[arg(long)]
+        onto: Option<String>,
+    },
     /// Discover potential staircases
     Discover {
         #[arg(long)]
@@ -148,6 +175,34 @@ fn main() -> anyhow::Result<()> {
     let repo = GitRepo::new(repo_root);
 
     match cli.command {
+
+        Commands::Reorder { name, steps, onto } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            // Convert 1-based steps to 0-based
+            let zero_based_steps: Vec<usize> = steps.iter().map(|s| s - 1).collect();
+            core::reorder(&repo, &rs, &zero_based_steps)?;
+            if !cli.json && !cli.porcelain {
+                println!("Reordered staircase '{}'.", name);
+            }
+        }
+        Commands::Move { name, from, to, onto, commits } => {
+            let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            core::move_commits(&repo, &rs, from - 1, to - 1, &commits)?;
+            if !cli.json && !cli.porcelain {
+                println!("Moved commits in staircase '{}'.", name);
+            }
+        }
+        Commands::Drop { step, onto } => {
+            let (sc_name, step_num) = parse_step_spec(&step)?;
+            let rs = core::resolve_staircase(&repo, &sc_name, onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
+            core::drop(&repo, &rs, step_num - 1)?;
+            if !cli.json && !cli.porcelain {
+                println!("Dropped step {} from staircase '{}'.", step_num, sc_name);
+            }
+        }
         Commands::Discover { onto } => {
             let discovered = core::discover(&repo, onto.as_deref())?;
             if cli.json {
