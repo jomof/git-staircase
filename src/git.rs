@@ -1,5 +1,5 @@
 use crate::error::{Result, StaircaseError};
-use crate::model::{BranchInfo, IdentityKind, StaircaseMetadata, VerificationResult};
+use crate::model::{BranchInfo, IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -178,6 +178,18 @@ impl GitRepo {
         let target_oid = self.resolve_ref(&metadata.target)?;
         descriptor.push_str(&format!("target-oid {}\n", target_oid));
 
+        if let Some(ref policy) = metadata.verification_policy {
+            if let Some(ref cmd) = policy.build_command {
+                descriptor.push_str(&format!("build-command {}\n", cmd));
+            }
+            if let Some(ref cmd) = policy.test_command {
+                descriptor.push_str(&format!("test-command {}\n", cmd));
+            }
+            if policy.verify_each_prefix {
+                descriptor.push_str("verify-each-prefix true\n");
+            }
+        }
+
         for step in &metadata.steps {
             descriptor.push_str("\n");
             descriptor.push_str(&format!("step {}\n", step.name));
@@ -249,7 +261,8 @@ impl GitRepo {
         let mut id = String::new();
         let mut target = String::new();
         let mut steps = Vec::new();
-        let mut current_step: Option<crate::model::Step> = None;
+        let mut current_step: Option<Step> = None;
+        let mut verification_policy = None;
 
         for line in content.lines() {
             let line = line.trim();
@@ -265,11 +278,41 @@ impl GitRepo {
             match parts[0] {
                 "lineage" => id = parts[1].to_string(),
                 "target-ref" => target = parts[1].to_string(),
+                "build-command" => {
+                    let policy = verification_policy.get_or_insert_with(|| {
+                        VerificationPolicy {
+                            build_command: None,
+                            test_command: None,
+                            verify_each_prefix: false,
+                        }
+                    });
+                    policy.build_command = Some(parts[1].to_string());
+                }
+                "test-command" => {
+                    let policy = verification_policy.get_or_insert_with(|| {
+                        VerificationPolicy {
+                            build_command: None,
+                            test_command: None,
+                            verify_each_prefix: false,
+                        }
+                    });
+                    policy.test_command = Some(parts[1].to_string());
+                }
+                "verify-each-prefix" => {
+                    let policy = verification_policy.get_or_insert_with(|| {
+                        VerificationPolicy {
+                            build_command: None,
+                            test_command: None,
+                            verify_each_prefix: false,
+                        }
+                    });
+                    policy.verify_each_prefix = parts[1] == "true";
+                }
                 "step" => {
                     if let Some(step) = current_step.take() {
                         steps.push(step);
                     }
-                    current_step = Some(crate::model::Step {
+                    current_step = Some(Step {
                         name: parts[1].to_string(),
                         cut: String::new(),
                         branch: None,
@@ -299,7 +342,7 @@ impl GitRepo {
             name: String::new(),
             target,
             steps,
-            verification_policy: None,
+            verification_policy,
         })
     }
 
