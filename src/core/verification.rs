@@ -52,6 +52,11 @@ pub fn verify(
         .trim()
         .to_string();
 
+    let _guard = CheckoutGuard {
+        repo,
+        original_branch,
+    };
+
     for (step_name, cut) in targets {
         // Checkout the cut
         repo.run(&["checkout", &cut])?;
@@ -93,9 +98,6 @@ pub fn verify(
         }
     }
 
-    // Restore original branch
-    let _ = repo.run(&["checkout", &original_branch]);
-
     // Record results
     let (key, kind) = if rs.is_managed() {
         (s.id.clone(), IdentityKind::Lineage)
@@ -121,4 +123,15 @@ fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, Stri
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
 
     Ok((output.status.success(), stdout, stderr))
+}
+
+struct CheckoutGuard<'a> {
+    repo: &'a GitRepo,
+    original_branch: String,
+}
+
+impl<'a> Drop for CheckoutGuard<'a> {
+    fn drop(&mut self) {
+        let _ = self.repo.run(&["checkout", &self.original_branch]);
+    }
 }

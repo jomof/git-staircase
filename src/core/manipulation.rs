@@ -322,7 +322,8 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
             }
         };
 
-        if step_status.is_stale {
+        let is_stale = !repo.is_ancestor(&current_base, &actual_oid)?;
+        if is_stale {
             let old_parent_cut = if i == 0 {
                 repo.merge_base(&actual_oid, &current_base)?
             } else {
