@@ -1,11 +1,14 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{BranchInfo, StaircaseMetadata, StaircaseStatus, Step, StepStatus};
+use crate::model::{
+    BranchInfo, Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step,
+    StepStatus,
+};
 use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Discover potential staircases relative to `onto`.
-pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
+pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
     let branches = repo.local_branches()?;
     let onto_oid = match repo.resolve_ref(onto) {
         Ok(oid) => oid,
@@ -18,20 +21,19 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
         }
     };
 
-    // Filter out branches merged to onto
     let mut active_branches = Vec::new();
     for b in branches {
         if b.refname == onto {
             continue;
         }
-        // Check if b is ancestor of onto
         if !repo.is_ancestor(&b.oid, &onto_oid)? {
             active_branches.push(b);
         }
     }
 
-    // Build adjacency list for ancestry: child -> parent (immediate ancestor)
     let mut parents: HashMap<String, String> = HashMap::new();
+    let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
+
     for child in &active_branches {
         let mut best_parent: Option<&BranchInfo> = None;
         for parent in &active_branches {
@@ -50,91 +52,134 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
         }
         if let Some(p) = best_parent {
             parents.insert(child.refname.clone(), p.refname.clone());
+            children_map
+                .entry(p.refname.clone())
+                .or_default()
+                .push(child.refname.clone());
         }
     }
 
-    // Find roots (active branches that have no parent in active_branches)
     let mut roots = Vec::new();
     for b in &active_branches {
         if !parents.contains_key(&b.refname) {
-            roots.push(b);
+            roots.push(b.refname.clone());
         }
     }
 
-    // Build paths from roots
-    let mut paths = Vec::new();
+    let mut discoveries = Vec::new();
+    let mut discovered_branches = std::collections::HashSet::new();
+
     for root in roots {
-        let mut current_paths = Vec::new();
-        find_paths(
-            &root.refname,
-            &parents,
-            &active_branches,
-            &mut Vec::new(),
-            &mut current_paths,
-        );
-        paths.extend(current_paths);
-    }
-
-    let mut discovered = Vec::new();
-    for path in paths {
-        // Build steps for this path
-        let mut steps = Vec::new();
-        for refname in &path {
-            let branch_info = active_branches
-                .iter()
-                .find(|b| &b.refname == refname)
-                .unwrap();
-            let short_name = refname.strip_prefix("refs/heads/").unwrap_or(refname);
-            steps.push(Step {
-                name: short_name.to_string(),
-                cut: branch_info.oid.clone(),
-                branch: Some(short_name.to_string()),
-            });
+        if discovered_branches.contains(&root) {
+            continue;
         }
 
-        // Determine name
-        let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
-        let name = common_prefix(&branch_names).unwrap_or_else(|| {
-            // Fallback to tip branch name
-            steps.last().unwrap().name.clone()
-        });
+        let mut family_branches = Vec::new();
+        let mut stack = vec![root.clone()];
+        while let Some(current) = stack.pop() {
+            if !family_branches.contains(&current) {
+                family_branches.push(current.clone());
+                if let Some(children) = children_map.get(&current) {
+                    stack.extend(children.iter().cloned());
+                }
+            }
+        }
 
-        discovered.push(StaircaseMetadata {
-            id: Uuid::new_v4().to_string(),
-            name,
-            target: onto.to_string(),
-            steps,
-        });
-    }
+        for branch in &family_branches {
+            discovered_branches.insert(branch.clone());
+        }
 
-    Ok(discovered)
-}
+        let mut is_linear = true;
+        for branch in &family_branches {
+            if children_map.get(branch).is_some_and(|c| c.len() > 1) {
+                    is_linear = false;
+                    break;
+            }
+        }
 
-fn find_paths(
-    current: &str,
-    parents: &HashMap<String, String>,
-    all_branches: &[BranchInfo],
-    current_path: &mut Vec<String>,
-    results: &mut Vec<Vec<String>>,
-) {
-    current_path.push(current.to_string());
+        if is_linear {
+            let mut steps = Vec::new();
+            let mut current = Some(root);
+            while let Some(curr) = current {
+                let branch_info = active_branches.iter().find(|b| b.refname == curr).unwrap();
+                let short_name = curr
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(&curr)
+                    .to_string();
+                steps.push(Step {
+                    name: short_name.clone(),
+                    cut: branch_info.oid.clone(),
+                    branch: Some(short_name),
+                });
+                current = children_map.get(&curr).and_then(|c| c.first().cloned());
+            }
 
-    // Find children (nodes that have 'current' as parent)
-    let children: Vec<String> = parents
-        .iter()
-        .filter(|(_, parent)| *parent == current)
-        .map(|(child, _)| child.clone())
-        .collect();
+            let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
+            let name =
+                common_prefix(&branch_names).unwrap_or_else(|| steps.last().unwrap().name.clone());
 
-    if children.is_empty() {
-        results.push(current_path.clone());
-    } else {
-        for child in children {
-            find_paths(&child, parents, all_branches, current_path, results);
+            discoveries.push(Discovery::Linear(StaircaseMetadata {
+                id: Uuid::new_v4().to_string(),
+                name,
+                target: onto.to_string(),
+                steps,
+            }));
+        } else {
+            let mut steps = HashMap::new();
+            for branch in &family_branches {
+                let branch_info = active_branches
+                    .iter()
+                    .find(|b| b.refname == *branch)
+                    .unwrap();
+                let short_name = branch
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(branch)
+                    .to_string();
+                let children = children_map
+                    .get(branch)
+                    .map(|c| {
+                        c.iter()
+                            .map(|child| {
+                                child
+                                    .strip_prefix("refs/heads/")
+                                    .unwrap_or(child)
+                                    .to_string()
+                            })
+                            .collect()
+                    })
+                    .unwrap_or_default();
+
+                steps.insert(
+                    short_name.clone(),
+                    FamilyStep {
+                        name: short_name,
+                        cut: branch_info.oid.clone(),
+                        branch: Some(
+                            branch
+                                .strip_prefix("refs/heads/")
+                                .unwrap_or(branch)
+                                .to_string(),
+                        ),
+                        children,
+                    },
+                );
+            }
+
+            let root_short = root
+                .strip_prefix("refs/heads/")
+                .unwrap_or(&root)
+                .to_string();
+            discoveries.push(Discovery::Ambiguous(StaircaseFamily {
+                id: Uuid::new_v4().to_string(),
+                name: format!("Family starting at {}", root_short),
+                target: onto.to_string(),
+                steps,
+                roots: vec![root_short],
+            }));
         }
     }
 
-    current_path.pop();
+    Ok(discoveries)
 }
 
 fn common_prefix(names: &[&str]) -> Option<String> {
@@ -168,7 +213,6 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
     // Verify that the cuts exist and form a valid ancestry chain
     let target_oid = repo.resolve_ref(&staircase.target)?;
     let mut last_cut = target_oid;
-
     for step in &staircase.steps {
         let current_cut = repo.resolve_ref(&step.cut)?;
 
@@ -189,17 +233,10 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
     }
 
     repo.write_metadata(staircase)?;
-
-    // Create step refs
     for step in &staircase.steps {
-        repo.update_step_ref(&staircase_id(staircase), &step.name, &step.cut)?;
+        repo.update_step_ref(&staircase.id, &step.name, &step.cut)?;
     }
-
     Ok(())
-}
-
-fn staircase_id(s: &StaircaseMetadata) -> String {
-    s.id.clone()
 }
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
@@ -245,13 +282,11 @@ pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
             actual_oids[i - 1].clone()
         };
 
-        if let Some(ref actual) = actual_oids[i] {
-            if let Some(ref parent) = parent_oid {
-                let is_ancestor = repo.is_ancestor(parent, actual)?;
-                if !is_ancestor {
-                    steps[i].is_stale = true;
-                    is_clean = false;
-                }
+        if let (Some(actual), Some(parent)) = (&actual_oids[i], &parent_oid) {
+            let is_ancestor = repo.is_ancestor(parent, actual)?;
+            if !is_ancestor {
+                steps[i].is_stale = true;
+                is_clean = false;
             }
         }
     }
@@ -322,9 +357,9 @@ pub fn split(
         )));
     }
     if at_oid == prev_cut_oid || at_oid == *cut_oid {
-        return Err(StaircaseError::InvalidStructure(format!(
-            "Cannot split at step boundaries"
-        )));
+        return Err(StaircaseError::InvalidStructure(
+            "Cannot split at step boundaries".to_string(),
+        ));
     }
 
     let name = match new_step_name {

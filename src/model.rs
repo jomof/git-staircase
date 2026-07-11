@@ -1,4 +1,5 @@
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Step {
@@ -13,6 +14,29 @@ pub struct StaircaseMetadata {
     pub name: String,   // Nominal name
     pub target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
     pub steps: Vec<Step>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct FamilyStep {
+    pub name: String,
+    pub cut: String,
+    pub branch: Option<String>,
+    pub children: Vec<String>, // Names of child steps
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct StaircaseFamily {
+    pub id: String,
+    pub name: String,
+    pub target: String,
+    pub steps: HashMap<String, FamilyStep>,
+    pub roots: Vec<String>, // Names of root steps
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Discovery {
+    Linear(StaircaseMetadata),
+    Ambiguous(StaircaseFamily),
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]

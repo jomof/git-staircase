@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::core;
-use git_staircase::{GitRepo, StaircaseMetadata, Step};
+use git_staircase::{Discovery, GitRepo, StaircaseFamily, StaircaseMetadata, Step};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -98,9 +98,17 @@ fn main() -> anyhow::Result<()> {
             if discovered.is_empty() {
                 println!("No potential staircases discovered relative to '{}'.", onto);
             } else {
-                for (i, s) in discovered.iter().enumerate() {
-                    println!("Discovered Staircase {}:", i + 1);
-                    print_staircase(s);
+                for (i, d) in discovered.iter().enumerate() {
+                    match d {
+                        Discovery::Linear(s) => {
+                            println!("Discovered Staircase {}:", i + 1);
+                            print_staircase(s);
+                        }
+                        Discovery::Ambiguous(f) => {
+                            println!("Discovered Ambiguous Family {}:", i + 1);
+                            print_family(f);
+                        }
+                    }
                     println!();
                 }
             }
@@ -165,16 +173,27 @@ fn main() -> anyhow::Result<()> {
                 let list = core::discover(&repo, &onto)?;
                 if !list.is_empty() {
                     println!("Discovered Staircases (relative to {}):", onto);
-                    for s in list {
-                        println!(
-                            "  {} (branches: {})",
-                            s.name,
-                            s.steps
-                                .iter()
-                                .map(|s| s.name.as_str())
-                                .collect::<Vec<&str>>()
-                                .join(" -> ")
-                        );
+                    for d in list {
+                        match d {
+                            Discovery::Linear(s) => {
+                                println!(
+                                    "  {} (branches: {})",
+                                    s.name,
+                                    s.steps
+                                        .iter()
+                                        .map(|s| s.name.as_str())
+                                        .collect::<Vec<&str>>()
+                                        .join(" -> ")
+                                );
+                            }
+                            Discovery::Ambiguous(f) => {
+                                println!(
+                                    "  {} [AMBIGUOUS FAMILY] ({} branches)",
+                                    f.name,
+                                    f.steps.len()
+                                );
+                            }
+                        }
                     }
                 } else if discovered {
                     println!("No potential staircases discovered.");
@@ -311,6 +330,24 @@ fn print_status(status: &git_staircase::StaircaseStatus) {
         }
         if let Some(ref b) = meta_step.branch {
             println!("    Branch:       {}", b);
+        }
+    }
+}
+
+fn print_family(f: &StaircaseFamily) {
+    println!("  Name: {}", f.name);
+    println!("  ID: {}", f.id);
+    println!("  Target: {}", f.target);
+    println!("  Roots: {}", f.roots.join(", "));
+    println!("  Steps:");
+    for (name, step) in &f.steps {
+        println!("    Step {}:", name);
+        println!("      Cut: {}", step.cut);
+        if let Some(ref b) = step.branch {
+            println!("      Branch: {}", b);
+        }
+        if !step.children.is_empty() {
+            println!("      Children: {}", step.children.join(", "));
         }
     }
 }
