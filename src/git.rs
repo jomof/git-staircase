@@ -163,19 +163,136 @@ impl GitRepo {
     }
 
     pub fn write_metadata(&self, metadata: &StaircaseMetadata) -> Result<String> {
-        let ref_name = format!("refs/staircases/{}/meta", metadata.id);
-        let commit_msg = format!("Update staircase {}", metadata.name);
-        self.commit_json_data(&ref_name, metadata, "staircase.json", &commit_msg)
+        let mut descriptor = String::new();
+        descriptor.push_str("git-staircase-descriptor 1\n");
+        let format = self.get_object_format()?;
+        descriptor.push_str(&format!("object-format {}\n", format));
+        descriptor.push_str(&format!("lineage {}\n", metadata.id));
+        descriptor.push_str("state clean\n");
+        descriptor.push_str(&format!("target-ref {}\n", metadata.target));
+        
+        let target_oid = self.resolve_ref(&metadata.target)?;
+        descriptor.push_str(&format!("target-oid {}\n", target_oid));
+
+        for step in &metadata.steps {
+            descriptor.push_str("\n");
+            descriptor.push_str(&format!("step {}\n", step.name));
+            descriptor.push_str(&format!("cut {}\n", step.cut));
+            if let Some(ref branch) = step.branch {
+                descriptor.push_str(&format!("materializing-ref refs/heads/{}\n", branch));
+            }
+        }
+
+        let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &descriptor)?;
+        let blob_oid = blob_oid.trim().to_string();
+
+        let public_ref = format!("refs/staircases/{}", metadata.name);
+        self.run(&["update-ref", &public_ref, &blob_oid])?;
+
+        let state_ref = format!("refs/staircase-state/{}/descriptor", metadata.id);
+        self.run(&["update-ref", &state_ref, &blob_oid])?;
+        
+        // Also update step refs for reachability
+        for step in &metadata.steps {
+            let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, step.name);
+            self.run(&["update-ref", &step_ref, &step.cut])?;
+        }
+
+        Ok(blob_oid)
     }
 
-    pub fn read_metadata(&self, id: &str) -> Result<StaircaseMetadata> {
-        let ref_name = format!("refs/staircases/{}/meta", id);
-        // Verify ref exists
-        self.resolve_ref(&ref_name)?;
+    pub fn read_metadata(&self, id_or_name: &str) -> Result<StaircaseMetadata> {
+        let name_ref = format!("refs/staircases/{}", id_or_name);
+        let id_ref = format!("refs/staircase-state/{}/descriptor", id_or_name);
+        
+        let (ref_name, is_name) = if self.resolve_ref_opt(&name_ref)?.is_some() {
+            (name_ref, true)
+        } else if self.resolve_ref_opt(&id_ref)?.is_some() {
+            (id_ref, false)
+        } else {
+             return Err(crate::error::StaircaseError::Other(format!("Staircase not found: {}", id_or_name)));
+        };
 
-        let json = self.run(&["cat-file", "-p", &format!("{}:staircase.json", ref_name)])?;
-        let metadata: StaircaseMetadata = serde_json::from_str(&json)?;
-        Ok(metadata)
+        let content = self.run(&["cat-file", "-p", &ref_name])?;
+        let mut meta = self.parse_descriptor(&content)?;
+        
+        if is_name {
+             meta.name = id_or_name.to_string();
+        } else {
+            // If we read from ID, we might need to find the name elsewhere
+            // For now, let's see if we can find a ref in refs/staircases/ pointing to this descriptor
+            let oid = self.resolve_ref(&ref_name)?;
+            if let Ok(stdout) = self.run(&["for-each-ref", "--points-at", &oid, "refs/staircases/"]) {
+                if let Some(line) = stdout.lines().next() {
+                    let refname = line.split_whitespace().last().unwrap_or("");
+                    if let Some(name) = refname.strip_prefix("refs/staircases/") {
+                        meta.name = name.to_string();
+                    }
+                }
+            }
+            if meta.name.is_empty() {
+                meta.name = meta.id.clone();
+            }
+        }
+        Ok(meta)
+    }
+
+    fn parse_descriptor(&self, content: &str) -> Result<StaircaseMetadata> {
+        let mut id = String::new();
+        let mut target = String::new();
+        let mut steps = Vec::new();
+        let mut current_step: Option<crate::model::Step> = None;
+
+        for line in content.lines() {
+            let line = line.trim();
+            if line.is_empty() {
+                continue;
+            }
+
+            let parts: Vec<&str> = line.splitn(2, ' ').collect();
+            if parts.len() < 2 {
+                continue;
+            }
+
+            match parts[0] {
+                "lineage" => id = parts[1].to_string(),
+                "target-ref" => target = parts[1].to_string(),
+                "step" => {
+                    if let Some(step) = current_step.take() {
+                        steps.push(step);
+                    }
+                    current_step = Some(crate::model::Step {
+                        name: parts[1].to_string(),
+                        cut: String::new(),
+                        branch: None,
+                    });
+                }
+                "cut" => {
+                    if let Some(ref mut step) = current_step {
+                        step.cut = parts[1].to_string();
+                    }
+                }
+                "materializing-ref" => {
+                    if let Some(ref mut step) = current_step {
+                        let b = parts[1].strip_prefix("refs/heads/").unwrap_or(parts[1]);
+                        step.branch = Some(b.to_string());
+                    }
+                }
+                _ => {}
+            }
+        }
+
+        if let Some(step) = current_step {
+            steps.push(step);
+        }
+
+        Ok(StaircaseMetadata {
+            id,
+            name: String::new(),
+            target,
+            steps,
+            verification_policy: None,
+        })
     }
 
     pub fn record_verification(
@@ -204,32 +321,39 @@ impl GitRepo {
     }
 
     pub fn list_staircases(&self) -> Result<Vec<StaircaseMetadata>> {
-        let stdout = match self.run(&["for-each-ref", "--format=%(refname)", "refs/staircases/"]) {
-            Ok(out) => out,
-            Err(StaircaseError::GitCommandFailed { .. }) => {
-                // If refs/staircases/ doesn't exist yet, it might error or return empty.
-                // Usually it returns empty if no refs match, but let's be safe.
-                return Ok(Vec::new());
-            }
-            Err(e) => return Err(e),
-        };
-
         let mut staircases = Vec::new();
-        for line in stdout.lines() {
-            let refname = line.trim();
-            if refname.starts_with("refs/staircases/") {
-                // Check if it is a main staircase ref (not a step ref)
-                // Main ref is refs/staircases/<id>
-                // Step ref is refs/staircases/<id>/steps/<name>
-                let parts: Vec<&str> = refname
-                    .strip_prefix("refs/staircases/")
-                    .unwrap()
-                    .split('/')
-                    .collect();
-                if parts.len() == 2 && parts[1] == "meta" {
-                    let id = parts[0];
-                    if let Ok(meta) = self.read_metadata(id) {
-                        staircases.push(meta);
+        let mut seen_ids = std::collections::HashSet::new();
+
+        // Check public names
+        if let Ok(stdout) = self.run(&["for-each-ref", "--format=%(refname)", "refs/staircases/"]) {
+            for line in stdout.lines() {
+                let refname = line.trim();
+                if refname.starts_with("refs/staircases/") {
+                    let name = refname.strip_prefix("refs/staircases/").unwrap();
+                    if !name.contains('/') {
+                        if let Ok(meta) = self.read_metadata(name) {
+                            seen_ids.insert(meta.id.clone());
+                            staircases.push(meta);
+                        }
+                    }
+                }
+            }
+        }
+
+        // Check internal state for any missed ones (unnamed managed staircases)
+        if let Ok(stdout) = self.run(&["for-each-ref", "--format=%(refname)", "refs/staircase-state/"]) {
+            for line in stdout.lines() {
+                let refname = line.trim();
+                if refname.ends_with("/descriptor") {
+                    let parts: Vec<&str> = refname.strip_prefix("refs/staircase-state/").unwrap().split('/').collect();
+                    if parts.len() == 2 && parts[1] == "descriptor" {
+                        let id = parts[0];
+                        if !seen_ids.contains(id) {
+                            if let Ok(meta) = self.read_metadata(id) {
+                                seen_ids.insert(meta.id.clone());
+                                staircases.push(meta);
+                            }
+                        }
                     }
                 }
             }
@@ -244,13 +368,13 @@ impl GitRepo {
     }
 
     pub fn update_step_ref(&self, id: &str, step_name: &str, cut: &str) -> Result<()> {
-        let ref_name = format!("refs/staircases/{}/steps/{}", id, step_name);
+        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_name);
         self.run(&["update-ref", &ref_name, cut])?;
         Ok(())
     }
 
     pub fn delete_step_ref(&self, id: &str, step_name: &str) -> Result<()> {
-        let ref_name = format!("refs/staircases/{}/steps/{}", id, step_name);
+        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_name);
         self.run(&["update-ref", "-d", &ref_name])?;
         Ok(())
     }
@@ -322,17 +446,17 @@ impl GitRepo {
         Ok(branches)
     }
 
-    pub fn delete_staircase_refs(&self, id: &str) -> Result<()> {
-        // Delete all step refs first
-        let step_refs_prefix = format!("refs/staircases/{}/steps/", id);
-        if let Ok(stdout) = self.run(&["for-each-ref", "--format=%(refname)", &step_refs_prefix]) {
+    pub fn delete_staircase_refs(&self, id: &str, name: &str) -> Result<()> {
+        // Delete state refs
+        let state_prefix = format!("refs/staircase-state/{}/", id);
+        if let Ok(stdout) = self.run(&["for-each-ref", "--format=%(refname)", &state_prefix]) {
             for line in stdout.lines() {
                 let refname = line.trim();
                 self.run(&["update-ref", "-d", refname])?;
             }
         }
-        // Delete meta ref
-        let ref_name = format!("refs/staircases/{}/meta", id);
+        // Delete public ref
+        let ref_name = format!("refs/staircases/{}", name);
         self.run(&["update-ref", "-d", &ref_name])?;
         Ok(())
     }

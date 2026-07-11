@@ -127,7 +127,7 @@ fn test_managed_staircase_updates() {
     assert_eq!(rs.metadata().steps.len(), 3);
     assert_eq!(rs.metadata().steps[0].name, "A-part1");
     assert!(
-        repo.resolve_ref("refs/staircases/test-managed/steps/A-part1")
+        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/A-part1", rs.metadata().id))
             .is_ok()
     );
 
@@ -138,7 +138,7 @@ fn test_managed_staircase_updates() {
         .unwrap();
     assert_eq!(rs.metadata().steps.len(), 2);
     assert!(
-        repo.resolve_ref("refs/staircases/test-managed/steps/A-part1")
+        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/A-part1", rs.metadata().id))
             .is_err()
     );
 

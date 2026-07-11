@@ -373,6 +373,6 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
         }
     }
 
-    repo.delete_staircase_refs(id)?;
+    repo.delete_staircase_refs(id, &metadata.name)?;
     Ok(())
 }
