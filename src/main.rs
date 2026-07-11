@@ -1,11 +1,10 @@
+use git_staircase::IdentityKind;
 use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
-use git_staircase::core;
-use git_staircase::{
-    Discovery, GitRepo, IdentityKind, StaircaseFamily, StaircaseMetadata, Step, ToPorcelain,
-    VerificationPolicy,
-};
+use git_staircase::GitRepo;
 use std::path::PathBuf;
+
+pub mod cli;
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -232,461 +231,7 @@ fn find_repo_root() -> anyhow::Result<PathBuf> {
     Ok(PathBuf::from(path_str))
 }
 
-fn main() -> anyhow::Result<()> {
-    let cli = Cli::parse();
-    let repo_root = find_repo_root()?;
-    let repo = GitRepo::new(repo_root);
-
-    match cli.command {
-        Commands::Reorder {
-            name,
-            steps,
-            staircase_steps,
-            onto,
-        } => {
-            let rs = resolve_rs(&repo, name, staircase_steps, onto.clone())?;
-            let steps = steps.ok_or_else(|| anyhow!("--steps (indices) must be provided"))?;
-            let mut zero_based_steps = Vec::new();
-            for &s in &steps {
-                if s == 0 {
-                    return Err(anyhow!("Step indices must be 1-based (got 0)"));
-                }
-                zero_based_steps.push(s - 1);
-            }
-            core::reorder(&repo, &rs, &zero_based_steps)?;
-            if cli.json {
-                let updated_rs =
-                    core::resolve_staircase(&repo, &rs.metadata().name, onto.as_deref())?
-                        .ok_or_else(|| {
-                            anyhow!("Staircase '{}' not found after reorder", rs.metadata().name)
-                        })?;
-                let status = core::get_status_metadata(&repo, updated_rs.metadata().clone())?;
-                println!("{}", serde_json::to_string_pretty(&status)?);
-            } else if !cli.porcelain {
-                println!("Reordered staircase.");
-            }
-        }
-        Commands::Move {
-            name,
-            steps,
-            from,
-            to,
-            onto,
-            commits,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            core::move_commits(&repo, &rs, from - 1, to - 1, &commits)?;
-            if !cli.json && !cli.porcelain {
-                println!("Moved commits.");
-            }
-        }
-        Commands::Drop { step, onto } => {
-            let (sc_name, step_num) = parse_step_spec(&step)?;
-            let rs = core::resolve_staircase(&repo, &sc_name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
-            core::drop(&repo, &rs, step_num - 1)?;
-            if !cli.json && !cli.porcelain {
-                println!("Dropped step {} from staircase '{}'.", step_num, sc_name);
-            }
-        }
-        Commands::Discover { onto } => {
-            let discovered = core::discover(&repo, onto.as_deref())?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&discovered)?);
-            } else if cli.porcelain {
-                for d in &discovered {
-                    println!("{}", d.to_porcelain());
-                }
-            } else {
-                if discovered.is_empty() {
-                    println!("No potential staircases discovered.");
-                } else {
-                    for (i, d) in discovered.iter().enumerate() {
-                        match d {
-                            Discovery::Linear(s) => {
-                                println!("Discovered Staircase {}:", i + 1);
-                                print_staircase(s);
-                            }
-                            Discovery::Ambiguous(f) => {
-                                println!("Discovered Ambiguous Family {}:", i + 1);
-                                print_family(f);
-                            }
-                        }
-                        println!();
-                    }
-                }
-            }
-        }
-        Commands::Adopt {
-            name,
-            onto,
-            branches,
-            build_command,
-            test_command,
-            verify_each_prefix,
-        } => {
-            if branches.is_empty() {
-                return Err(anyhow!("At least one branch must be specified to adopt"));
-            }
-            let mut steps = Vec::new();
-            for b in branches {
-                let full_ref = if b.starts_with("refs/heads/") {
-                    b.clone()
-                } else {
-                    format!("refs/heads/{}", b)
-                };
-                let oid = repo
-                    .resolve_ref(&full_ref)
-                    .with_context(|| format!("Failed to resolve branch '{}'", b))?;
-                let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
-                steps.push(Step {
-                    name: short_name.clone(),
-                    cut: oid,
-                    branch: Some(short_name),
-                });
-            }
-
-            let verification_policy = if build_command.is_some() || test_command.is_some() {
-                Some(VerificationPolicy {
-                    build_command,
-                    test_command,
-                    verify_each_prefix,
-                })
-            } else {
-                None
-            };
-
-            let target = match onto {
-                Some(o) => o,
-                None => core::infer_onto(&repo)?,
-            };
-            let staircase = StaircaseMetadata {
-                id: uuid::Uuid::new_v4().to_string(),
-                name: name.clone(),
-                target,
-                steps,
-                verification_policy,
-            };
-
-            core::adopt(&repo, &staircase)?;
-            if !cli.json && !cli.porcelain {
-                println!("Adopted staircase '{}' (ID: {}).", name, staircase.id);
-            } else if cli.json {
-                println!("{}", serde_json::to_string_pretty(&staircase)?);
-            } else if cli.porcelain {
-                println!("{}", staircase.to_porcelain());
-            }
-        }
-        Commands::List {
-            managed,
-            implicit,
-            onto,
-        } => {
-            let show_all = !managed && !implicit;
-            let mut all_results = Vec::new();
-
-            if managed || show_all {
-                let list = repo.list_staircases()?;
-                for s in list {
-                    all_results.push(git_staircase::ResolvedStaircase::Managed(s));
-                }
-            }
-
-            if implicit || show_all {
-                let list = core::discover(&repo, onto.as_deref())?;
-                for d in list {
-                    if let Discovery::Linear(s) = d {
-                        all_results.push(git_staircase::ResolvedStaircase::Implicit(s));
-                    }
-                }
-            }
-
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&all_results)?);
-            } else if cli.porcelain {
-                for r in &all_results {
-                    println!("{}", r.to_porcelain());
-                }
-            } else {
-                if all_results.is_empty() {
-                    println!("No staircases found.");
-                } else {
-                    for r in all_results {
-                        let m = r.metadata().clone();
-                        let status = core::get_status_metadata(&repo, m.clone())?;
-                        let state = if status.steps.iter().any(|s| s.is_stale) {
-                            "stale"
-                        } else {
-                            "clean"
-                        };
-                        let steps_count = m.steps.len();
-                        let steps_word = if steps_count == 1 { "step" } else { "steps" };
-                        let implicit_marker = if r.is_managed() { "" } else { " (implicit)" };
-                        print!("{} {} {} {}", m.name, steps_count, steps_word, state);
-                        if !implicit_marker.is_empty() {
-                            println!("{}", implicit_marker);
-                        } else {
-                            println!();
-                        }
-                    }
-                }
-            }
-        }
-        Commands::Show { name, steps, onto } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&rs)?);
-            } else if cli.porcelain {
-                println!("{}", rs.to_porcelain());
-            } else {
-                print_resolved_staircase(&rs);
-            }
-        }
-        Commands::Status { name, steps, onto } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            let status = core::get_status_metadata(&repo, rs.metadata().clone())?;
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&status)?);
-            } else if cli.porcelain {
-                println!("{}", status.to_porcelain());
-            } else {
-                if !rs.is_managed() {
-                    println!("(Implicit staircase)");
-                }
-                print_status(&status);
-            }
-        }
-        Commands::Split {
-            step,
-            at,
-            name,
-            onto,
-        } => {
-            let (sc_name, step_num) = parse_step_spec(&step)?;
-            let rs = core::resolve_staircase(&repo, &sc_name, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
-
-            if step_num == 0 {
-                return Err(anyhow!("Step number must be 1-based"));
-            }
-            core::split(&repo, &rs, step_num - 1, &at, name.as_deref())?;
-            if !cli.json && !cli.porcelain {
-                println!(
-                    "Split step {} of staircase '{}' at {}.",
-                    step_num, sc_name, at
-                );
-            }
-        }
-        Commands::Join { step1, step2, onto } => {
-            let (sc_name1, step_num1) = parse_step_spec(&step1)?;
-            let (sc_name2, step_num2) = parse_step_spec(&step2)?;
-
-            if sc_name1 != sc_name2 {
-                return Err(anyhow!(
-                    "Cannot join steps from different staircases: '{}' and '{}'",
-                    sc_name1,
-                    sc_name2
-                ));
-            }
-
-            let rs = core::resolve_staircase(&repo, &sc_name1, onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name1))?;
-
-            if step_num1 == 0 || step_num2 == 0 {
-                return Err(anyhow!("Step numbers must be 1-based"));
-            }
-
-            core::join(&repo, &rs, step_num1 - 1, step_num2 - 1)?;
-            if !cli.json && !cli.porcelain {
-                println!(
-                    "Joined steps {} and {} of staircase '{}'.",
-                    step_num1, step_num2, sc_name1
-                );
-            }
-        }
-        Commands::Rebase {
-            name,
-            steps,
-            onto,
-            resolve_onto,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, resolve_onto)?;
-            core::rebase(&repo, &rs, &onto)?;
-            if !cli.json && !cli.porcelain {
-                println!("Rebased staircase onto '{}'.", onto);
-            }
-        }
-        Commands::Restack { name, steps, onto } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            core::restack(&repo, &rs)?;
-            if !cli.json && !cli.porcelain {
-                println!("Restacked staircase.");
-            }
-        }
-
-        Commands::Verify {
-            name,
-            steps,
-            onto,
-            aggregate,
-            each_prefix,
-            build_command,
-            test_command,
-        } => {
-            let aggregate_opt = if aggregate { Some(true) } else { None };
-            let each_prefix_opt = if each_prefix { Some(true) } else { None };
-            let rs = resolve_rs(&repo, name, steps, onto.clone())?;
-            let results = core::verify(
-                onto.as_deref(),
-                &repo,
-                &rs.metadata().name,
-                build_command,
-                test_command,
-                aggregate_opt,
-                each_prefix_opt,
-            )?;
-
-            if cli.json {
-                println!("{}", serde_json::to_string_pretty(&results)?);
-            } else if cli.porcelain {
-                for r in &results {
-                    println!("{}", r.to_porcelain());
-                }
-            } else {
-                for result in results {
-                    println!(
-                        "Step {}: {}",
-                        result.step_name,
-                        if result.success { "PASSED" } else { "FAILED" }
-                    );
-                    if !result.success {
-                        println!("Stdout:\n{}", result.stdout);
-                        println!("Stderr:\n{}", result.stderr);
-                    }
-                }
-            }
-        }
-        Commands::Id {
-            name,
-            steps,
-            kind,
-            onto,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            let was_implicit = !rs.is_managed();
-            let id = core::compute_identity(&repo, &rs, kind)?;
-            if was_implicit && kind == IdentityKind::Lineage {
-                if !cli.json && !cli.porcelain {
-                    println!("adopted implicit staircase '{}'", rs.metadata().name);
-                }
-            }
-            if cli.json {
-                println!(
-                    "{}",
-                    serde_json::to_string_pretty(&serde_json::json!({"id": id}))?
-                );
-            } else {
-                println!("{}", id);
-            }
-        }
-        Commands::Delete {
-            name,
-            steps,
-            onto,
-            delete_branches,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            core::delete(&repo, &rs.metadata().id, delete_branches)?;
-            if !cli.json && !cli.porcelain {
-                println!("Deleted staircase.");
-            }
-        }
-        Commands::Log {
-            name,
-            steps,
-            onto,
-            git_args,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            let mut args = vec!["log"];
-            let range = format!(
-                "{}..{}",
-                rs.metadata().target,
-                rs.metadata().steps.last().unwrap().cut
-            );
-            args.push(&range);
-            for arg in &git_args {
-                args.push(arg);
-            }
-            repo.run_interactive(&args)?;
-        }
-        Commands::Diff {
-            name,
-            steps,
-            onto,
-            git_args,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            let mut args = vec!["diff"];
-            let range = format!(
-                "{}..{}",
-                rs.metadata().target,
-                rs.metadata().steps.last().unwrap().cut
-            );
-            args.push(&range);
-            for arg in &git_args {
-                args.push(arg);
-            }
-            repo.run_interactive(&args)?;
-        }
-        Commands::Graph {
-            name,
-            steps,
-            onto,
-            git_args,
-        } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            let mut args = vec!["log", "--graph", "--oneline"];
-            let range = format!(
-                "{}..{}",
-                rs.metadata().target,
-                rs.metadata().steps.last().unwrap().cut
-            );
-            args.push(&range);
-            for arg in &git_args {
-                args.push(arg);
-            }
-            repo.run_interactive(&args)?;
-        }
-        Commands::Steps { name, steps, onto } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            for (i, step) in rs.metadata().steps.iter().enumerate() {
-                println!("Step {}: {} ({})", i + 1, step.name, &step.cut[..7]);
-            }
-        }
-        Commands::Commits { name, steps, onto } => {
-            let rs = resolve_rs(&repo, name, steps, onto)?;
-            let target_oid = repo.resolve_ref(&rs.metadata().target)?;
-            let mut current_base = target_oid;
-            for (i, step) in rs.metadata().steps.iter().enumerate() {
-                println!("Step {}: {}", i + 1, step.name);
-                let commits = repo.run(&[
-                    "log",
-                    "--oneline",
-                    &format!("{}..{}", current_base, step.cut),
-                ])?;
-                for line in commits.lines() {
-                    println!("  {}", line);
-                }
-                current_base = step.cut.clone();
-            }
-        }
-    }
-
-    Ok(())
-}
-
-fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
+pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
     let parts: Vec<&str> = spec.split(':').collect();
     if parts.len() != 2 {
         return Err(anyhow!(
@@ -701,98 +246,129 @@ fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
     Ok((name, num))
 }
 
-fn print_staircase(s: &StaircaseMetadata) {
-    println!("  Name: {}", s.name);
-    println!("  ID: {}", s.id);
-    println!("  Target: {}", s.target);
-    if let Some(ref policy) = s.verification_policy {
-        println!("  Verification Policy:");
-        if let Some(ref cmd) = policy.build_command {
-            println!("    Build: {}", cmd);
-        }
-        if let Some(ref cmd) = policy.test_command {
-            println!("    Test:  {}", cmd);
-        }
-        println!("    Verify each prefix: {}", policy.verify_each_prefix);
-    }
-    println!("  Steps:");
-    for (i, step) in s.steps.iter().enumerate() {
-        println!("    Step {}:", i + 1);
-        println!("      Name: {}", step.name);
-        println!("      Cut: {}", step.cut);
-        if let Some(ref b) = step.branch {
-            println!("      Branch: {}", b);
-        }
-    }
-}
-
-fn print_status(status: &git_staircase::StaircaseStatus) {
-    println!("Staircase: {}", status.metadata.name);
-    println!("ID: {}", status.metadata.id);
-    println!("Target: {}", status.metadata.target);
-    println!("Clean: {}", status.is_clean);
-    println!("Steps:");
-    for (i, step) in status.steps.iter().enumerate() {
-        let meta_step = &status.metadata.steps[i];
-        print!("  Step {} ({}):", i + 1, step.name);
-        if step.is_modified {
-            print!(" [MODIFIED]");
-        }
-        if step.is_stale {
-            print!(" [STALE]");
-        }
-        println!();
-        println!("    Expected Cut: {}", step.expected_cut);
-        if let Some(ref act) = step.actual_oid {
-            println!("    Actual OID:   {}", act);
-        } else {
-            println!("    Actual OID:   [MISSING BRANCH]");
-        }
-        if let Some(ref b) = meta_step.branch {
-            println!("    Branch:       {}", b);
-        }
-    }
-}
-
-fn print_family(f: &StaircaseFamily) {
-    println!("  Name: {}", f.name);
-    println!("  ID: {}", f.id);
-    println!("  Target: {}", f.target);
-    println!("  Roots: {}", f.roots.join(", "));
-    println!("  Steps:");
-    for (name, step) in &f.steps {
-        println!("    Step {}:", name);
-        println!("      Cut: {}", step.cut);
-        if let Some(ref b) = step.branch {
-            println!("      Branch: {}", b);
-        }
-        if !step.children.is_empty() {
-            println!("      Children: {}", step.children.join(", "));
-        }
-    }
-}
-
-fn print_resolved_staircase(rs: &git_staircase::ResolvedStaircase) {
-    let s = rs.metadata();
-    if rs.is_managed() {
-        println!("Managed Staircase: {}", s.name);
+fn main() -> anyhow::Result<()> {
+    let cli = Cli::parse();
+    let repo_root = find_repo_root()?;
+    let repo = GitRepo::new(repo_root);
+    let format = if cli.json {
+        cli::OutputFormat::Json
+    } else if cli.porcelain {
+        cli::OutputFormat::Porcelain
     } else {
-        println!("Implicit Staircase: {}", s.name);
-    }
-    print_staircase(s);
-}
+        cli::OutputFormat::Human
+    };
 
-fn resolve_rs(
-    repo: &GitRepo,
-    name: Option<String>,
-    steps: Option<Vec<String>>,
-    onto: Option<String>,
-) -> anyhow::Result<git_staircase::ResolvedStaircase> {
-    if let Some(s) = steps {
-        Ok(core::resolve_explicit_staircase(repo, &s, onto.as_deref())?)
-    } else {
-        let name = name.ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
-        core::resolve_staircase(repo, &name, onto.as_deref())?
-            .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
+    match cli.command {
+        Commands::Reorder {
+            name,
+            steps,
+            staircase_steps,
+            onto,
+        } => cli::reorder::run(&repo, format, name, steps, staircase_steps, onto),
+        Commands::Move {
+            name,
+            steps,
+            from,
+            to,
+            onto,
+            commits,
+        } => cli::move_cmd::run(&repo, format, name, steps, from, to, onto, commits),
+        Commands::Drop { step, onto } => cli::drop::run(&repo, format, step, onto),
+        Commands::Discover { onto } => cli::discover::run(&repo, format, onto),
+        Commands::Adopt {
+            name,
+            onto,
+            branches,
+            build_command,
+            test_command,
+            verify_each_prefix,
+        } => cli::adopt::run(
+            &repo,
+            format,
+            name,
+            onto,
+            branches,
+            build_command,
+            test_command,
+            verify_each_prefix,
+        ),
+        Commands::List {
+            managed,
+            implicit,
+            onto,
+        } => cli::list::run(&repo, format, managed, implicit, onto),
+        Commands::Show { name, steps, onto } => cli::show::run(&repo, format, name, steps, onto),
+        Commands::Status { name, steps, onto } => {
+            cli::status::run(&repo, format, name, steps, onto)
+        }
+        Commands::Split {
+            step,
+            at,
+            name,
+            onto,
+        } => cli::split::run(&repo, format, step, at, name, onto),
+        Commands::Join { step1, step2, onto } => cli::join::run(&repo, format, step1, step2, onto),
+        Commands::Rebase {
+            name,
+            steps,
+            onto,
+            resolve_onto,
+        } => cli::rebase::run(&repo, format, name, steps, onto, resolve_onto),
+        Commands::Restack { name, steps, onto } => {
+            cli::restack::run(&repo, format, name, steps, onto)
+        }
+        Commands::Verify {
+            name,
+            steps,
+            onto,
+            aggregate,
+            each_prefix,
+            build_command,
+            test_command,
+        } => cli::verify::run(
+            &repo,
+            format,
+            name,
+            steps,
+            onto,
+            aggregate,
+            each_prefix,
+            build_command,
+            test_command,
+        ),
+        Commands::Id {
+            name,
+            steps,
+            kind,
+            onto,
+        } => cli::id::run(&repo, format, name, steps, kind, onto),
+        Commands::Delete {
+            name,
+            steps,
+            onto,
+            delete_branches,
+        } => cli::delete::run(&repo, format, name, steps, onto, delete_branches),
+        Commands::Log {
+            name,
+            steps,
+            onto,
+            git_args,
+        } => cli::log::run(&repo, format, name, steps, onto, git_args),
+        Commands::Diff {
+            name,
+            steps,
+            onto,
+            git_args,
+        } => cli::diff::run(&repo, format, name, steps, onto, git_args),
+        Commands::Graph {
+            name,
+            steps,
+            onto,
+            git_args,
+        } => cli::graph::run(&repo, format, name, steps, onto, git_args),
+        Commands::Steps { name, steps, onto } => cli::steps::run(&repo, format, name, steps, onto),
+        Commands::Commits { name, steps, onto } => {
+            cli::commits::run(&repo, format, name, steps, onto)
+        }
     }
 }

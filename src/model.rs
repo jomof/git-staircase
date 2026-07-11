@@ -196,3 +196,135 @@ impl<T: ToPorcelain> ToPorcelain for Vec<T> {
             .join("\n")
     }
 }
+
+pub trait ToHuman {
+    fn to_human(&self) -> String;
+}
+
+impl ToHuman for StaircaseMetadata {
+    fn to_human(&self) -> String {
+        let mut out = format!("  Name: {}\n", self.name);
+        out.push_str(&format!("  ID: {}\n", self.id));
+        out.push_str(&format!("  Target: {}\n", self.target));
+        if let Some(ref policy) = self.verification_policy {
+            out.push_str("  Verification Policy:\n");
+            if let Some(ref cmd) = policy.build_command {
+                out.push_str(&format!("    Build: {}\n", cmd));
+            }
+            if let Some(ref cmd) = policy.test_command {
+                out.push_str(&format!("    Test:  {}\n", cmd));
+            }
+            out.push_str(&format!(
+                "    Verify each prefix: {}\n",
+                policy.verify_each_prefix
+            ));
+        }
+        out.push_str("  Steps:\n");
+        for (i, step) in self.steps.iter().enumerate() {
+            out.push_str(&format!("    Step {}:\n", i + 1));
+            out.push_str(&format!("      Name: {}\n", step.name));
+            out.push_str(&format!("      Cut: {}\n", step.cut));
+            if let Some(ref b) = step.branch {
+                out.push_str(&format!("      Branch: {}\n", b));
+            }
+        }
+        out
+    }
+}
+
+impl ToHuman for StaircaseStatus {
+    fn to_human(&self) -> String {
+        let mut out = format!("Staircase: {}\n", self.metadata.name);
+        out.push_str(&format!("ID: {}\n", self.metadata.id));
+        out.push_str(&format!("Target: {}\n", self.metadata.target));
+        out.push_str(&format!("Clean: {}\n", self.is_clean));
+        out.push_str("Steps:\n");
+        for (i, step) in self.steps.iter().enumerate() {
+            let meta_step = &self.metadata.steps[i];
+            out.push_str(&format!("  Step {} ({}):", i + 1, step.name));
+            if step.is_modified {
+                out.push_str(" [MODIFIED]");
+            }
+            if step.is_stale {
+                out.push_str(" [STALE]");
+            }
+            out.push_str("\n");
+            out.push_str(&format!("    Expected Cut: {}\n", step.expected_cut));
+            if let Some(ref act) = step.actual_oid {
+                out.push_str(&format!("    Actual OID:   {}\n", act));
+            } else {
+                out.push_str("    Actual OID:   [MISSING BRANCH]\n");
+            }
+            if let Some(ref b) = meta_step.branch {
+                out.push_str(&format!("    Branch:       {}\n", b));
+            }
+        }
+        out
+    }
+}
+
+impl ToHuman for StaircaseFamily {
+    fn to_human(&self) -> String {
+        let mut out = format!("  Name: {}\n", self.name);
+        out.push_str(&format!("  ID: {}\n", self.id));
+        out.push_str(&format!("  Target: {}\n", self.target));
+        out.push_str(&format!("  Roots: {}\n", self.roots.join(", ")));
+        out.push_str("  Steps:\n");
+        for (name, step) in &self.steps {
+            out.push_str(&format!("    Step {}:\n", name));
+            out.push_str(&format!("      Cut: {}\n", step.cut));
+            if let Some(ref b) = step.branch {
+                out.push_str(&format!("      Branch: {}\n", b));
+            }
+            if !step.children.is_empty() {
+                out.push_str(&format!("      Children: {}\n", step.children.join(", ")));
+            }
+        }
+        out
+    }
+}
+
+impl ToHuman for ResolvedStaircase {
+    fn to_human(&self) -> String {
+        let mut out = if self.is_managed() {
+            format!("Managed Staircase: {}\n", self.metadata().name)
+        } else {
+            format!("Implicit Staircase: {}\n", self.metadata().name)
+        };
+        out.push_str(&self.metadata().to_human());
+        out
+    }
+}
+
+impl ToHuman for Discovery {
+    fn to_human(&self) -> String {
+        match self {
+            Discovery::Linear(s) => s.to_human(),
+            Discovery::Ambiguous(f) => f.to_human(),
+        }
+    }
+}
+
+impl ToHuman for VerificationResult {
+    fn to_human(&self) -> String {
+        let mut out = format!(
+            "Step {}: {}\n",
+            self.step_name,
+            if self.success { "PASSED" } else { "FAILED" }
+        );
+        if !self.success {
+            out.push_str(&format!("Stdout:\n{}\n", self.stdout));
+            out.push_str(&format!("Stderr:\n{}\n", self.stderr));
+        }
+        out
+    }
+}
+
+impl<T: ToHuman> ToHuman for Vec<T> {
+    fn to_human(&self) -> String {
+        self.iter()
+            .map(|x| x.to_human())
+            .collect::<Vec<_>>()
+            .join("\n")
+    }
+}
