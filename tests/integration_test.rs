@@ -256,6 +256,7 @@ fn test_adopt_validation() {
         id: uuid::Uuid::new_v4().to_string(),
         name: "empty".to_string(),
         target: "main".to_string(),
+        verification_policy: None,
         steps: vec![
             Step {
                 name: "step1".to_string(),
@@ -280,6 +281,7 @@ fn test_adopt_validation() {
         id: uuid::Uuid::new_v4().to_string(),
         name: "invalid".to_string(),
         target: "main".to_string(),
+        verification_policy: None,
         steps: vec![
             Step {
                 name: "step1".to_string(),
@@ -335,4 +337,92 @@ fn test_discover_forked() {
         }
         _ => panic!("Expected ambiguous family discovery"),
     }
+}
+
+#[test]
+fn test_verification_aggregate() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    let Discovery::Linear(mut s) = discovered[0].clone() else {
+        panic!("Expected linear discovery");
+    };
+    s.name = "auth".to_string();
+
+    // Set verification policy
+    s.verification_policy = Some(git_staircase::VerificationPolicy {
+        build_command: Some("true".to_string()),
+        test_command: Some("true".to_string()),
+        verify_each_prefix: false,
+    });
+
+    core::adopt(&repo, &s).unwrap();
+
+    // Verify aggregate
+    let results = core::verify(&repo, "auth", None, None, Some(true), None).unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(results[0].success);
+    assert_eq!(results[0].step_name, "Aggregate");
+    assert_eq!(results[0].cut, c2);
+
+    // Verify evidence recorded
+    let ref_name = format!("refs/staircases/{}/verification", s.id);
+    assert!(repo.resolve_ref(&ref_name).is_ok());
+
+    // Fail verification
+    let results = core::verify(
+        &repo,
+        "auth",
+        Some("false".to_string()),
+        None,
+        Some(true),
+        None,
+    )
+    .unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(!results[0].success);
+}
+
+#[test]
+fn test_verification_each_prefix() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    let discovered = core::discover(&repo, "main").unwrap();
+    let Discovery::Linear(mut s) = discovered[0].clone() else {
+        panic!("Expected linear discovery");
+    };
+    s.name = "auth".to_string();
+
+    // Set verification policy
+    s.verification_policy = Some(git_staircase::VerificationPolicy {
+        build_command: Some("true".to_string()),
+        test_command: Some("true".to_string()),
+        verify_each_prefix: true,
+    });
+
+    core::adopt(&repo, &s).unwrap();
+
+    // Verify each prefix
+    let results = core::verify(&repo, "auth", None, None, None, Some(true)).unwrap();
+    assert_eq!(results.len(), 2);
+    assert!(results[0].success);
+    assert_eq!(results[0].step_name, "feature/auth-core");
+    assert_eq!(results[0].cut, c1);
+    assert!(results[1].success);
+    assert_eq!(results[1].step_name, "feature/auth-ui");
+    assert_eq!(results[1].cut, c2);
 }

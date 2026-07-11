@@ -2,7 +2,7 @@ use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
     BranchInfo, Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step,
-    StepStatus, IdentityKind,
+    IdentityKind, StepStatus, VerificationResult,
 };
 use std::collections::HashMap;
 use uuid::Uuid;
@@ -92,8 +92,8 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
         let mut is_linear = true;
         for branch in &family_branches {
             if children_map.get(branch).is_some_and(|c| c.len() > 1) {
-                    is_linear = false;
-                    break;
+                is_linear = false;
+                break;
             }
         }
 
@@ -120,6 +120,7 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
 
             discoveries.push(Discovery::Linear(StaircaseMetadata {
                 id: Uuid::new_v4().to_string(),
+                verification_policy: None,
                 name,
                 target: onto.to_string(),
                 steps,
@@ -171,6 +172,7 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<Discovery>> {
                 .to_string();
             discoveries.push(Discovery::Ambiguous(StaircaseFamily {
                 id: Uuid::new_v4().to_string(),
+                verification_policy: None,
                 name: format!("Family starting at {}", root_short),
                 target: onto.to_string(),
                 steps,
@@ -613,6 +615,116 @@ mod tests {
     }
 }
 
+pub fn verify(
+    repo: &GitRepo,
+    name: &str,
+    build_command_override: Option<String>,
+    test_command_override: Option<String>,
+    aggregate_only: Option<bool>,
+    each_prefix: Option<bool>,
+) -> Result<Vec<VerificationResult>> {
+    let s = find_by_name(repo, name)?
+        .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", name)))?;
+
+    let policy = s.verification_policy.as_ref();
+
+    let build_cmd = build_command_override.or(policy.and_then(|p| p.build_command.clone()));
+    let test_cmd = test_command_override.or(policy.and_then(|p| p.test_command.clone()));
+
+    let verify_each = each_prefix.unwrap_or_else(|| {
+        if aggregate_only.unwrap_or(false) {
+            false
+        } else {
+            policy.map(|p| p.verify_each_prefix).unwrap_or(false)
+        }
+    });
+
+    let mut results = Vec::new();
+
+    let mut targets = Vec::new();
+    if verify_each {
+        for step in &s.steps {
+            targets.push((step.name.clone(), step.cut.clone()));
+        }
+    } else {
+        if let Some(last_step) = s.steps.last() {
+            targets.push(("Aggregate".to_string(), last_step.cut.clone()));
+        }
+    }
+
+    if targets.is_empty() {
+        return Err(StaircaseError::Other("No steps to verify".to_string()));
+    }
+
+    // Save current branch to restore later
+    let original_branch = repo
+        .run(&["rev-parse", "--abbrev-ref", "HEAD"])?
+        .trim()
+        .to_string();
+
+    for (step_name, cut) in targets {
+        // Checkout the cut
+        repo.run(&["checkout", &cut])?;
+
+        let mut success = true;
+        let mut stdout = String::new();
+        let mut stderr = String::new();
+
+        if let Some(ref cmd) = build_cmd {
+            let (ok, out, err) = run_shell_command(&repo.workdir, cmd)?;
+            stdout.push_str(&out);
+            stderr.push_str(&err);
+            if !ok {
+                success = false;
+            }
+        }
+
+        if success {
+            if let Some(ref cmd) = test_cmd {
+                let (ok, out, err) = run_shell_command(&repo.workdir, cmd)?;
+                stdout.push_str(&out);
+                stderr.push_str(&err);
+                if !ok {
+                    success = false;
+                }
+            }
+        }
+
+        results.push(VerificationResult {
+            step_name,
+            cut,
+            success,
+            stdout,
+            stderr,
+        });
+
+        if !success {
+            break;
+        }
+    }
+
+    // Restore original branch
+    let _ = repo.run(&["checkout", &original_branch]);
+
+    // Record results
+    repo.record_verification(&s.id, &results)?;
+
+    Ok(results)
+}
+
+fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, String, String)> {
+    let output = std::process::Command::new("sh")
+        .current_dir(dir)
+        .arg("-c")
+        .arg(command)
+        .output()?;
+
+    let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
+    let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
+
+    Ok((output.status.success(), stdout, stderr))
+}
+
 #[cfg(test)]
 mod identity_tests {
     use super::*;
@@ -667,6 +779,7 @@ mod identity_tests {
             name: "test-name".to_string(),
             target: target,
             steps: vec![],
+            verification_policy: None,
         };
 
         assert_eq!(compute_identity(&repo, &staircase, IdentityKind::Lineage).unwrap(), "test-uuid");
@@ -683,6 +796,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
+            verification_policy: None,
             steps: vec![Step { name: "s1".to_string(), cut: c1.clone(), branch: None }],
         };
         
@@ -695,6 +809,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target,
+            verification_policy: None,
             steps: vec![Step { name: "s1".to_string(), cut: c2.clone(), branch: None }],
         };
         let id2 = compute_identity(&repo, &s2, IdentityKind::Revision).unwrap();
@@ -712,6 +827,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
+            verification_policy: None,
             steps: vec![
                 Step { name: "s1".to_string(), cut: c1.clone(), branch: None },
                 Step { name: "s2".to_string(), cut: c2.clone(), branch: None }
@@ -726,6 +842,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target,
+            verification_policy: None,
             steps: vec![
                 Step { name: "s1+2".to_string(), cut: c2.clone(), branch: None }
             ],
@@ -745,6 +862,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
+            verification_policy: None,
             steps: vec![
                 Step { name: "s1".to_string(), cut: c1.clone(), branch: None },
                 Step { name: "s2".to_string(), cut: c2.clone(), branch: None }
@@ -763,6 +881,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
+            verification_policy: None,
             steps: vec![
                 Step { name: "s1".to_string(), cut: c1_new.clone(), branch: None },
                 Step { name: "s2".to_string(), cut: c2_new.clone(), branch: None }
@@ -776,6 +895,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
+            verification_policy: None,
             steps: vec![
                 Step { name: "s1+2".to_string(), cut: c2_new.clone(), branch: None }
             ],
@@ -795,6 +915,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target.clone(),
+            verification_policy: None,
             steps: vec![
                 Step { name: "s1".to_string(), cut: c1.clone(), branch: None },
                 Step { name: "s2".to_string(), cut: c2.clone(), branch: None }
@@ -816,6 +937,7 @@ mod identity_tests {
             id: "uuid".to_string(),
             name: "name".to_string(),
             target: target,
+            verification_policy: None,
             steps: vec![
                 Step { name: "reordered".to_string(), cut: top_new, branch: None }
             ],
