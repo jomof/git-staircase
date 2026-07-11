@@ -1,7 +1,7 @@
 use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::core;
-use git_staircase::{Discovery, GitRepo, StaircaseFamily, StaircaseMetadata, Step};
+use git_staircase::{Discovery, GitRepo, StaircaseFamily, StaircaseMetadata, Step, IdentityKind};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -65,6 +65,12 @@ enum Commands {
     /// Restack stale steps
     Restack { name: String },
     /// Delete a managed staircase
+    /// Show identities of a staircase
+    Id {
+        name: String,
+        #[arg(long, value_enum, default_value = "lineage")]
+        kind: IdentityKind,
+    },
     Delete {
         name: String,
         #[arg(long)]
@@ -261,6 +267,12 @@ fn main() -> anyhow::Result<()> {
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::restack(&repo, &s.id)?;
             println!("Restacked staircase '{}'.", name);
+        }
+        Commands::Id { name, kind } => {
+            let s = core::find_by_name(&repo, &name)?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let id = core::compute_identity(&repo, &s, kind)?;
+            println!("{}", id);
         }
         Commands::Delete {
             name,

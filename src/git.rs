@@ -217,6 +217,27 @@ impl GitRepo {
         Ok(())
     }
 
+    pub fn get_object_format(&self) -> Result<String> {
+        let stdout = self.run(&["rev-parse", "--show-object-format"])?;
+        Ok(stdout.trim().to_string())
+    }
+
+    pub fn get_tree_id(&self, rev: &str) -> Result<String> {
+        let stdout = self.run(&["rev-parse", &format!("{}^{{tree}}", rev)])?;
+        Ok(stdout.trim().to_string())
+    }
+
+    pub fn hash_data(&self, data: &str) -> Result<String> {
+        let stdout = self.run_with_stdin(&["hash-object", "--stdin"], data)?;
+        Ok(stdout.trim().to_string())
+    }
+
+    pub fn get_patch_id(&self, base: &str, tip: &str) -> Result<String> {
+        let diff = self.run(&["diff-tree", "-p", base, tip])?;
+        let stdout = self.run_with_stdin(&["patch-id"], &diff)?;
+        Ok(stdout.split_whitespace().next().unwrap_or("").to_string())
+    }
+
     pub fn local_branches(&self) -> Result<Vec<BranchInfo>> {
         let stdout = self.run(&[
             "for-each-ref",

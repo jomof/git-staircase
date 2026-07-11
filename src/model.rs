@@ -1,3 +1,4 @@
+use clap::ValueEnum;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -60,4 +61,18 @@ pub struct StaircaseStatus {
     pub metadata: StaircaseMetadata,
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "kebab-case")]
+#[derive(ValueEnum)]
+pub enum IdentityKind {
+    Lineage,
+    Revision,
+    Body,
+    Decomposition,
+    Outcome,
+    PatchSeries,
+    Nominal,
+    Review,
 }

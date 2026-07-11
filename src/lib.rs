@@ -6,5 +6,5 @@ pub mod model;
 pub use error::{Result, StaircaseError};
 pub use git::GitRepo;
 pub use model::{
-    Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, StepStatus,
+    Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, StepStatus, IdentityKind,
 };
