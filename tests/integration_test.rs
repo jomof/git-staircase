@@ -1,4 +1,4 @@
-use git_staircase::GitRepo;
+use git_staircase::{GitRepo, StaircaseMetadata, Step};
 use git_staircase::core;
 use std::fs;
 use std::path::Path;
@@ -231,4 +231,60 @@ fn test_split_and_join() {
     assert_eq!(read.steps.len(), 1);
     assert_eq!(read.steps[0].name, "feature/auth-core");
     assert_eq!(read.steps[0].cut, c1_3);
+}
+
+#[test]
+fn test_adopt_validation() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+
+    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    let _c2 = commit(dir, "file2.txt", "2", "commit 2");
+
+    // Case 1: Identical adjacent cuts (empty step)
+    let s_empty = StaircaseMetadata {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: "empty".to_string(),
+        target: "main".to_string(),
+        steps: vec![
+            Step {
+                name: "step1".to_string(),
+                cut: c1.clone(),
+                branch: Some("feature/auth-core".to_string()),
+            },
+            Step {
+                name: "step2".to_string(),
+                cut: c1.clone(),
+                branch: Some("feature/auth-core".to_string()),
+            },
+        ],
+    };
+    assert!(core::adopt(&repo, &s_empty).is_err());
+
+    // Case 2: Out of order cuts (not ancestry linked)
+    run_git(dir, &["checkout", "main"]);
+    run_git(dir, &["checkout", "-b", "feature/other"]);
+    let c_other = commit(dir, "other.txt", "other", "commit other");
+
+    let s_invalid_order = StaircaseMetadata {
+        id: uuid::Uuid::new_v4().to_string(),
+        name: "invalid".to_string(),
+        target: "main".to_string(),
+        steps: vec![
+            Step {
+                name: "step1".to_string(),
+                cut: c1.clone(),
+                branch: Some("feature/auth-core".to_string()),
+            },
+            Step {
+                name: "step2".to_string(),
+                cut: c_other.clone(),
+                branch: Some("feature/other".to_string()),
+            },
+        ],
+    };
+    assert!(core::adopt(&repo, &s_invalid_order).is_err());
 }
