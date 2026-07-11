@@ -37,14 +37,10 @@ fn test_adoption_ui() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     commit(dir, "file2.txt", "2", "commit 2");
 
-    // We need to run the compiled binary.
-    // Assuming 'cargo build' was run and the binary is in target/debug/git-staircase
-    // But I can't easily find the binary path here.
-    // I'll just use 'cargo run' instead.
-
-    let output = Command::new("cargo")
+    let bin = env!("CARGO_BIN_EXE_git-staircase");
+    let output = Command::new(bin)
         .current_dir(dir)
-        .args(["run", "--", "id", "feature/auth", "--kind", "lineage"])
+        .args(["id", "feature/auth", "--kind", "lineage"])
         .output()
         .unwrap();
 

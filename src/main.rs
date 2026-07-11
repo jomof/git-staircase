@@ -216,7 +216,12 @@ fn main() -> anyhow::Result<()> {
             // Convert 1-based steps to 0-based
             let zero_based_steps: Vec<usize> = steps.iter().map(|s| s - 1).collect();
             core::reorder(&repo, &rs, &zero_based_steps)?;
-            if !cli.json && !cli.porcelain {
+            if cli.json {
+                let updated_rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
+                    .ok_or_else(|| anyhow!("Staircase '{}' not found after reorder", name))?;
+                let status = core::get_status_metadata(&repo, updated_rs.metadata().clone())?;
+                println!("{}", serde_json::to_string_pretty(&status)?);
+            } else if !cli.porcelain {
                 println!("Reordered staircase '{}'.", name);
             }
         }
@@ -523,7 +528,13 @@ fn main() -> anyhow::Result<()> {
         Commands::Id { name, kind, onto } => {
             let rs = core::resolve_staircase(&repo, &name, onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
+            let was_implicit = !rs.is_managed();
             let id = core::compute_identity(&repo, &rs, kind)?;
+            if was_implicit && kind == IdentityKind::Lineage {
+                if !cli.json && !cli.porcelain {
+                    println!("adopted implicit staircase '{}'", name);
+                }
+            }
             if cli.json {
                 println!(
                     "{}",

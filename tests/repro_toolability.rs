@@ -37,11 +37,10 @@ fn test_reorder_json() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     commit(dir, "file2.txt", "2", "commit 2");
 
-    let output = Command::new("cargo")
+    let bin = env!("CARGO_BIN_EXE_git-staircase");
+    let output = Command::new(bin)
         .current_dir(dir)
         .args([
-            "run",
-            "--",
             "--json",
             "reorder",
             "feature/auth",
