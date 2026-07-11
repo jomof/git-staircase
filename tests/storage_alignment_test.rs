@@ -2,6 +2,7 @@ mod common;
 use common::*;
 use git_staircase::Discovery;
 use git_staircase::core;
+use git_staircase::model::StaircaseMetadata;
 
 #[test]
 fn test_staircase_storage_alignment() {
@@ -30,13 +31,10 @@ fn test_staircase_storage_alignment() {
         .expect("refs/staircases/auth should exist");
 
     // ASSERT: Verify it points to a descriptor object
-    // According to spec, it should be a blob starting with "git-staircase-descriptor 1"
+    // According to new spec, it should be a valid JSON blob
     let content = repo.run(&["cat-file", "-p", &oid]).unwrap();
-    assert!(
-        content.starts_with("git-staircase-descriptor 1"),
-        "Descriptor should start with header, but was: {}",
-        content
-    );
+    let _: StaircaseMetadata =
+        serde_json::from_str(&content).expect("Descriptor should be valid JSON");
 
     // Also verify it is a blob type
     let obj_type = repo.run(&["cat-file", "-t", &oid]).unwrap();

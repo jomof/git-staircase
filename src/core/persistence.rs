@@ -3,39 +3,9 @@ use crate::git::GitRepo;
 use crate::model::{IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult};
 
 pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
-    let mut descriptor = String::new();
-    descriptor.push_str("git-staircase-descriptor 1\n");
-    let format = repo.get_object_format()?;
-    descriptor.push_str(&format!("object-format {}\n", format));
-    descriptor.push_str(&format!("lineage {}\n", metadata.id));
-    descriptor.push_str("state clean\n");
-    descriptor.push_str(&format!("target-ref {}\n", metadata.target));
+    let json = serde_json::to_string_pretty(metadata)?;
 
-    let target_oid = repo.resolve_commit(&metadata.target)?;
-    descriptor.push_str(&format!("target-oid {}\n", target_oid));
-
-    if let Some(ref policy) = metadata.verification_policy {
-        if let Some(ref cmd) = policy.build_command {
-            descriptor.push_str(&format!("build-command {}\n", cmd));
-        }
-        if let Some(ref cmd) = policy.test_command {
-            descriptor.push_str(&format!("test-command {}\n", cmd));
-        }
-        if policy.verify_each_prefix {
-            descriptor.push_str("verify-each-prefix true\n");
-        }
-    }
-
-    for step in &metadata.steps {
-        descriptor.push_str("\n");
-        descriptor.push_str(&format!("step {}\n", step.name));
-        descriptor.push_str(&format!("cut {}\n", step.cut));
-        if let Some(ref branch) = step.branch {
-            descriptor.push_str(&format!("materializing-ref refs/heads/{}\n", branch));
-        }
-    }
-
-    let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &descriptor)?;
+    let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
     let blob_oid = blob_oid.trim().to_string();
 
     let public_ref = format!("refs/staircases/{}", metadata.name);
@@ -75,7 +45,6 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
         meta.name = id_or_name.to_string();
     } else {
         // If we read from ID, we might need to find the name elsewhere
-        // For now, let's see if we can find a ref in refs/staircases/ pointing to this descriptor
         let oid = repo.resolve_ref(&ref_name)?;
         if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", &oid, "refs/staircases/"]) {
             if let Some(line) = stdout.lines().next() {
@@ -93,6 +62,16 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
 }
 
 fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
+    // Try JSON first
+    if let Ok(meta) = serde_json::from_str::<StaircaseMetadata>(content) {
+        return Ok(meta);
+    }
+
+    // Fallback to legacy format
+    parse_legacy_descriptor(content)
+}
+
+fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
     let mut id = String::new();
     let mut target = String::new();
     let mut steps = Vec::new();
