@@ -57,7 +57,7 @@ fn test_adopt_and_status() {
 
     core::adopt(&repo, &s).unwrap();
 
-    let read = repo.read_metadata(&s.id).unwrap();
+    let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
     assert_eq!(read.name, "auth");
     assert_eq!(read.steps.len(), 2);
 
@@ -133,7 +133,7 @@ fn test_split_and_join() {
         .unwrap();
     core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
 
-    let read = repo.read_metadata(&s.id).unwrap();
+    let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
     assert_eq!(read.steps.len(), 2);
 
     let rs = core::resolve_staircase(&repo, &s.id, None)
@@ -141,7 +141,7 @@ fn test_split_and_join() {
         .unwrap();
     core::join(&repo, &rs, 0, 1).unwrap();
 
-    let read = repo.read_metadata(&s.id).unwrap();
+    let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
     assert_eq!(read.steps.len(), 1);
     assert_eq!(read.steps[0].cut, c1_3);
 }

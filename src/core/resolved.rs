@@ -1,3 +1,4 @@
+use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{StaircaseMetadata, Step, ToHuman, ToPorcelain};
@@ -28,7 +29,7 @@ impl ResolvedStaircase {
         metadata.steps.insert(index, step.clone());
 
         if self.is_managed() {
-            repo.write_metadata(&metadata)?;
+            persistence::write_metadata(repo, &metadata)?;
             repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
@@ -48,7 +49,7 @@ impl ResolvedStaircase {
         let removed = metadata.steps.remove(index);
 
         if self.is_managed() {
-            repo.write_metadata(&metadata)?;
+            persistence::write_metadata(repo, &metadata)?;
             repo.delete_step_ref(&metadata.id, &removed.name)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
@@ -75,7 +76,7 @@ impl ResolvedStaircase {
 
         if self.is_managed() {
             repo.update_step_ref(&metadata.id, &metadata.steps[index].name, &new_oid)?;
-            repo.write_metadata(&metadata)?;
+            persistence::write_metadata(repo, &metadata)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
             if let Some(ref branch) = metadata.steps[index].branch {
@@ -100,7 +101,7 @@ impl ResolvedStaircase {
         metadata: StaircaseMetadata,
     ) -> Result<ResolvedStaircase> {
         if self.is_managed() {
-            repo.write_metadata(&metadata)?;
+            persistence::write_metadata(repo, &metadata)?;
             for step in &metadata.steps {
                 repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
             }
@@ -160,7 +161,7 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
         last_cut = current_cut;
     }
 
-    repo.write_metadata(staircase)?;
+    persistence::write_metadata(repo, staircase)?;
     for step in &staircase.steps {
         repo.update_step_ref(&staircase.id, &step.name, &step.cut)?;
     }

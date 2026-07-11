@@ -1,4 +1,5 @@
 use super::ResolvedStaircase;
+use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{BranchInfo, Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, Step};
@@ -218,7 +219,7 @@ pub fn resolve_staircase(
     let mut resolved_commits: HashMap<String, String> = HashMap::new();
 
     // Interpretation 1: Managed
-    let staircases = repo.list_staircases()?;
+    let staircases = persistence::list_staircases(repo)?;
     for s in staircases {
         if s.name == name || s.id == name {
             resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s));

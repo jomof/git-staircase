@@ -1,3 +1,4 @@
+use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{IdentityKind, VerificationResult};
@@ -111,7 +112,7 @@ pub fn verify(
             IdentityKind::Revision,
         )
     };
-    repo.record_verification(&key, kind, &results)?;
+    persistence::record_verification(repo, &key, kind, &results)?;
 
     Ok(results)
 }

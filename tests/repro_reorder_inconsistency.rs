@@ -1,3 +1,4 @@
+use git_staircase::core::persistence;
 mod common;
 use common::*;
 use git_staircase::core::{adopt, reorder, resolve_staircase};
@@ -54,7 +55,7 @@ fn test_reorder_metadata_inconsistency() {
     assert!(result.is_err(), "Reorder should fail due to conflict");
 
     // 4. Verify metadata remains UNCHANGED on failure
-    let staircases = repo.list_staircases().unwrap();
+    let staircases = persistence::list_staircases(&repo).unwrap();
     assert!(!staircases.is_empty());
     let meta = staircases
         .iter()

@@ -1,9 +1,10 @@
+use super::persistence;
 use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::{StaircaseMetadata, StaircaseStatus, StepStatus};
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
-    let metadata = repo.read_metadata(id)?;
+    let metadata = persistence::read_metadata(repo, id)?;
     get_status_metadata(repo, metadata, false)
 }
 

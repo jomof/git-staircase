@@ -2,6 +2,7 @@ pub mod discovery;
 pub mod identity;
 pub mod inference;
 pub mod manipulation;
+pub mod persistence;
 pub mod resolved;
 pub mod status;
 pub mod utils;

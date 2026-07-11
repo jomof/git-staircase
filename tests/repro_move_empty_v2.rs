@@ -1,3 +1,4 @@
+use git_staircase::core::persistence;
 use git_staircase::core::{ResolvedStaircase, adopt, manipulation};
 use git_staircase::git::GitRepo;
 use git_staircase::model::{StaircaseMetadata, Step};
@@ -55,13 +56,13 @@ fn test_move_commit_creates_empty_step_violating_invariant() {
         verification_policy: None,
     };
     let rs = ResolvedStaircase::Managed(meta.clone());
-    repo.write_metadata(&meta).unwrap();
+    persistence::write_metadata(&repo, &meta).unwrap();
 
     // ACT: Move the only commit of s2 into s1
     manipulation::move_commits(&repo, &rs, 1, 0, &[c2.clone()]).unwrap();
 
     // ASSERT: The resulting staircase is now considered invalid by the core logic
-    let updated_meta = repo.read_metadata("test-id").unwrap();
+    let updated_meta = persistence::read_metadata(&repo, "test-id").unwrap();
     let result = adopt(&repo, &updated_meta);
     assert!(
         result.is_err(),

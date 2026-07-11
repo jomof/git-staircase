@@ -1,6 +1,6 @@
+use git_staircase::core::persistence;
 mod common;
 use common::*;
-use git_staircase::core;
 use git_staircase::model::{StaircaseMetadata, Step, VerificationPolicy};
 
 #[test]
@@ -27,11 +27,9 @@ fn test_verification_policy_persistence() {
     };
 
     // ACT: Write and then read the metadata
-    repo.write_metadata(&metadata)
-        .expect("Failed to write metadata");
-    let read_meta = repo
-        .read_metadata("test-staircase")
-        .expect("Failed to read metadata");
+    persistence::write_metadata(&repo, &metadata).expect("Failed to write metadata");
+    let read_meta =
+        persistence::read_metadata(&repo, "test-staircase").expect("Failed to read metadata");
 
     // ASSERT: Verify the policy is preserved
     assert_eq!(

@@ -1,3 +1,4 @@
+use git_staircase::core::persistence;
 use git_staircase::git::GitRepo;
 use git_staircase::model::{StaircaseMetadata, Step};
 use std::fs;
@@ -50,9 +51,9 @@ fn test_slash_name_discovery() {
         verification_policy: None,
     };
 
-    repo.write_metadata(&metadata).unwrap();
+    persistence::write_metadata(&repo, &metadata).unwrap();
 
-    let list = repo.list_staircases().unwrap();
+    let list = persistence::list_staircases(&repo).unwrap();
     assert!(
         list.iter().any(|s| s.name == "feature/foo"),
         "Staircase with slash in name should be listed"

@@ -1,6 +1,7 @@
 use super::{OutputFormat, print_output};
 use crate::GitRepo;
 use git_staircase::core;
+use git_staircase::core::persistence;
 use git_staircase::{Discovery, ResolvedStaircase};
 
 pub fn run(
@@ -14,7 +15,7 @@ pub fn run(
     let mut all_results = Vec::new();
 
     if managed || show_all {
-        let list = repo.list_staircases()?;
+        let list = persistence::list_staircases(repo)?;
         for s in list {
             all_results.push(ResolvedStaircase::Managed(s));
         }

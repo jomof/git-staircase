@@ -1,3 +1,4 @@
+use super::persistence;
 use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -391,7 +392,7 @@ pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Resu
 }
 
 pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
-    let metadata = repo.read_metadata(id)?;
+    let metadata = persistence::read_metadata(repo, id)?;
 
     if delete_branches {
         for step in &metadata.steps {
@@ -401,6 +402,6 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
         }
     }
 
-    repo.delete_staircase_refs(id, &metadata.name)?;
+    persistence::delete_staircase_refs(repo, id, &metadata.name)?;
     Ok(())
 }
