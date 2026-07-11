@@ -246,7 +246,13 @@ fn main() -> anyhow::Result<()> {
         } => {
             let rs = resolve_rs(&repo, name, staircase_steps, onto.clone())?;
             let steps = steps.ok_or_else(|| anyhow!("--steps (indices) must be provided"))?;
-            let zero_based_steps: Vec<usize> = steps.iter().map(|s| s - 1).collect();
+            let mut zero_based_steps = Vec::new();
+            for &s in &steps {
+                if s == 0 {
+                    return Err(anyhow!("Step indices must be 1-based (got 0)"));
+                }
+                zero_based_steps.push(s - 1);
+            }
             core::reorder(&repo, &rs, &zero_based_steps)?;
             if cli.json {
                 let updated_rs =

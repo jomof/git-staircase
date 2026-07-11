@@ -44,7 +44,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
             if child.refname == parent.refname {
                 continue;
             }
-            if repo.is_ancestor(&parent.oid, &child.oid)? {
+            if parent.oid != child.oid && repo.is_ancestor(&parent.oid, &child.oid)? {
                 if let Some(current_best) = best_parent {
                     if repo.is_ancestor(&current_best.oid, &parent.oid)? {
                         best_parent = Some(parent);

@@ -3,7 +3,7 @@ use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
-fn test_reorder_underflow_crash() {
+fn test_reorder_underflow_error() {
     let dir = TempDir::new().unwrap();
     let repo_path = dir.path().to_path_buf();
 
@@ -25,9 +25,8 @@ fn test_reorder_underflow_crash() {
     run(&["add", "file"]);
     run(&["commit", "-m", "work"]);
 
-    let output = Command::new("cargo")
-        .arg("run")
-        .arg("--")
+    let bin = env!("CARGO_BIN_EXE_git-staircase");
+    let output = Command::new(bin)
         .arg("reorder")
         .arg("branch-a")
         .arg("--steps")
@@ -39,10 +38,11 @@ fn test_reorder_underflow_crash() {
         .output()
         .unwrap();
 
+    assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("panic") || stderr.contains("overflow"),
-        "Should have panicked but got: {}",
+        stderr.contains("Step indices must be 1-based"),
+        "Should have returned clean error but got: {}",
         stderr
     );
 }
