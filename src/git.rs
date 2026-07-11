@@ -1,5 +1,5 @@
 use crate::error::{Result, StaircaseError};
-use crate::model::{BranchInfo, StaircaseMetadata, VerificationResult};
+use crate::model::{BranchInfo, IdentityKind, StaircaseMetadata, VerificationResult};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -171,7 +171,12 @@ impl GitRepo {
         Ok(metadata)
     }
 
-    pub fn record_verification(&self, id: &str, results: &[VerificationResult]) -> Result<String> {
+    pub fn record_verification(
+        &self,
+        key: &str,
+        kind: IdentityKind,
+        results: &[VerificationResult],
+    ) -> Result<String> {
         let json = serde_json::to_string_pretty(results)?;
 
         let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
@@ -181,10 +186,22 @@ impl GitRepo {
         let tree_oid = self.run_with_stdin(&["mktree"], &tree_input)?;
         let tree_oid = tree_oid.trim();
 
-        let commit_msg = format!("Record verification for staircase {}", id);
+        let commit_msg = format!(
+            "Record verification for staircase {} (kind: {:?})",
+            key, kind
+        );
         let mut commit_args = vec!["commit-tree", tree_oid, "-m", &commit_msg];
 
-        let ref_name = format!("refs/staircases/{}/verification", id);
+        let ref_name = match kind {
+            IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
+            IdentityKind::Revision => format!("refs/staircases/by-revision/{}/verification", key),
+            _ => {
+                return Err(StaircaseError::Other(format!(
+                    "Unsupported identity kind for verification: {:?}",
+                    kind
+                )));
+            }
+        };
         let parent_oid = self.resolve_ref(&ref_name).ok();
         if let Some(ref parent) = parent_oid {
             commit_args.push("-p");

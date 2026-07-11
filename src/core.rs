@@ -669,8 +669,10 @@ pub fn verify(
     aggregate_only: Option<bool>,
     each_prefix: Option<bool>,
 ) -> Result<Vec<VerificationResult>> {
-    let s = find_by_name(repo, name)?
+    let rs = resolve_staircase(repo, name)?
         .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", name)))?;
+
+    let s = rs.metadata();
 
     let policy = s.verification_policy.as_ref();
 
@@ -753,7 +755,15 @@ pub fn verify(
     let _ = repo.run(&["checkout", &original_branch]);
 
     // Record results
-    repo.record_verification(&s.id, &results)?;
+    let (key, kind) = if rs.is_managed() {
+        (s.id.clone(), IdentityKind::Lineage)
+    } else {
+        (
+            compute_identity(repo, &rs, IdentityKind::Revision)?,
+            IdentityKind::Revision,
+        )
+    };
+    repo.record_verification(&key, kind, &results)?;
 
     Ok(results)
 }
