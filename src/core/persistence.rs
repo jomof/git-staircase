@@ -11,7 +11,7 @@ pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<St
     descriptor.push_str("state clean\n");
     descriptor.push_str(&format!("target-ref {}\n", metadata.target));
 
-    let target_oid = repo.resolve_ref(&metadata.target)?;
+    let target_oid = repo.resolve_commit(&metadata.target)?;
     descriptor.push_str(&format!("target-oid {}\n", target_oid));
 
     if let Some(ref policy) = metadata.verification_policy {
@@ -286,7 +286,7 @@ fn commit_json_data<T: serde::Serialize>(
     let mut commit_args = vec!["commit-tree", tree_oid, "-m", commit_msg];
 
     // Check if ref already exists to use as parent
-    let parent_oid = repo.resolve_ref_opt(ref_name).unwrap_or(None);
+    let parent_oid = repo.resolve_commit_opt(ref_name).unwrap_or(None);
     if let Some(ref parent) = parent_oid {
         commit_args.push("-p");
         commit_args.push(parent);

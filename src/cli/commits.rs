@@ -7,7 +7,7 @@ pub fn run(
     staircase: StaircaseSelectorArgs,
 ) -> anyhow::Result<()> {
     let rs = super::resolve_rs(repo, &staircase)?;
-    let target_oid = repo.resolve_ref(&rs.metadata().target)?;
+    let target_oid = repo.resolve_commit(&rs.metadata().target)?;
     let mut current_base = target_oid;
     for (i, step) in rs.metadata().steps.iter().enumerate() {
         println!("Step {}: {}", i + 1, step.name);

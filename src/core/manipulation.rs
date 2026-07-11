@@ -19,10 +19,10 @@ pub fn split(
         )));
     }
 
-    let at_oid = repo.resolve_ref(at_commit)?;
+    let at_oid = repo.resolve_commit(at_commit)?;
     let cut_oid = &staircase.metadata().steps[step_index].cut;
     let prev_cut_oid = if step_index == 0 {
-        repo.resolve_ref(&staircase.metadata().target)?
+        repo.resolve_commit(&staircase.metadata().target)?
     } else {
         staircase.metadata().steps[step_index - 1].cut.clone()
     };
@@ -97,7 +97,7 @@ pub fn join(
 pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     let original_head = repo.current_branch()?;
-    let original_head_oid = repo.resolve_ref("HEAD")?;
+    let original_head_oid = repo.resolve_commit("HEAD")?;
     let old_steps = metadata.steps.clone();
 
     let mut seen = HashSet::new();
@@ -118,24 +118,24 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
     let mut original_branch_oids = HashMap::new();
     for step in &old_steps {
         if let Some(ref branch) = step.branch {
-            if let Some(oid) = repo.resolve_ref_opt(&format!("refs/heads/{}", branch))? {
+            if let Some(oid) = repo.resolve_commit_opt(&format!("refs/heads/{}", branch))? {
                 original_branch_oids.insert(branch.clone(), oid);
             }
         }
     }
 
-    let target_oid = repo.resolve_ref(&metadata.target)?;
+    let target_oid = repo.resolve_commit(&metadata.target)?;
     let mut current_base = target_oid;
 
     let mut rebase_err = None;
 
     for i in 0..new_steps.len() {
         let step = &new_steps[i];
-        let actual_oid = repo.resolve_ref(&step.cut)?;
+        let actual_oid = repo.resolve_commit(&step.cut)?;
 
         let old_idx = new_order[i];
         let old_parent_oid = if old_idx == 0 {
-            repo.merge_base(&actual_oid, &repo.resolve_ref(&metadata.target)?)?
+            repo.merge_base(&actual_oid, &repo.resolve_commit(&metadata.target)?)?
         } else {
             old_steps[old_idx - 1].cut.clone()
         };
@@ -144,7 +144,7 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
             let mut rebase_target = step.cut.clone();
             if let Some(ref branch_name) = step.branch {
                 if repo
-                    .resolve_ref_opt(&format!("refs/heads/{}", branch_name))?
+                    .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
                     .is_some()
                 {
                     rebase_target = branch_name.clone();
@@ -159,7 +159,7 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
                 &rebase_target,
             ]) {
                 Ok(_) => {
-                    let new_oid = repo.resolve_ref("HEAD")?;
+                    let new_oid = repo.resolve_commit("HEAD")?;
                     new_steps[i].cut = new_oid.clone();
                     current_base = new_oid;
                 }
@@ -250,10 +250,10 @@ pub fn move_commits(
 
     if to_step_index + 1 == from_step_index {
         let commit_to_move = &commits[0];
-        let oid_to_move = repo.resolve_ref(commit_to_move)?;
+        let oid_to_move = repo.resolve_commit(commit_to_move)?;
 
         let prev_cut = if from_step_index == 0 {
-            repo.resolve_ref(&metadata.target)?
+            repo.resolve_commit(&metadata.target)?
         } else {
             metadata.steps[from_step_index - 1].cut.clone()
         };
@@ -279,7 +279,7 @@ pub fn move_commits(
 
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
     let original_head = repo.current_branch()?;
-    let original_head_oid = repo.resolve_ref("HEAD")?;
+    let original_head_oid = repo.resolve_commit("HEAD")?;
     let mut status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
@@ -290,7 +290,7 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
         return Ok(());
     }
 
-    let target_oid = repo.resolve_ref(&status.metadata.target)?;
+    let target_oid = repo.resolve_commit(&status.metadata.target)?;
     let mut current_base = target_oid;
     let mut metadata_changed = false;
     let mut current_rs = staircase.clone();
@@ -323,7 +323,7 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
             let mut rebase_target = actual_oid.clone();
             if let Some(ref branch_name) = step_branch {
                 if repo
-                    .resolve_ref_opt(&format!("refs/heads/{}", branch_name))?
+                    .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
                     .is_some()
                 {
                     rebase_target = branch_name.clone();
@@ -338,7 +338,7 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                 &rebase_target,
             ]) {
                 Ok(_) => {
-                    let new_oid = repo.resolve_ref("HEAD")?;
+                    let new_oid = repo.resolve_commit("HEAD")?;
                     current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
                     status.metadata.steps[i].cut = new_oid.clone();
                     metadata_changed = true;

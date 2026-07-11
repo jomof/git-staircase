@@ -20,7 +20,7 @@ pub fn get_status_metadata(
 
     for step in &metadata.steps {
         let actual_oid = if let Some(ref branch) = step.branch {
-            repo.resolve_ref_opt(&format!("refs/heads/{}", branch))?
+            repo.resolve_commit_opt(&format!("refs/heads/{}", branch))?
         } else {
             Some(step.cut.clone())
         };
@@ -45,7 +45,7 @@ pub fn get_status_metadata(
         });
     }
 
-    let target_oid = repo.resolve_ref(&metadata.target)?;
+    let target_oid = repo.resolve_commit(&metadata.target)?;
 
     for i in 0..steps.len() {
         let parent_oid = if i == 0 {

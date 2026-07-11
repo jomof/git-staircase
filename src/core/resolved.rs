@@ -122,13 +122,13 @@ impl ResolvedStaircase {
 }
 
 pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
-    let target_oid = match repo.resolve_ref(&staircase.target) {
+    let target_oid = match repo.resolve_commit(&staircase.target) {
         Ok(oid) => oid,
         Err(_) => return Ok(false),
     };
     let mut last_cut = target_oid;
     for step in &staircase.steps {
-        let current_cut = match repo.resolve_ref(&step.cut) {
+        let current_cut = match repo.resolve_commit(&step.cut) {
             Ok(oid) => oid,
             Err(_) => return Ok(false),
         };
@@ -144,10 +144,10 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
 }
 
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
-    let target_oid = repo.resolve_ref(&staircase.target)?;
+    let target_oid = repo.resolve_commit(&staircase.target)?;
     let mut last_cut = target_oid;
     for step in &staircase.steps {
-        let current_cut = repo.resolve_ref(&step.cut)?;
+        let current_cut = repo.resolve_commit(&step.cut)?;
         if current_cut == last_cut {
             return Err(StaircaseError::InvalidStructure(format!(
                 "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",

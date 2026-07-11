@@ -37,7 +37,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
-    let onto_oid = match repo.resolve_ref(&onto_final) {
+    let onto_oid = match repo.resolve_commit(&onto_final) {
         Ok(oid) => oid,
         Err(_) => {
             return Err(StaircaseError::Other(format!(
@@ -230,7 +230,7 @@ pub fn resolve_staircase(
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
-    let onto_oid = repo.resolve_ref(&onto_final)?;
+    let onto_oid = repo.resolve_commit(&onto_final)?;
     let object_format = repo.get_object_format()?;
     let discoveries = discover(repo, Some(&onto_final))?;
 
@@ -251,7 +251,7 @@ pub fn resolve_staircase(
     }
 
     // Interpretation 2: Standard Git Revision
-    if let Ok(oid) = repo.resolve_ref(name) {
+    if let Ok(oid) = repo.resolve_commit(name) {
         let full_name = repo
             .run(&["rev-parse", "--symbolic-full-name", name])
             .unwrap_or_else(|_| name.to_string())
@@ -393,11 +393,11 @@ pub fn resolve_explicit_staircase(
         Some(o) => o.to_string(),
         None => infer_onto(repo)?,
     };
-    let onto_oid = repo.resolve_ref(&onto_final)?;
+    let onto_oid = repo.resolve_commit(&onto_final)?;
     let object_format = repo.get_object_format()?;
     let mut staircase_steps = Vec::new();
     for s in steps {
-        let oid = repo.resolve_ref(s)?;
+        let oid = repo.resolve_commit(s)?;
         let short_name = s.strip_prefix("refs/heads/").unwrap_or(s).to_string();
         staircase_steps.push(Step {
             name: short_name.clone(),

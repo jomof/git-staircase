@@ -16,7 +16,7 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
 
     if inferred.is_none() {
         for common in &["main", "master", "trunk", "develop"] {
-            if let Ok(Some(_)) = repo.resolve_ref_opt(common) {
+            if let Ok(Some(_)) = repo.resolve_commit_opt(common) {
                 inferred = Some(common.to_string());
                 break;
             }

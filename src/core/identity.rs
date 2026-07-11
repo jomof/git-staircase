@@ -17,7 +17,7 @@ pub fn compute_identity(
         IdentityKind::Nominal => Ok(staircase.name.clone()),
         IdentityKind::Revision => {
             let format = repo.get_object_format()?;
-            let target_oid = repo.resolve_ref(&staircase.target)?;
+            let target_oid = repo.resolve_commit(&staircase.target)?;
             let mut data = format!("format:{}\ntarget:{}\n", format, target_oid);
             for (i, step) in staircase.steps.iter().enumerate() {
                 data.push_str(&format!("step{}:{}\n", i, step.cut));
@@ -25,7 +25,7 @@ pub fn compute_identity(
             repo.hash_data(&data)
         }
         IdentityKind::Body => {
-            let target_oid = repo.resolve_ref(&staircase.target)?;
+            let target_oid = repo.resolve_commit(&staircase.target)?;
             let top_oid = staircase
                 .steps
                 .last()
@@ -35,7 +35,7 @@ pub fn compute_identity(
             repo.hash_data(&data)
         }
         IdentityKind::Decomposition => {
-            let target_oid = repo.resolve_ref(&staircase.target)?;
+            let target_oid = repo.resolve_commit(&staircase.target)?;
             let mut patches = Vec::new();
             let mut last_cut = target_oid;
             for step in &staircase.steps {
@@ -46,7 +46,7 @@ pub fn compute_identity(
             repo.hash_data(&patches.join("\n---\n"))
         }
         IdentityKind::Outcome => {
-            let target_oid = repo.resolve_ref(&staircase.target)?;
+            let target_oid = repo.resolve_commit(&staircase.target)?;
             let target_tree = repo.get_tree_id(&target_oid)?;
             let top_oid = staircase
                 .steps
@@ -58,7 +58,7 @@ pub fn compute_identity(
             repo.hash_data(&data)
         }
         IdentityKind::PatchSeries => {
-            let target_oid = repo.resolve_ref(&staircase.target)?;
+            let target_oid = repo.resolve_commit(&staircase.target)?;
             let mut patch_ids = Vec::new();
             let mut last_cut = target_oid;
             for step in &staircase.steps {

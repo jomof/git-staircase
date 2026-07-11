@@ -95,6 +95,14 @@ impl GitRepo {
         let stdout = self.run(&["rev-parse", "--verify", rev])?;
         Ok(stdout.trim().to_string())
     }
+    pub fn resolve_commit(&self, rev: &str) -> Result<String> {
+        let stdout = self.run(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])?;
+        Ok(stdout.trim().to_string())
+    }
+
+    pub fn resolve_commit_opt(&self, rev: &str) -> Result<Option<String>> {
+        self.resolve_ref_opt(&format!("{}^{{commit}}", rev))
+    }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
         let args = ["rev-parse", "--verify", rev];

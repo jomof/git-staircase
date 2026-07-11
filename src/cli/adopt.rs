@@ -25,7 +25,7 @@ pub fn run(
             format!("refs/heads/{}", b)
         };
         let oid = repo
-            .resolve_ref(&full_ref)
+            .resolve_commit(&full_ref)
             .with_context(|| format!("Failed to resolve branch '{}'", b))?;
         let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
         steps.push(Step {
