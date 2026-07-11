@@ -48,7 +48,10 @@ pub fn verify(
 
     // Save current branch or OID to restore later
     let original_ref = {
-        let branch = repo.run(&["rev-parse", "--abbrev-ref", "HEAD"])?.trim().to_string();
+        let branch = repo
+            .run(&["rev-parse", "--abbrev-ref", "HEAD"])?
+            .trim()
+            .to_string();
         if branch == "HEAD" {
             repo.run(&["rev-parse", "HEAD"])?.trim().to_string()
         } else {
@@ -56,10 +59,7 @@ pub fn verify(
         }
     };
 
-    let _guard = CheckoutGuard {
-        repo,
-        original_ref,
-    };
+    let _guard = CheckoutGuard { repo, original_ref };
 
     for (step_name, cut) in targets {
         // Checkout the cut

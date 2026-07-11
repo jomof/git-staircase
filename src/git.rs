@@ -14,12 +14,52 @@ impl GitRepo {
         GitRepo { workdir }
     }
 
+    fn git_cmd(&self) -> Command {
+        let mut cmd = Command::new("git");
+        cmd.current_dir(&self.workdir);
+        cmd.env("GIT_TERMINAL_PROMPT", "0");
+        cmd
+    }
+
+    fn commit_json_data<T: serde::Serialize>(
+        &self,
+        ref_name: &str,
+        data: &T,
+        filename: &str,
+        commit_msg: &str,
+    ) -> Result<String> {
+        let json = serde_json::to_string_pretty(data)?;
+
+        // 1. Hash and write the JSON blob
+        let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
+        let blob_oid = blob_oid.trim();
+
+        // 2. Create a tree containing the blob
+        let tree_input = format!("100644 blob {}\t{}\n", blob_oid, filename);
+        let tree_oid = self.run_with_stdin(&["mktree"], &tree_input)?;
+        let tree_oid = tree_oid.trim();
+
+        // 3. Create a commit
+        let mut commit_args = vec!["commit-tree", tree_oid, "-m", commit_msg];
+
+        // Check if ref already exists to use as parent
+        let parent_oid = self.resolve_ref_opt(ref_name).unwrap_or(None);
+        if let Some(ref parent) = parent_oid {
+            commit_args.push("-p");
+            commit_args.push(parent);
+        }
+
+        let commit_oid = self.run(&commit_args)?;
+        let commit_oid = commit_oid.trim();
+
+        // 4. Update the ref
+        self.run(&["update-ref", ref_name, commit_oid])?;
+
+        Ok(commit_oid.to_string())
+    }
+
     pub fn run(&self, args: &[&str]) -> Result<String> {
-        let output = Command::new("git")
-            .current_dir(&self.workdir)
-            .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .output()?;
+        let output = self.git_cmd().args(args).output()?;
 
         if !output.status.success() {
             return Err(StaircaseError::GitCommandFailed {
@@ -33,10 +73,9 @@ impl GitRepo {
     }
 
     pub fn run_with_stdin(&self, args: &[&str], stdin: &str) -> Result<String> {
-        let mut child = Command::new("git")
-            .current_dir(&self.workdir)
+        let mut child = self
+            .git_cmd()
             .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0")
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
@@ -63,11 +102,7 @@ impl GitRepo {
     }
 
     pub fn run_interactive(&self, args: &[&str]) -> Result<()> {
-        let status = Command::new("git")
-            .current_dir(&self.workdir)
-            .args(args)
-            .env("GIT_TERMINAL_PROMPT", "0")
-            .status()?;
+        let status = self.git_cmd().args(args).status()?;
 
         if !status.success() {
             return Err(StaircaseError::GitCommandFailed {
@@ -86,10 +121,9 @@ impl GitRepo {
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
-        let output = Command::new("git")
-            .current_dir(&self.workdir)
+        let output = self
+            .git_cmd()
             .args(["rev-parse", "--verify", rev])
-            .env("GIT_TERMINAL_PROMPT", "0")
             .output()?;
 
         if output.status.success() {
@@ -102,8 +136,8 @@ impl GitRepo {
     }
 
     pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool> {
-        let output = Command::new("git")
-            .current_dir(&self.workdir)
+        let output = self
+            .git_cmd()
             .args(["merge-base", "--is-ancestor", ancestor, descendant])
             .output()?;
 
@@ -129,36 +163,9 @@ impl GitRepo {
     }
 
     pub fn write_metadata(&self, metadata: &StaircaseMetadata) -> Result<String> {
-        let json = serde_json::to_string_pretty(metadata)?;
-
-        // 1. Hash and write the metadata JSON blob
-        let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
-        let blob_oid = blob_oid.trim();
-
-        // 2. Create a tree containing the blob
-        let tree_input = format!("100644 blob {}\tstaircase.json\n", blob_oid);
-        let tree_oid = self.run_with_stdin(&["mktree"], &tree_input)?;
-        let tree_oid = tree_oid.trim();
-
-        // 3. Create a commit
-        let commit_msg = format!("Update staircase {}", metadata.name);
-        let mut commit_args = vec!["commit-tree", tree_oid, "-m", &commit_msg];
-
-        // Check if ref already exists to use as parent
         let ref_name = format!("refs/staircases/{}/meta", metadata.id);
-        let parent_oid = self.resolve_ref(&ref_name).ok();
-        if let Some(ref parent) = parent_oid {
-            commit_args.push("-p");
-            commit_args.push(parent);
-        }
-
-        let commit_oid = self.run(&commit_args)?;
-        let commit_oid = commit_oid.trim();
-
-        // 4. Update the ref
-        self.run(&["update-ref", &ref_name, commit_oid])?;
-
-        Ok(commit_oid.to_string())
+        let commit_msg = format!("Update staircase {}", metadata.name);
+        self.commit_json_data(&ref_name, metadata, "staircase.json", &commit_msg)
     }
 
     pub fn read_metadata(&self, id: &str) -> Result<StaircaseMetadata> {
@@ -177,21 +184,6 @@ impl GitRepo {
         kind: IdentityKind,
         results: &[VerificationResult],
     ) -> Result<String> {
-        let json = serde_json::to_string_pretty(results)?;
-
-        let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
-        let blob_oid = blob_oid.trim();
-
-        let tree_input = format!("100644 blob {}\tverification.json\n", blob_oid);
-        let tree_oid = self.run_with_stdin(&["mktree"], &tree_input)?;
-        let tree_oid = tree_oid.trim();
-
-        let commit_msg = format!(
-            "Record verification for staircase {} (kind: {:?})",
-            key, kind
-        );
-        let mut commit_args = vec!["commit-tree", tree_oid, "-m", &commit_msg];
-
         let ref_name = match kind {
             IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
             IdentityKind::Revision => format!("refs/staircases/by-revision/{}/verification", key),
@@ -202,18 +194,13 @@ impl GitRepo {
                 )));
             }
         };
-        let parent_oid = self.resolve_ref(&ref_name).ok();
-        if let Some(ref parent) = parent_oid {
-            commit_args.push("-p");
-            commit_args.push(parent);
-        }
 
-        let commit_oid = self.run(&commit_args)?;
-        let commit_oid = commit_oid.trim();
+        let commit_msg = format!(
+            "Record verification for staircase {} (kind: {:?})",
+            key, kind
+        );
 
-        self.run(&["update-ref", &ref_name, commit_oid])?;
-
-        Ok(commit_oid.to_string())
+        self.commit_json_data(&ref_name, &results, "verification.json", &commit_msg)
     }
 
     pub fn list_staircases(&self) -> Result<Vec<StaircaseMetadata>> {
@@ -290,10 +277,9 @@ impl GitRepo {
     }
 
     pub fn current_branch(&self) -> Result<Option<String>> {
-        let output = Command::new("git")
-            .current_dir(&self.workdir)
+        let output = self
+            .git_cmd()
             .args(["symbolic-ref", "-q", "HEAD"])
-            .env("GIT_TERMINAL_PROMPT", "0")
             .output()?;
         if output.status.success() {
             Ok(Some(
@@ -349,5 +335,105 @@ impl GitRepo {
         let ref_name = format!("refs/staircases/{}/meta", id);
         self.run(&["update-ref", "-d", &ref_name])?;
         Ok(())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::fs;
+    use std::process::Command;
+    use tempfile::TempDir;
+
+    fn setup_repo() -> (TempDir, GitRepo) {
+        let tmp = TempDir::new().unwrap();
+        let repo_path = tmp.path().to_path_buf();
+
+        let status = Command::new("git")
+            .current_dir(&repo_path)
+            .args(["init", "-b", "main"])
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        // Initial commit to have a HEAD
+        fs::write(repo_path.join("init.txt"), "init").unwrap();
+        let status = Command::new("git")
+            .current_dir(&repo_path)
+            .args(["add", "."])
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        let status = Command::new("git")
+            .current_dir(&repo_path)
+            .args(["commit", "-m", "initial"])
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_COMMITTER_EMAIL", "test@example.com")
+            .status()
+            .unwrap();
+        assert!(status.success());
+
+        (tmp, GitRepo::new(repo_path))
+    }
+
+    #[test]
+    fn test_git_cmd_setup() {
+        let (_tmp, repo) = setup_repo();
+        let cmd = repo.git_cmd();
+        assert_eq!(cmd.get_program(), "git");
+        // We can't easily check current_dir and env from Command without unstable features or just running it.
+        let output = repo.run(&["rev-parse", "--is-inside-work-tree"]).unwrap();
+        assert_eq!(output.trim(), "true");
+    }
+
+    #[test]
+    fn test_commit_json_data() {
+        let (_tmp, repo) = setup_repo();
+
+        #[derive(serde::Serialize, serde::Deserialize, PartialEq, Debug)]
+        struct TestData {
+            foo: String,
+        }
+
+        let data = TestData {
+            foo: "bar".to_string(),
+        };
+        let ref_name = "refs/test/json";
+        let filename = "test.json";
+        let commit_msg = "test commit";
+
+        let commit_oid = repo
+            .commit_json_data(ref_name, &data, filename, commit_msg)
+            .unwrap();
+        assert!(!commit_oid.is_empty());
+
+        // Verify ref updated
+        let resolved = repo.resolve_ref(ref_name).unwrap();
+        assert_eq!(resolved, commit_oid);
+
+        // Verify content
+        let json = repo
+            .run(&["cat-file", "-p", &format!("{}:{}", commit_oid, filename)])
+            .unwrap();
+        let read_data: TestData = serde_json::from_str(&json).unwrap();
+        assert_eq!(read_data, data);
+
+        // Verify parent
+        let data2 = TestData {
+            foo: "baz".to_string(),
+        };
+        let commit_oid2 = repo
+            .commit_json_data(ref_name, &data2, filename, "second commit")
+            .unwrap();
+
+        let parents = repo
+            .run(&["rev-list", "--parents", "-n", "1", &commit_oid2])
+            .unwrap();
+        let parts: Vec<&str> = parents.split_whitespace().collect();
+        assert_eq!(parts.len(), 2);
+        assert_eq!(parts[1], commit_oid);
     }
 }
