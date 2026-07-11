@@ -1,7 +1,7 @@
 use super::OutputFormat;
 use crate::GitRepo;
+use crate::core;
 use anyhow::anyhow;
-use git_staircase::core;
 
 pub fn run(
     repo: &GitRepo,
@@ -10,8 +10,8 @@ pub fn run(
     step2: String,
     onto: Option<String>,
 ) -> anyhow::Result<()> {
-    let (sc_name1, step_num1) = super::super::parse_step_spec(&step1)?;
-    let (sc_name2, step_num2) = super::super::parse_step_spec(&step2)?;
+    let (sc_name1, step_num1) = crate::parse_step_spec(&step1)?;
+    let (sc_name2, step_num2) = crate::parse_step_spec(&step2)?;
 
     if sc_name1 != sc_name2 {
         return Err(anyhow!(

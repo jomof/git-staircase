@@ -1,7 +1,7 @@
 use super::OutputFormat;
 use crate::GitRepo;
+use crate::core;
 use anyhow::anyhow;
-use git_staircase::core;
 
 pub fn run(
     repo: &GitRepo,
@@ -9,7 +9,7 @@ pub fn run(
     step: String,
     onto: Option<String>,
 ) -> anyhow::Result<()> {
-    let (sc_name, step_num) = super::super::parse_step_spec(&step)?;
+    let (sc_name, step_num) = crate::parse_step_spec(&step)?;
     let rs = core::resolve_staircase(repo, &sc_name, onto.as_deref())?
         .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
     if step_num == 0 {

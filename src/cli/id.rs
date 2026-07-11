@@ -1,7 +1,7 @@
 use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
-use git_staircase::IdentityKind;
-use git_staircase::core;
+use crate::IdentityKind;
+use crate::core;
 
 pub fn run(
     repo: &GitRepo,

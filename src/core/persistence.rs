@@ -61,7 +61,7 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
     Ok(meta)
 }
 
-fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
+pub fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
     // Try JSON first
     if let Ok(meta) = serde_json::from_str::<StaircaseMetadata>(content) {
         return Ok(meta);
@@ -93,26 +93,26 @@ fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
             "lineage" => id = parts[1].to_string(),
             "target-ref" => target = parts[1].to_string(),
             "build-command" => {
-                let policy = verification_policy.get_or_insert_with(|| VerificationPolicy {
+                let policy = verification_policy.get_or_insert(VerificationPolicy {
                     build_command: None,
                     test_command: None,
-                    verify_each_prefix: false,
+                    verify_each_prefix: false
                 });
                 policy.build_command = Some(parts[1].to_string());
             }
             "test-command" => {
-                let policy = verification_policy.get_or_insert_with(|| VerificationPolicy {
+                let policy = verification_policy.get_or_insert(VerificationPolicy {
                     build_command: None,
                     test_command: None,
-                    verify_each_prefix: false,
+                    verify_each_prefix: false
                 });
                 policy.test_command = Some(parts[1].to_string());
             }
             "verify-each-prefix" => {
-                let policy = verification_policy.get_or_insert_with(|| VerificationPolicy {
+                let policy = verification_policy.get_or_insert(VerificationPolicy {
                     build_command: None,
                     test_command: None,
-                    verify_each_prefix: false,
+                    verify_each_prefix: false
                 });
                 policy.verify_each_prefix = parts[1] == "true";
             }
@@ -278,4 +278,20 @@ fn commit_json_data<T: serde::Serialize>(
     repo.run(&["update-ref", ref_name, commit_oid])?;
 
     Ok(commit_oid.to_string())
+}
+
+pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMetadata> {
+    let content = repo.run(&["cat-file", "-p", oid])?;
+    let mut meta = parse_descriptor(&content)?;
+
+    // Try to find a name for this revision
+    if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", oid, "refs/staircases/"]) {
+        if let Some(name) = stdout.lines().next().and_then(|line| line.split_whitespace().last()?.strip_prefix("refs/staircases/")) {
+            meta.name = name.to_string();
+        }
+    }
+    if meta.name.is_empty() {
+        meta.name = meta.id.clone();
+    }
+    Ok(meta)
 }

@@ -1,8 +1,8 @@
 use super::{OutputFormat, print_output};
 use crate::GitRepo;
-use git_staircase::core;
-use git_staircase::core::persistence;
-use git_staircase::{Discovery, ResolvedStaircase};
+use crate::core;
+use crate::core::persistence;
+use crate::{Discovery, ResolvedStaircase};
 
 pub fn run(
     repo: &GitRepo,

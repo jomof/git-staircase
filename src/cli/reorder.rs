@@ -1,7 +1,7 @@
 use super::{OutputFormat, StaircaseSelectorArgs};
 use crate::GitRepo;
+use crate::core;
 use anyhow::anyhow;
-use git_staircase::core;
 
 pub fn run(
     repo: &GitRepo,

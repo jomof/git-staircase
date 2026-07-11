@@ -4,9 +4,7 @@ use git_staircase::GitRepo;
 use git_staircase::IdentityKind;
 use std::path::PathBuf;
 
-pub mod cli;
-
-use cli::StaircaseSelectorArgs;
+use git_staircase::cli::{self, StaircaseSelectorArgs};
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -194,21 +192,6 @@ fn find_repo_root() -> Result<PathBuf> {
     }
     let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(PathBuf::from(path_str))
-}
-
-pub fn parse_step_spec(spec: &str) -> Result<(String, usize)> {
-    let parts: Vec<&str> = spec.split(':').collect();
-    if parts.len() != 2 {
-        return Err(anyhow!(
-            "Invalid step spec '{}'. Expected format: <staircase_name>:<step_number>",
-            spec
-        ));
-    }
-    let name = parts[0].to_string();
-    let num = parts[1]
-        .parse::<usize>()
-        .context("Failed to parse step number")?;
-    Ok((name, num))
 }
 
 fn main() -> Result<()> {

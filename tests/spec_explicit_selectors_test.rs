@@ -1,0 +1,107 @@
+mod common;
+use common::*;
+use git_staircase::core;
+use git_staircase::cli::{StaircaseSelectorArgs, resolve_rs};
+use git_staircase::ResolvedStaircase;
+
+#[test]
+fn test_explicit_selectors_resolve_ambiguity() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    // 1. Create a managed staircase named 'auth'
+    run_git(dir, &["checkout", "main"]);
+    run_git(dir, &["checkout", "-b", "managed-auth"]);
+    let _c1 = commit(dir, "m.txt", "m", "managed commit");
+    
+    let discoveries = core::discover(&repo, Some("main")).unwrap();
+    let mut s = match &discoveries[0] {
+        git_staircase::Discovery::Linear(s) => s.clone(),
+        _ => panic!("Expected linear discovery"),
+    };
+    s.name = "auth".to_string();
+    let managed_s = core::adopt(&repo, &s).unwrap();
+    let lineage_id = managed_s.id.clone();
+    let revision_oid = repo.resolve_ref("refs/staircases/auth").unwrap();
+
+    // 2. Create an implicit staircase also named 'auth' (using a branch named 'auth')
+    run_git(dir, &["checkout", "main"]);
+    run_git(dir, &["checkout", "-b", "auth"]);
+    let _c2 = commit(dir, "i.txt", "i", "implicit commit");
+
+    // 3. Verify that bare 'auth' is ambiguous
+    let args_bare = StaircaseSelectorArgs {
+        name: Some("auth".to_string()),
+        steps: None,
+        onto: Some("main".to_string()),
+        id: None,
+        revision: None,
+        explicit_name: None,
+        r#ref: None,
+        structural_key: None,
+    };
+    
+    let result = resolve_rs(&repo, &args_bare);
+    assert!(result.is_err(), "Bare 'auth' should be ambiguous");
+    assert!(result.unwrap_err().to_string().contains("ambiguous"));
+
+    // 4. Test --name auth
+    let args_name = StaircaseSelectorArgs {
+        name: None,
+        steps: None,
+        onto: Some("main".to_string()),
+        id: None,
+        revision: None,
+        explicit_name: Some("auth".to_string()),
+        r#ref: None,
+        structural_key: None,
+    };
+    let rs = resolve_rs(&repo, &args_name).expect("Should resolve by --name");
+    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert_eq!(rs.metadata().name, "auth");
+
+    // 5. Test --id <uuid>
+    let args_id = StaircaseSelectorArgs {
+        name: None,
+        steps: None,
+        onto: Some("main".to_string()),
+        id: Some(lineage_id.clone()),
+        revision: None,
+        explicit_name: None,
+        r#ref: None,
+        structural_key: None,
+    };
+    let rs = resolve_rs(&repo, &args_id).expect("Should resolve by --id");
+    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert_eq!(rs.metadata().id, lineage_id);
+
+    // 6. Test --ref refs/staircases/auth
+    let args_ref = StaircaseSelectorArgs {
+        name: None,
+        steps: None,
+        onto: Some("main".to_string()),
+        id: None,
+        revision: None,
+        explicit_name: None,
+        r#ref: Some("refs/staircases/auth".to_string()),
+        structural_key: None,
+    };
+    let rs = resolve_rs(&repo, &args_ref).expect("Should resolve by --ref");
+    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert_eq!(rs.metadata().name, "auth");
+
+    // 7. Test --revision <oid>
+    let args_rev = StaircaseSelectorArgs {
+        name: None,
+        steps: None,
+        onto: Some("main".to_string()),
+        id: None,
+        revision: Some(revision_oid.clone()),
+        explicit_name: None,
+        r#ref: None,
+        structural_key: None,
+    };
+    let rs = resolve_rs(&repo, &args_rev).expect("Should resolve by --revision");
+    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert_eq!(repo.resolve_ref("refs/staircases/auth").unwrap(), revision_oid);
+}

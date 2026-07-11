@@ -1,7 +1,7 @@
+use crate::model::{ToHuman, ToPorcelain};
+use crate::{GitRepo, ResolvedStaircase, core};
 use anyhow::{Result, anyhow};
 use clap::Args;
-use git_staircase::model::{ToHuman, ToPorcelain};
-use git_staircase::{GitRepo, ResolvedStaircase, core};
 use serde::Serialize;
 
 pub mod adopt;
@@ -41,6 +41,21 @@ pub struct StaircaseSelectorArgs {
     /// The target branch the staircase is based on (e.g., 'main').
     #[arg(long)]
     pub onto: Option<String>,
+    /// Select by lineage ID.
+    #[arg(long)]
+    pub id: Option<String>,
+    /// Select by staircase revision OID.
+    #[arg(long)]
+    pub revision: Option<String>,
+    /// Select by managed staircase name.
+    #[arg(long("name"))]
+    pub explicit_name: Option<String>,
+    /// Select by full staircase refname.
+    #[arg(long("ref"))]
+    pub r#ref: Option<String>,
+    /// Select by structural revision key.
+    #[arg(long)]
+    pub structural_key: Option<String>,
 }
 
 pub fn print_output<T>(format: OutputFormat, value: &T) -> Result<()>
@@ -73,6 +88,26 @@ where
 }
 
 pub fn resolve_rs(repo: &GitRepo, args: &StaircaseSelectorArgs) -> Result<ResolvedStaircase> {
+    if let Some(id) = &args.id {
+        return Ok(core::resolve_by_id(repo, id)?);
+    }
+    if let Some(revision) = &args.revision {
+        return Ok(core::resolve_by_revision(repo, revision)?);
+    }
+    if let Some(name) = &args.explicit_name {
+        return Ok(core::resolve_by_name(repo, name)?);
+    }
+    if let Some(r) = &args.r#ref {
+        return Ok(core::resolve_by_ref(repo, r)?);
+    }
+    if let Some(key) = &args.structural_key {
+        return Ok(core::resolve_by_structural_key(
+            repo,
+            key,
+            args.onto.as_deref(),
+        )?);
+    }
+
     if let Some(s) = &args.steps {
         Ok(core::resolve_explicit_staircase(
             repo,
@@ -83,7 +118,7 @@ pub fn resolve_rs(repo: &GitRepo, args: &StaircaseSelectorArgs) -> Result<Resolv
         let name = args
             .name
             .as_ref()
-            .ok_or_else(|| anyhow!("Either a name or --steps must be provided"))?;
+            .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --revision, --structural-key) must be provided"))?;
         core::resolve_staircase(repo, name, args.onto.as_deref())?
             .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
     }

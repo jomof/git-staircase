@@ -562,3 +562,93 @@ mod tests {
         assert_eq!(family.len(), 4);
     }
 }
+
+pub fn resolve_by_id(repo: &GitRepo, id: &str) -> Result<ResolvedStaircase> {
+    let staircases = persistence::list_staircases(repo)?;
+    for s in staircases {
+        if s.id == id {
+            return Ok(ResolvedStaircase::Managed(s));
+        }
+    }
+    Err(StaircaseError::Other(format!(
+        "Staircase with ID '{}' not found",
+        id
+    )))
+}
+
+pub fn resolve_by_name(repo: &GitRepo, name: &str) -> Result<ResolvedStaircase> {
+    let staircases = persistence::list_staircases(repo)?;
+    for s in staircases {
+        if s.name == name {
+            return Ok(ResolvedStaircase::Managed(s));
+        }
+    }
+    Err(StaircaseError::Other(format!(
+        "Managed staircase '{}' not found",
+        name
+    )))
+}
+
+pub fn resolve_by_ref(repo: &GitRepo, refname: &str) -> Result<ResolvedStaircase> {
+    let oid = repo.resolve_ref(refname)?;
+    resolve_by_revision(repo, &oid)
+}
+
+pub fn resolve_by_revision(repo: &GitRepo, oid: &str) -> Result<ResolvedStaircase> {
+    let metadata = persistence::read_metadata_from_oid(repo, oid)?;
+    // Try to find if it matches a managed staircase's current state to mark it as Managed
+    let staircases = persistence::list_staircases(repo)?;
+    for s in staircases {
+        if s.id == metadata.id {
+            // Verify if the current ref for this staircase matches this OID
+            if let Ok(current_oid) = repo.resolve_ref(&format!("refs/staircases/{}", s.name)) {
+                if current_oid == oid {
+                    return Ok(ResolvedStaircase::Managed(metadata));
+                }
+            }
+            // Even if it's an old revision of a managed staircase, we might want to treat it as Managed?
+            // Spec says "Managed Staircase revision must resolve to a valid staircase descriptor object".
+            // If it has a lineage ID that we track, it's probably best to treat it as Managed.
+            return Ok(ResolvedStaircase::Managed(metadata));
+        }
+    }
+    Ok(ResolvedStaircase::Implicit(metadata))
+}
+
+pub fn resolve_by_structural_key(
+    repo: &GitRepo,
+    key: &str,
+    onto: Option<&str>,
+) -> Result<ResolvedStaircase> {
+    let onto_final = match onto {
+        Some(o) => o.to_string(),
+        None => infer_onto(repo)?,
+    };
+    let discoveries = discover(repo, Some(&onto_final))?;
+    for d in discoveries {
+        match d {
+            Discovery::Linear(s) => {
+                if s.id == key {
+                    return Ok(ResolvedStaircase::Implicit(s));
+                }
+            }
+            Discovery::Ambiguous(f) => {
+                if f.id == key {
+                    return Ok(ResolvedStaircase::ImplicitFamily(f));
+                }
+                // Also check paths within family
+                for step_name in f.steps.keys() {
+                    if let Some(path) = extract_path_to(&f, step_name) {
+                        if path.id == key {
+                            return Ok(ResolvedStaircase::Implicit(path));
+                        }
+                    }
+                }
+            }
+        }
+    }
+    Err(StaircaseError::Other(format!(
+        "Implicit staircase with structural key '{}' not found",
+        key
+    )))
+}

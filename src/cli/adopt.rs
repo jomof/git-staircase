@@ -1,8 +1,8 @@
 use super::{OutputFormat, print_output};
 use crate::GitRepo;
+use crate::core;
+use crate::model::{StaircaseMetadata, Step, VerificationPolicy};
 use anyhow::{Context, anyhow};
-use git_staircase::core;
-use git_staircase::model::{StaircaseMetadata, Step, VerificationPolicy};
 
 pub fn run(
     repo: &GitRepo,
