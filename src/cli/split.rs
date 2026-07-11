@@ -1,16 +1,15 @@
-use super::{OutputFormat, StaircaseSelectorArgs, resolve_rs};
+use super::{StaircaseSelectorArgs, Success, resolve_rs};
 use crate::GitRepo;
 use crate::core;
 use anyhow::anyhow;
 
 pub fn run(
     repo: &GitRepo,
-    format: OutputFormat,
     staircase: StaircaseSelectorArgs,
     step: Option<usize>,
     at: String,
     step_name: Option<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Success> {
     let (rs, step_num) = if let Some(s) = step {
         (resolve_rs(repo, &staircase)?, s)
     } else {
@@ -25,13 +24,10 @@ pub fn run(
         return Err(anyhow!("Step number must be 1-based"));
     }
     core::split(repo, &rs, step_num - 1, &at, step_name.as_deref())?;
-    if matches!(format, OutputFormat::Human) {
-        println!(
-            "Split step {} of staircase '{}' at {}.",
-            step_num,
-            rs.metadata().name,
-            at
-        );
-    }
-    Ok(())
+    Ok(Success::new(format!(
+        "Split step {} of staircase '{}' at {}.",
+        step_num,
+        rs.metadata().name,
+        at
+    )))
 }

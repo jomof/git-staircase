@@ -1,16 +1,9 @@
-use super::{OutputFormat, StaircaseSelectorArgs};
+use super::{StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 
-pub fn run(
-    repo: &GitRepo,
-    format: OutputFormat,
-    staircase: StaircaseSelectorArgs,
-) -> anyhow::Result<()> {
+pub fn run(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> anyhow::Result<Success> {
     let rs = super::resolve_rs(repo, &staircase)?;
     core::restack(repo, &rs)?;
-    if matches!(format, OutputFormat::Human) {
-        println!("Restacked staircase.");
-    }
-    Ok(())
+    Ok(Success::new("Restacked staircase."))
 }

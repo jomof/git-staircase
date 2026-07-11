@@ -13,7 +13,8 @@ fn test_drop_with_id_and_step() {
     commit(path, "f2.txt", "2", "c2");
 
     // Adopt it to make it managed and get an ID
-    let (success, stdout, stderr) = run_staircase(path, &["adopt", "my-staircase", "step1", "step2"]);
+    let (success, stdout, stderr) =
+        run_staircase(path, &["adopt", "my-staircase", "step1", "step2"]);
     assert!(success, "Adopt failed: {} {}", stdout, stderr);
 
     // Get the ID
@@ -25,7 +26,11 @@ fn test_drop_with_id_and_step() {
     let (success, stdout, stderr) = run_staircase(path, &["drop", "--id", id, "--step", "1"]);
 
     // ASSERT: Verify that the first step is removed.
-    assert!(success, "Drop with --id and --step failed: {} {}", stdout, stderr);
+    assert!(
+        success,
+        "Drop with --id and --step failed: {} {}",
+        stdout, stderr
+    );
 
     let (success, steps, stderr) = run_staircase(path, &["steps", "--id", id]);
     assert!(success, "Steps failed: {}", stderr);
@@ -52,8 +57,25 @@ fn test_split_with_id_and_step() {
     let id = id.trim();
 
     // ACT: git staircase split --id <id> --step 1 --at <c2> --step-name step1a
-    let (success, stdout, stderr) = run_staircase(path, &["split", "--id", id, "--step", "1", "--at", &c2, "--step-name", "step1a"]);
-    assert!(success, "Split with --id and --step failed: {} {}", stdout, stderr);
+    let (success, stdout, stderr) = run_staircase(
+        path,
+        &[
+            "split",
+            "--id",
+            id,
+            "--step",
+            "1",
+            "--at",
+            &c2,
+            "--step-name",
+            "step1a",
+        ],
+    );
+    assert!(
+        success,
+        "Split with --id and --step failed: {} {}",
+        stdout, stderr
+    );
 
     let (success, steps, stderr) = run_staircase(path, &["steps", "--id", id]);
     assert!(success, "Steps failed: {}", stderr);
@@ -70,7 +92,8 @@ fn test_join_with_id_and_steps() {
     run_git(path, &["checkout", "-b", "step2"]);
     commit(path, "f2.txt", "2", "c2");
 
-    let (success, _stdout, stderr) = run_staircase(path, &["adopt", "my-staircase", "step1", "step2"]);
+    let (success, _stdout, stderr) =
+        run_staircase(path, &["adopt", "my-staircase", "step1", "step2"]);
     assert!(success, "Adopt failed: {}", stderr);
 
     let (success, id, stderr) = run_staircase(path, &["id", "my-staircase"]);
@@ -78,11 +101,20 @@ fn test_join_with_id_and_steps() {
     let id = id.trim();
 
     // ACT: git staircase join --id <id> --step 1 --step2 2
-    let (success, stdout, stderr) = run_staircase(path, &["join", "--id", id, "--step", "1", "--step2", "2"]);
-    assert!(success, "Join with --id and --step failed: {} {}", stdout, stderr);
+    let (success, stdout, stderr) =
+        run_staircase(path, &["join", "--id", id, "--step", "1", "--step2", "2"]);
+    assert!(
+        success,
+        "Join with --id and --step failed: {} {}",
+        stdout, stderr
+    );
 
     let (success, steps, stderr) = run_staircase(path, &["steps", "--id", id]);
     assert!(success, "Steps failed: {}", stderr);
     // Should only have one step now (usually the name of the second one is kept or merged)
-    assert_eq!(steps.lines().count(), 1, "Should have only 1 step after join");
+    assert_eq!(
+        steps.lines().count(),
+        1,
+        "Should have only 1 step after join"
+    );
 }

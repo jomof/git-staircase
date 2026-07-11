@@ -1,34 +1,18 @@
-use super::{OutputFormat, StaircaseSelectorArgs, resolve_rs};
+use super::{StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 use anyhow::anyhow;
 
 pub fn run(
     repo: &GitRepo,
-    format: OutputFormat,
     staircase: StaircaseSelectorArgs,
     step: Option<usize>,
-) -> anyhow::Result<()> {
-    let (rs, step_num) = if let Some(s) = step {
-        (resolve_rs(repo, &staircase)?, s)
-    } else {
-        let name = staircase.name.as_ref().ok_or_else(|| anyhow!("Step number must be provided either via --step or as part of the staircase name (e.g. name:1)"))?;
-        let (sc_name, step_num) = crate::parse_step_spec(name)?;
-        let mut sc_args = staircase.clone();
-        sc_args.name = Some(sc_name);
-        (resolve_rs(repo, &sc_args)?, step_num)
-    };
-
-    if step_num == 0 {
-        return Err(anyhow!("Step number must be 1-based"));
+) -> anyhow::Result<Success> {
+    let rs = super::resolve_rs(repo, &staircase)?;
+    let step_idx = step.ok_or_else(|| anyhow!("--step (index) must be provided"))?;
+    if step_idx == 0 {
+        return Err(anyhow!("Step index must be 1-based (got 0)"));
     }
-    core::drop(repo, &rs, step_num - 1)?;
-    if matches!(format, OutputFormat::Human) {
-        println!(
-            "Dropped step {} from staircase '{}'.",
-            step_num,
-            rs.metadata().name
-        );
-    }
-    Ok(())
+    core::drop(repo, &rs, step_idx - 1)?;
+    Ok(Success::new("Dropped step."))
 }

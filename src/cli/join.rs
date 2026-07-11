@@ -1,16 +1,15 @@
-use super::{OutputFormat, StaircaseSelectorArgs, resolve_rs};
+use super::{StaircaseSelectorArgs, Success, resolve_rs};
 use crate::GitRepo;
 use crate::core;
 use anyhow::anyhow;
 
 pub fn run(
     repo: &GitRepo,
-    format: OutputFormat,
     staircase: StaircaseSelectorArgs,
     step: Option<usize>,
     step2: Option<usize>,
     step2_pos: Option<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Success> {
     let (rs, step_num1, step_num2) = if let Some(s1) = step {
         let s2 = if let Some(s2) = step2 {
             s2
@@ -58,13 +57,10 @@ pub fn run(
     }
 
     core::join(repo, &rs, step_num1 - 1, step_num2 - 1)?;
-    if matches!(format, OutputFormat::Human) {
-        println!(
-            "Joined steps {} and {} of staircase '{}'.",
-            step_num1,
-            step_num2,
-            rs.metadata().name
-        );
-    }
-    Ok(())
+    Ok(Success::new(format!(
+        "Joined steps {} and {} of staircase '{}'.",
+        step_num1,
+        step_num2,
+        rs.metadata().name
+    )))
 }

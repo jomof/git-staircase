@@ -215,15 +215,20 @@ fn main() -> Result<()> {
 
     match cli.command {
         Commands::Reorder { staircase, order } => {
-            cli::reorder::run(&repo, format, staircase, order)
+            cli::dispatch(format, cli::reorder::run(&repo, staircase, order))
         }
         Commands::Move {
             staircase,
             from,
             to,
             commits,
-        } => cli::move_cmd::run(&repo, format, staircase, from, to, commits),
-        Commands::Drop { staircase, step } => cli::drop::run(&repo, format, staircase, step),
+        } => cli::dispatch(
+            format,
+            cli::move_cmd::run(&repo, staircase, from, to, commits),
+        ),
+        Commands::Drop { staircase, step } => {
+            cli::dispatch(format, cli::drop::run(&repo, staircase, step))
+        }
         Commands::Discover { onto } => cli::discover::run(&repo, format, onto),
         Commands::Adopt {
             name,
@@ -248,23 +253,36 @@ fn main() -> Result<()> {
             onto,
             discovered,
             families,
-        } => cli::list::run(&repo, format, managed, implicit, discovered, families, onto),
-        Commands::Show { staircase } => cli::show::run(&repo, format, staircase),
-        Commands::Status { staircase } => cli::status::run(&repo, format, staircase),
+        } => cli::dispatch(
+            format,
+            cli::list::run(&repo, managed, implicit, discovered, families, onto),
+        ),
+        Commands::Show { staircase } => cli::dispatch(format, cli::show::run(&repo, staircase)),
+        Commands::Status { staircase } => cli::dispatch(format, cli::status::run(&repo, staircase)),
         Commands::Split {
             staircase,
             step,
             at,
             step_name,
-        } => cli::split::run(&repo, format, staircase, step, at, step_name),
+        } => cli::dispatch(
+            format,
+            cli::split::run(&repo, staircase, step, at, step_name),
+        ),
         Commands::Join {
             staircase,
             step,
             step2,
             step2_pos,
-        } => cli::join::run(&repo, format, staircase, step, step2, step2_pos),
-        Commands::Rebase { staircase, to } => cli::rebase::run(&repo, format, staircase, to),
-        Commands::Restack { staircase } => cli::restack::run(&repo, format, staircase),
+        } => cli::dispatch(
+            format,
+            cli::join::run(&repo, staircase, step, step2, step2_pos),
+        ),
+        Commands::Rebase { staircase, to } => {
+            cli::dispatch(format, cli::rebase::run(&repo, staircase, to))
+        }
+        Commands::Restack { staircase } => {
+            cli::dispatch(format, cli::restack::run(&repo, staircase))
+        }
         Commands::Verify {
             staircase,
             aggregate,
@@ -284,7 +302,7 @@ fn main() -> Result<()> {
         Commands::Delete {
             staircase,
             delete_branches,
-        } => cli::delete::run(&repo, format, staircase, delete_branches),
+        } => cli::dispatch(format, cli::delete::run(&repo, staircase, delete_branches)),
         Commands::Log {
             staircase,
             git_args,
@@ -297,7 +315,7 @@ fn main() -> Result<()> {
             staircase,
             git_args,
         } => cli::graph::run(&repo, format, staircase, git_args),
-        Commands::Steps { staircase } => cli::steps::run(&repo, format, staircase),
+        Commands::Steps { staircase } => cli::dispatch(format, cli::steps::run(&repo, staircase)),
         Commands::Commits { staircase } => cli::commits::run(&repo, format, staircase),
     }
 }

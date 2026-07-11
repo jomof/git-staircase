@@ -1,0 +1,88 @@
+use std::fs;
+use std::path::Path;
+use std::process::Command;
+use tempfile::TempDir;
+
+fn run_git(dir: &Path, args: &[&str]) -> String {
+    let output = Command::new("git")
+        .current_dir(dir)
+        .args(args)
+        .env("GIT_AUTHOR_NAME", "Test")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .output()
+        .unwrap();
+    String::from_utf8_lossy(&output.stdout).trim().to_string()
+}
+
+fn commit(dir: &Path, file: &str, content: &str, msg: &str) -> String {
+    fs::write(dir.join(file), content).unwrap();
+    run_git(dir, &["add", "."]);
+    run_git(dir, &["commit", "-m", msg]);
+    run_git(dir, &["rev-parse", "HEAD"])
+}
+
+fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
+    let binary = Path::new(env!("CARGO_BIN_EXE_git-staircase"));
+    let output = Command::new(binary)
+        .current_dir(dir)
+        .args(args)
+        .output()
+        .unwrap();
+    (
+        output.status.success(),
+        String::from_utf8_lossy(&output.stdout).to_string(),
+        String::from_utf8_lossy(&output.stderr).to_string(),
+    )
+}
+
+#[test]
+fn test_consistent_json_output() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
+    run_git(dir, &["init", "-b", "main"]);
+    let root = commit(dir, "root.txt", "root", "root");
+    run_git(dir, &["checkout", "-b", "feature/1", &root]);
+    let c1 = commit(dir, "1.txt", "1", "c1");
+    run_git(dir, &["checkout", "-b", "feature/2", &c1]);
+    let _c2 = commit(dir, "2.txt", "2", "c2");
+
+    // Test 'list --json'
+    let (success, stdout, stderr) = run_staircase(dir, &["list", "--json"]);
+    assert!(success, "list --json failed: {}", stderr);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json.is_array(), "list --json should return an array");
+
+    // Test 'status --json'
+    let (success, stdout, stderr) = run_staircase(dir, &["status", "feature/2", "--json"]);
+    assert!(success, "status --json failed: {}", stderr);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json.is_object(), "status --json should return an object");
+}
+
+#[test]
+fn test_consistent_porcelain_output() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
+    run_git(dir, &["init", "-b", "main"]);
+    let root = commit(dir, "root.txt", "root", "root");
+    run_git(dir, &["checkout", "-b", "feature/1", &root]);
+    let c1 = commit(dir, "1.txt", "1", "c1");
+
+    // Test 'list --porcelain'
+    let (success, stdout, _stderr) = run_staircase(dir, &["list", "--porcelain"]);
+    assert!(success);
+    assert!(
+        stdout.contains("feature/1\timplicit@"),
+        "porcelain list should contain staircase info"
+    );
+
+    // Test 'status --porcelain'
+    let (success, stdout, _stderr) = run_staircase(dir, &["status", "feature/1", "--porcelain"]);
+    assert!(success);
+    assert!(
+        stdout.contains("feature/1\timplicit@"),
+        "porcelain status should contain staircase info"
+    );
+}

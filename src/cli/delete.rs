@@ -1,15 +1,16 @@
-use super::{OutputFormat, StaircaseSelectorArgs};
+use super::{StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 
 pub fn run(
     repo: &GitRepo,
-    _format: OutputFormat,
     staircase: StaircaseSelectorArgs,
     delete_branches: bool,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Success> {
     let rs = super::resolve_rs(repo, &staircase)?;
     core::delete(repo, &rs.metadata().id, delete_branches)?;
-    println!("Deleted staircase '{}'.", rs.metadata().name);
-    Ok(())
+    Ok(Success::new(format!(
+        "Deleted staircase '{}'.",
+        rs.metadata().name
+    )))
 }

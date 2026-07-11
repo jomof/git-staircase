@@ -1,17 +1,13 @@
-use super::{OutputFormat, StaircaseSelectorArgs};
+use super::{StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 
 pub fn run(
     repo: &GitRepo,
-    format: OutputFormat,
     staircase: StaircaseSelectorArgs,
     to: String,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Success> {
     let rs = super::resolve_rs(repo, &staircase)?;
     core::rebase(repo, &rs, &to)?;
-    if matches!(format, OutputFormat::Human) {
-        println!("Rebased staircase onto {}", to);
-    }
-    Ok(())
+    Ok(Success::new(format!("Rebased staircase onto {}", to)))
 }

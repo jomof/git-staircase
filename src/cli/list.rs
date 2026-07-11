@@ -1,26 +1,54 @@
-use super::{OutputFormat, print_output};
+use super::Summary;
 use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;
+use crate::model::{ToHuman, ToPorcelain};
 use crate::{Discovery, ResolvedStaircase};
+use serde::Serialize;
+
+#[derive(Serialize)]
+#[serde(untagged)]
+pub enum ListEntry {
+    Staircase(Summary<crate::model::StaircaseStatus>),
+    Family(Summary<crate::model::StaircaseFamily>),
+}
+
+impl ToHuman for ListEntry {
+    fn to_human(&self) -> String {
+        match self {
+            ListEntry::Staircase(s) => s.to_human(),
+            ListEntry::Family(f) => f.to_human(),
+        }
+    }
+}
+
+impl ToPorcelain for ListEntry {
+    fn to_porcelain(&self) -> String {
+        match self {
+            ListEntry::Staircase(s) => s.to_porcelain(),
+            ListEntry::Family(f) => f.to_porcelain(),
+        }
+    }
+}
 
 pub fn run(
     repo: &GitRepo,
-    format: OutputFormat,
     managed: bool,
     implicit: bool,
     discovered: bool,
     families: bool,
     onto: Option<String>,
-) -> anyhow::Result<()> {
+) -> anyhow::Result<Vec<ListEntry>> {
     let show_implicit = implicit || discovered;
     let show_all = !managed && !show_implicit && !families;
     let mut all_results = Vec::new();
 
+    let mut resolved_staircases = Vec::new();
+
     if managed || show_all {
         let list = persistence::list_staircases(repo)?;
         for s in list {
-            all_results.push(ResolvedStaircase::Managed(s));
+            resolved_staircases.push(ResolvedStaircase::Managed(s));
         }
     }
 
@@ -30,46 +58,30 @@ pub fn run(
             match d {
                 Discovery::Linear(s) => {
                     if show_implicit || show_all {
-                        all_results.push(ResolvedStaircase::Implicit(s));
+                        resolved_staircases.push(ResolvedStaircase::Implicit(s));
                     }
                 }
                 Discovery::Ambiguous(f) => {
                     if families || show_all {
-                        all_results.push(ResolvedStaircase::ImplicitFamily(f));
+                        resolved_staircases.push(ResolvedStaircase::ImplicitFamily(f));
                     }
                 }
             }
         }
     }
 
-    if matches!(format, OutputFormat::Human) {
-        if all_results.is_empty() {
-            println!("No staircases found.");
-        } else {
-            for r in all_results {
-                match r {
-                    ResolvedStaircase::ImplicitFamily(f) => {
-                        let path_count = f.steps.values().filter(|s| s.children.is_empty()).count();
-                        let paths_word = if path_count == 1 { "path" } else { "paths" };
-                        println!("{} {} {} (implicit)", f.name, path_count, paths_word);
-                    }
-                    _ => {
-                        let m = r.metadata();
-                        let status = core::get_status_metadata(repo, m.clone(), !r.is_managed())?;
-                        let state = status.state();
-                        let steps_count = m.steps.len();
-                        let steps_word = if steps_count == 1 { "step" } else { "steps" };
-                        let implicit_marker = if r.is_managed() { "" } else { " (implicit)" };
-                        println!(
-                            "{} {} {} {}{}",
-                            m.name, steps_count, steps_word, state, implicit_marker
-                        );
-                    }
-                }
+    for rs in resolved_staircases {
+        match rs {
+            ResolvedStaircase::ImplicitFamily(f) => {
+                all_results.push(ListEntry::Family(Summary(f)));
+            }
+            _ => {
+                let m = rs.metadata();
+                let status = core::get_status_metadata(repo, m.clone(), !rs.is_managed())?;
+                all_results.push(ListEntry::Staircase(Summary(status)));
             }
         }
-        Ok(())
-    } else {
-        print_output(format, &all_results)
     }
+
+    Ok(all_results)
 }

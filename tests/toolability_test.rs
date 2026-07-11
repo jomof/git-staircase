@@ -21,9 +21,9 @@ fn test_list_json() {
     let list = json.as_array().unwrap();
     assert!(!list.is_empty());
     // Find our implicit staircase
-    let found = list.iter().any(|s| s["name"] == "feature/auth");
+    let found = list.iter().any(|s| s["metadata"]["name"] == "feature/auth");
     assert!(found, "Should find feature/auth in the list: {}", stdout);
-    assert_eq!(list[0]["management"], "implicit");
+    assert!(list[0]["is_implicit"].as_bool().unwrap());
 }
 
 #[test]

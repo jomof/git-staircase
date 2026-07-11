@@ -1,11 +1,8 @@
-use super::{OutputFormat, StaircaseSelectorArgs};
+use super::StaircaseSelectorArgs;
 use crate::GitRepo;
+use crate::model::StaircaseMetadata;
 
-pub fn run(
-    repo: &GitRepo,
-    format: OutputFormat,
-    staircase: StaircaseSelectorArgs,
-) -> anyhow::Result<()> {
+pub fn run(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> anyhow::Result<StaircaseMetadata> {
     let rs = super::resolve_rs(repo, &staircase)?;
-    super::print_output(format, rs.metadata())
+    Ok(rs.metadata().clone())
 }
