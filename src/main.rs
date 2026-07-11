@@ -71,6 +71,10 @@ enum Commands {
         #[arg(long)]
         managed: bool,
         #[arg(long)]
+        discovered: bool,
+        #[arg(long, short)]
+        families: bool,
+        #[arg(long)]
         implicit: bool,
         #[arg(long)]
         onto: Option<String>,
@@ -252,8 +256,8 @@ fn main() -> Result<()> {
         Commands::List {
             managed,
             implicit,
-            onto,
-        } => cli::list::run(&repo, format, managed, implicit, onto),
+            onto, discovered, families,
+        } => cli::list::run(&repo, format, managed, implicit, discovered, families, onto),
         Commands::Show { staircase } => cli::show::run(&repo, format, staircase),
         Commands::Status { staircase } => cli::status::run(&repo, format, staircase),
         Commands::Split {

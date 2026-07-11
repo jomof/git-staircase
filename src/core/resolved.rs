@@ -1,7 +1,7 @@
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{StaircaseMetadata, Step, ToHuman, ToPorcelain};
+use crate::model::{StaircaseFamily, StaircaseMetadata, Step, ToHuman, ToPorcelain};
 use serde::{Deserialize, Serialize};
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -9,6 +9,7 @@ use serde::{Deserialize, Serialize};
 pub enum ResolvedStaircase {
     Managed(StaircaseMetadata),
     Implicit(StaircaseMetadata),
+    ImplicitFamily(StaircaseFamily),
 }
 
 impl ResolvedStaircase {
@@ -16,6 +17,7 @@ impl ResolvedStaircase {
         match self {
             ResolvedStaircase::Managed(s) => s,
             ResolvedStaircase::Implicit(s) => s,
+            ResolvedStaircase::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
         }
     }
 
@@ -170,29 +172,32 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
 
 impl ToPorcelain for ResolvedStaircase {
     fn to_porcelain(&self) -> String {
-        let m = self.metadata();
-        format!(
-            "{}\t{}\t{}\t{}",
-            m.name,
-            m.id,
-            if self.is_managed() {
-                "managed"
-            } else {
-                "implicit"
-            },
-            m.steps.len()
-        )
+        match self {
+            ResolvedStaircase::ImplicitFamily(f) => format!("{}\t{}\tfamily\t{}", f.name, f.id, f.steps.len()),
+            _ => {
+                let m = self.metadata();
+                format!(
+                    "{}\t{}\t{}\t{}",
+                    m.name,
+                    m.id,
+                    if self.is_managed() {
+                        "managed"
+                    } else {
+                        "implicit"
+                    },
+                    m.steps.len()
+                )
+            }
+        }
     }
 }
 
 impl ToHuman for ResolvedStaircase {
     fn to_human(&self) -> String {
-        let mut out = if self.is_managed() {
-            format!("Managed Staircase: {}\n", self.metadata().name)
-        } else {
-            format!("Implicit Staircase: {}\n", self.metadata().name)
-        };
-        out.push_str(&self.metadata().to_human());
-        out
+        match self {
+            ResolvedStaircase::ImplicitFamily(f) => format!("Implicit Staircase Family: {}\n{}", f.name, f.to_human()),
+            ResolvedStaircase::Managed(m) => format!("Managed Staircase: {}\n{}", m.name, m.to_human()),
+            ResolvedStaircase::Implicit(m) => format!("Implicit Staircase: {}\n{}", m.name, m.to_human()),
+        }
     }
 }

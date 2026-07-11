@@ -337,6 +337,7 @@ pub fn resolve_staircase(
             match rs {
                 ResolvedStaircase::Managed(s) => managed.push(s),
                 ResolvedStaircase::Implicit(s) => implicit.push(s),
+                ResolvedStaircase::ImplicitFamily(_) => {}
             }
         }
         if !managed.is_empty() {
