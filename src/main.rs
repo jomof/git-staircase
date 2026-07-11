@@ -1,8 +1,8 @@
-use clap::{Parser, Subcommand};
-use git_staircase::{GitRepo, StaircaseMetadata, Step};
-use git_staircase::core;
-use std::path::PathBuf;
 use anyhow::{Context, anyhow};
+use clap::{Parser, Subcommand};
+use git_staircase::core;
+use git_staircase::{GitRepo, StaircaseMetadata, Step};
+use std::path::PathBuf;
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -37,13 +37,9 @@ enum Commands {
         onto: String,
     },
     /// Show details of a staircase
-    Show {
-        name: String,
-    },
+    Show { name: String },
     /// Show status of a staircase (clean/stale/modified)
-    Status {
-        name: String,
-    },
+    Status { name: String },
     /// Split a step into two
     Split {
         /// Format: <staircase_name>:<step_number> (1-based)
@@ -67,9 +63,7 @@ enum Commands {
         onto: String,
     },
     /// Restack stale steps
-    Restack {
-        name: String,
-    },
+    Restack { name: String },
     /// Delete a managed staircase
     Delete {
         name: String,
@@ -85,7 +79,9 @@ fn find_repo_root() -> anyhow::Result<PathBuf> {
         .output()
         .context("Failed to run git rev-parse")?;
     if !output.status.success() {
-        return Err(anyhow!("Not a git repository (or any parent up to mount point)"));
+        return Err(anyhow!(
+            "Not a git repository (or any parent up to mount point)"
+        ));
     }
     let path_str = String::from_utf8_lossy(&output.stdout).trim().to_string();
     Ok(PathBuf::from(path_str))
@@ -109,7 +105,11 @@ fn main() -> anyhow::Result<()> {
                 }
             }
         }
-        Commands::Adopt { name, onto, branches } => {
+        Commands::Adopt {
+            name,
+            onto,
+            branches,
+        } => {
             if branches.is_empty() {
                 return Err(anyhow!("At least one branch must be specified to adopt"));
             }
@@ -121,7 +121,8 @@ fn main() -> anyhow::Result<()> {
                 } else {
                     format!("refs/heads/{}", b)
                 };
-                let oid = repo.resolve_ref(&full_ref)
+                let oid = repo
+                    .resolve_ref(&full_ref)
                     .with_context(|| format!("Failed to resolve branch '{}'", b))?;
                 let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
                 steps.push(Step {
@@ -141,9 +142,13 @@ fn main() -> anyhow::Result<()> {
             core::adopt(&repo, &staircase)?;
             println!("Adopted staircase '{}' (ID: {}).", name, staircase.id);
         }
-        Commands::List { managed, discovered, onto } => {
+        Commands::List {
+            managed,
+            discovered,
+            onto,
+        } => {
             let show_all = !managed && !discovered;
-            
+
             if managed || show_all {
                 let list = repo.list_staircases()?;
                 if !list.is_empty() {
@@ -161,7 +166,15 @@ fn main() -> anyhow::Result<()> {
                 if !list.is_empty() {
                     println!("Discovered Staircases (relative to {}):", onto);
                     for s in list {
-                        println!("  {} (branches: {})", s.name, s.steps.iter().map(|s| s.name.as_str()).collect::<Vec<&str>>().join(" -> "));
+                        println!(
+                            "  {} (branches: {})",
+                            s.name,
+                            s.steps
+                                .iter()
+                                .map(|s| s.name.as_str())
+                                .collect::<Vec<&str>>()
+                                .join(" -> ")
+                        );
                     }
                 } else if discovered {
                     println!("No potential staircases discovered.");
@@ -183,19 +196,26 @@ fn main() -> anyhow::Result<()> {
             let (sc_name, step_num) = parse_step_spec(&step)?;
             let s = core::find_by_name(&repo, &sc_name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
-            
+
             if step_num == 0 {
                 return Err(anyhow!("Step number must be 1-based"));
             }
             core::split(&repo, &s.id, step_num - 1, &at, name.as_deref())?;
-            println!("Split step {} of staircase '{}' at {}.", step_num, sc_name, at);
+            println!(
+                "Split step {} of staircase '{}' at {}.",
+                step_num, sc_name, at
+            );
         }
         Commands::Join { step1, step2 } => {
             let (sc_name1, step_num1) = parse_step_spec(&step1)?;
             let (sc_name2, step_num2) = parse_step_spec(&step2)?;
 
             if sc_name1 != sc_name2 {
-                return Err(anyhow!("Cannot join steps from different staircases: '{}' and '{}'", sc_name1, sc_name2));
+                return Err(anyhow!(
+                    "Cannot join steps from different staircases: '{}' and '{}'",
+                    sc_name1,
+                    sc_name2
+                ));
             }
 
             let s = core::find_by_name(&repo, &sc_name1)?
@@ -206,7 +226,10 @@ fn main() -> anyhow::Result<()> {
             }
 
             core::join(&repo, &s.id, step_num1 - 1, step_num2 - 1)?;
-            println!("Joined steps {} and {} of staircase '{}'.", step_num1, step_num2, sc_name1);
+            println!(
+                "Joined steps {} and {} of staircase '{}'.",
+                step_num1, step_num2, sc_name1
+            );
         }
         Commands::Rebase { name, onto } => {
             let s = core::find_by_name(&repo, &name)?
@@ -220,7 +243,10 @@ fn main() -> anyhow::Result<()> {
             core::restack(&repo, &s.id)?;
             println!("Restacked staircase '{}'.", name);
         }
-        Commands::Delete { name, delete_branches } => {
+        Commands::Delete {
+            name,
+            delete_branches,
+        } => {
             let s = core::find_by_name(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
             core::delete(&repo, &s.id, delete_branches)?;
@@ -234,10 +260,15 @@ fn main() -> anyhow::Result<()> {
 fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
     let parts: Vec<&str> = spec.split(':').collect();
     if parts.len() != 2 {
-        return Err(anyhow!("Invalid step spec '{}'. Expected format: <staircase_name>:<step_number>", spec));
+        return Err(anyhow!(
+            "Invalid step spec '{}'. Expected format: <staircase_name>:<step_number>",
+            spec
+        ));
     }
     let name = parts[0].to_string();
-    let num = parts[1].parse::<usize>().context("Failed to parse step number")?;
+    let num = parts[1]
+        .parse::<usize>()
+        .context("Failed to parse step number")?;
     Ok((name, num))
 }
 

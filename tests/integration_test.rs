@@ -1,9 +1,9 @@
+use git_staircase::GitRepo;
+use git_staircase::core;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
-use git_staircase::GitRepo;
-use git_staircase::core;
 
 fn run_git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -16,7 +16,12 @@ fn run_git(dir: &Path, args: &[&str]) -> String {
         .env("GIT_TERMINAL_PROMPT", "0")
         .output()
         .unwrap();
-    assert!(output.status.success(), "git {:?} failed. Stderr: {}", args, String::from_utf8_lossy(&output.stderr));
+    assert!(
+        output.status.success(),
+        "git {:?} failed. Stderr: {}",
+        args,
+        String::from_utf8_lossy(&output.stderr)
+    );
     String::from_utf8_lossy(&output.stdout).trim().to_string()
 }
 
@@ -48,7 +53,7 @@ fn test_discover_linear() {
     // step3: c3
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     let c1 = commit(dir, "file1.txt", "1", "commit 1");
-    
+
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
@@ -57,18 +62,18 @@ fn test_discover_linear() {
 
     let discovered = core::discover(&repo, "main").unwrap();
     assert_eq!(discovered.len(), 1);
-    
+
     let s = &discovered[0];
     assert_eq!(s.name, "feature/auth"); // Common prefix "feature/auth"
     assert_eq!(s.target, "main");
     assert_eq!(s.steps.len(), 3);
-    
+
     assert_eq!(s.steps[0].name, "feature/auth-core");
     assert_eq!(s.steps[0].cut, c1);
-    
+
     assert_eq!(s.steps[1].name, "feature/auth-ui");
     assert_eq!(s.steps[1].cut, c2);
-    
+
     assert_eq!(s.steps[2].name, "feature/auth-tests");
     assert_eq!(s.steps[2].cut, c3);
 }
@@ -80,7 +85,7 @@ fn test_adopt_and_status() {
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     let c1 = commit(dir, "file1.txt", "1", "commit 1");
-    
+
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
@@ -97,8 +102,16 @@ fn test_adopt_and_status() {
     assert_eq!(read.steps.len(), 2);
 
     // Verify step refs
-    assert_eq!(repo.resolve_ref(&format!("refs/staircases/{}/steps/feature/auth-core", s.id)).unwrap(), c1);
-    assert_eq!(repo.resolve_ref(&format!("refs/staircases/{}/steps/feature/auth-ui", s.id)).unwrap(), c2);
+    assert_eq!(
+        repo.resolve_ref(&format!("refs/staircases/{}/steps/feature/auth-core", s.id))
+            .unwrap(),
+        c1
+    );
+    assert_eq!(
+        repo.resolve_ref(&format!("refs/staircases/{}/steps/feature/auth-ui", s.id))
+            .unwrap(),
+        c2
+    );
 
     // Verify status is clean
     let status = core::get_status(&repo, &s.id).unwrap();
@@ -132,7 +145,7 @@ fn test_status_stale_and_restack() {
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     let c1 = commit(dir, "file1.txt", "1", "commit 1");
-    
+
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
@@ -168,13 +181,13 @@ fn test_status_stale_and_restack() {
     // Verify it is clean now
     let status = core::get_status(&repo, &s.id).unwrap();
     assert!(status.is_clean);
-    
+
     let c1_new = status.steps[0].actual_oid.as_ref().unwrap();
     let c2_new = status.steps[1].actual_oid.as_ref().unwrap();
-    
+
     assert_eq!(c1_new, &c1_amended);
     assert_ne!(c2_new, &c2); // c2 should have been rebased
-    
+
     // Verify ancestry: c1_new -> c2_new
     assert!(repo.is_ancestor(c1_new, c2_new).unwrap());
 }

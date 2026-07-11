@@ -1,7 +1,7 @@
-use std::collections::HashMap;
-use crate::error::{StaircaseError, Result};
-use crate::model::{StaircaseMetadata, Step, BranchInfo, StepStatus, StaircaseStatus};
+use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
+use crate::model::{BranchInfo, StaircaseMetadata, StaircaseStatus, Step, StepStatus};
+use std::collections::HashMap;
 use uuid::Uuid;
 
 /// Discover potential staircases relative to `onto`.
@@ -11,7 +11,10 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
         Ok(oid) => oid,
         Err(_) => {
             // If onto ref doesn't exist, we can't discover relative to it.
-            return Err(StaircaseError::Other(format!("Onto ref '{}' not found", onto)));
+            return Err(StaircaseError::Other(format!(
+                "Onto ref '{}' not found",
+                onto
+            )));
         }
     };
 
@@ -62,7 +65,13 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
     let mut paths = Vec::new();
     for root in roots {
         let mut current_paths = Vec::new();
-        find_paths(&root.refname, &parents, &active_branches, &mut Vec::new(), &mut current_paths);
+        find_paths(
+            &root.refname,
+            &parents,
+            &active_branches,
+            &mut Vec::new(),
+            &mut current_paths,
+        );
         paths.extend(current_paths);
     }
 
@@ -71,7 +80,10 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
         // Build steps for this path
         let mut steps = Vec::new();
         for refname in &path {
-            let branch_info = active_branches.iter().find(|b| &b.refname == refname).unwrap();
+            let branch_info = active_branches
+                .iter()
+                .find(|b| &b.refname == refname)
+                .unwrap();
             let short_name = refname.strip_prefix("refs/heads/").unwrap_or(refname);
             steps.push(Step {
                 name: short_name.to_string(),
@@ -82,11 +94,10 @@ pub fn discover(repo: &GitRepo, onto: &str) -> Result<Vec<StaircaseMetadata>> {
 
         // Determine name
         let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
-        let name = common_prefix(&branch_names)
-            .unwrap_or_else(|| {
-                // Fallback to tip branch name
-                steps.last().unwrap().name.clone()
-            });
+        let name = common_prefix(&branch_names).unwrap_or_else(|| {
+            // Fallback to tip branch name
+            steps.last().unwrap().name.clone()
+        });
 
         discovered.push(StaircaseMetadata {
             id: Uuid::new_v4().to_string(),
@@ -154,12 +165,29 @@ fn common_prefix(names: &[&str]) -> Option<String> {
 
 /// Adopt a staircase by writing its metadata and creating step refs.
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
-    // Verify that the cuts exist
+    // Verify that the cuts exist and form a valid ancestry chain
+    let target_oid = repo.resolve_ref(&staircase.target)?;
+    let mut last_cut = target_oid;
+
     for step in &staircase.steps {
-        repo.resolve_ref(&step.cut)?;
+        let current_cut = repo.resolve_ref(&step.cut)?;
+
+        if current_cut == last_cut {
+            return Err(StaircaseError::InvalidStructure(format!(
+                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
+                step.name, step.cut
+            )));
+        }
+
+        if !repo.is_ancestor(&last_cut, &current_cut)? {
+            return Err(StaircaseError::InvalidStructure(format!(
+                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
+                step.name, step.cut
+            )));
+        }
+        last_cut = current_cut;
     }
 
-    // Write metadata to Git
     repo.write_metadata(staircase)?;
 
     // Create step refs
@@ -352,7 +380,7 @@ pub fn join(repo: &GitRepo, id: &str, step_index_1: usize, step_index_2: usize) 
 
 pub fn restack(repo: &GitRepo, id: &str) -> Result<()> {
     let mut status = get_status(repo, id)?;
-    
+
     if status.is_clean {
         return Ok(());
     }
@@ -361,7 +389,12 @@ pub fn restack(repo: &GitRepo, id: &str) -> Result<()> {
     let mut current_base = target_oid;
     let mut metadata_changed = false;
 
-    let original_cuts: Vec<String> = status.metadata.steps.iter().map(|s| s.cut.clone()).collect();
+    let original_cuts: Vec<String> = status
+        .metadata
+        .steps
+        .iter()
+        .map(|s| s.cut.clone())
+        .collect();
 
     for i in 0..status.steps.len() {
         let step_status = &status.steps[i];
@@ -391,7 +424,13 @@ pub fn restack(repo: &GitRepo, id: &str) -> Result<()> {
                 StaircaseError::Other(format!("Step '{}' has no branch associated", step_name))
             })?;
 
-            match repo.run_interactive(&["rebase", "--onto", &current_base, &old_parent_cut, branch_name]) {
+            match repo.run_interactive(&[
+                "rebase",
+                "--onto",
+                &current_base,
+                &old_parent_cut,
+                branch_name,
+            ]) {
                 Ok(_) => {
                     let new_oid = repo.resolve_ref(&format!("refs/heads/{}", branch_name))?;
                     status.metadata.steps[i].cut = new_oid.clone();
@@ -435,7 +474,7 @@ pub fn rebase(repo: &GitRepo, id: &str, onto: &str) -> Result<()> {
 
 pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
     let metadata = repo.read_metadata(id)?;
-    
+
     if delete_branches {
         for step in &metadata.steps {
             if let Some(ref branch) = step.branch {
@@ -454,13 +493,20 @@ mod tests {
 
     #[test]
     fn test_common_prefix() {
-        assert_eq!(common_prefix(&["feat/a", "feat/b"]).as_deref(), Some("feat"));
-        assert_eq!(common_prefix(&["step-1", "step-2", "step-3"]).as_deref(), Some("step"));
-        assert_eq!(common_prefix(&["feature-x", "feature-y"]).as_deref(), Some("feature"));
+        assert_eq!(
+            common_prefix(&["feat/a", "feat/b"]).as_deref(),
+            Some("feat")
+        );
+        assert_eq!(
+            common_prefix(&["step-1", "step-2", "step-3"]).as_deref(),
+            Some("step")
+        );
+        assert_eq!(
+            common_prefix(&["feature-x", "feature-y"]).as_deref(),
+            Some("feature")
+        );
         assert_eq!(common_prefix(&["alice", "bob"]), None);
         assert_eq!(common_prefix(&["/a", "/b"]), None);
         assert_eq!(common_prefix(&[]), None);
     }
 }
-
-

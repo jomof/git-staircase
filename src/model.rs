@@ -3,14 +3,14 @@ use serde::{Deserialize, Serialize};
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Step {
     pub name: String,
-    pub cut: String, // Commit OID
+    pub cut: String,            // Commit OID
     pub branch: Option<String>, // Optional local branch name (ref name without refs/heads/)
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseMetadata {
-    pub id: String, // UUID
-    pub name: String, // Nominal name
+    pub id: String,     // UUID
+    pub name: String,   // Nominal name
     pub target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
     pub steps: Vec<Step>,
 }
@@ -37,5 +37,3 @@ pub struct StaircaseStatus {
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
 }
-
-
