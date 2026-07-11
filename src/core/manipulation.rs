@@ -95,6 +95,8 @@ pub fn join(
 
 pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
+    let original_head = repo.current_branch()?;
+    let original_head_oid = repo.resolve_ref("HEAD")?;
     let old_steps = metadata.steps.clone();
 
     let mut seen = HashSet::new();
@@ -176,7 +178,20 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         for (branch, oid) in original_branch_oids {
             let _ = repo.update_branch(&branch, &oid);
         }
+        if let Some(refname) = original_head {
+            let target = refname.strip_prefix("refs/heads/").unwrap_or(&refname);
+            let _ = repo.run(&["checkout", "-f", target]);
+        } else {
+            let _ = repo.run(&["checkout", "-f", &original_head_oid]);
+        }
         return Err(StaircaseError::Other(format!("Reorder failed: {}", err)));
+    }
+
+    if let Some(refname) = original_head {
+        let target = refname.strip_prefix("refs/heads/").unwrap_or(&refname);
+        let _ = repo.run(&["checkout", "-f", target]);
+    } else {
+        let _ = repo.run(&["checkout", "-f", &original_head_oid]);
     }
 
     metadata.steps = new_steps;
@@ -262,6 +277,8 @@ pub fn move_commits(
 }
 
 pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
+    let original_head = repo.current_branch()?;
+    let original_head_oid = repo.resolve_ref("HEAD")?;
     let mut status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
@@ -349,6 +366,13 @@ Error: {}",
 
     if metadata_changed {
         current_rs.commit_metadata(repo, status.metadata)?;
+    }
+
+    if let Some(refname) = original_head {
+        let target = refname.strip_prefix("refs/heads/").unwrap_or(&refname);
+        let _ = repo.run(&["checkout", "-f", target]);
+    } else {
+        let _ = repo.run(&["checkout", "-f", &original_head_oid]);
     }
 
     Ok(())
