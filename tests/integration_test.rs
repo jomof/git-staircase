@@ -1,5 +1,5 @@
 use git_staircase::core;
-use git_staircase::{Discovery, GitRepo, StaircaseMetadata, Step};
+use git_staircase::{Discovery, GitRepo, ResolvedStaircase, StaircaseMetadata, Step};
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -181,7 +181,8 @@ fn test_status_stale_and_restack() {
     assert!(status.steps[1].is_stale); // c1_amended is not ancestor of c2
 
     // Restack
-    core::restack(&repo, &s.id).unwrap();
+    let rs = core::resolve_staircase(&repo, &s.name).unwrap().unwrap();
+    core::restack(&repo, &rs).unwrap();
 
     // Verify it is clean now
     let status = core::get_status(&repo, &s.id).unwrap();
@@ -216,7 +217,8 @@ fn test_split_and_join() {
     // Staircase has 1 step: feature/auth-core pointing to c1_3.
     // We want to split it at c1_2.
     // c1_2 is between main (target) and c1_3.
-    core::split(&repo, &s.id, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
+    let rs = core::resolve_staircase(&repo, &s.name).unwrap().unwrap();
+    core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
 
     // Verify metadata
     let read = repo.read_metadata(&s.id).unwrap();
@@ -231,7 +233,8 @@ fn test_split_and_join() {
     assert!(status.is_clean);
 
     // Now join them back
-    core::join(&repo, &s.id, 0, 1).unwrap();
+    let rs = core::resolve_staircase(&repo, &s.name).unwrap().unwrap();
+    core::join(&repo, &rs, 0, 1).unwrap();
 
     // Verify metadata
     let read = repo.read_metadata(&s.id).unwrap();
@@ -425,4 +428,63 @@ fn test_verification_each_prefix() {
     assert!(results[1].success);
     assert_eq!(results[1].step_name, "feature/auth-ui");
     assert_eq!(results[1].cut, c2);
+}
+
+#[test]
+fn test_split_implicit_staircase() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    let c1_2 = commit(dir, "file1_2.txt", "1.2", "commit 1.2");
+    let _c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
+
+    let rs = core::resolve_staircase(&repo, "feature/auth-core")
+        .unwrap()
+        .expect("Should find implicit staircase");
+    assert!(!rs.is_managed());
+
+    // Attempt to split the implicit staircase
+    core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1"))
+        .expect("Split should succeed and auto-adopt");
+
+    // Verify it is now managed
+    let rs_after = core::resolve_staircase(&repo, "feature/auth-core")
+        .unwrap()
+        .expect("Should find staircase");
+    assert!(
+        rs_after.is_managed(),
+        "Staircase should have been automatically adopted"
+    );
+
+    let status = core::get_status(&repo, &rs_after.metadata().id).unwrap();
+    assert_eq!(status.metadata.steps.len(), 2);
+    assert_eq!(status.metadata.steps[0].name, "feature/auth-core-part1");
+}
+
+#[test]
+fn test_id_lineage_auto_adopt() {
+    let (_tmp, repo) = setup_repo();
+    let dir = &repo.workdir;
+
+    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+
+    let rs = core::resolve_staircase(&repo, "feature/auth-core")
+        .unwrap()
+        .expect("Should find implicit staircase");
+    assert!(!rs.is_managed());
+
+    // Request lineage ID
+    use git_staircase::IdentityKind;
+    let id = core::compute_identity(&repo, &rs, IdentityKind::Lineage).unwrap();
+    assert!(!id.is_empty());
+
+    // Verify it is now managed
+    let rs_after = core::resolve_staircase(&repo, "feature/auth-core")
+        .unwrap()
+        .expect("Should find staircase");
+    assert!(rs_after.is_managed());
+    assert_eq!(rs_after.metadata().id, id);
 }

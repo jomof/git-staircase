@@ -71,10 +71,10 @@ fn test_implicit_staircase_operations() {
     assert_eq!(status.steps[1].actual_oid, Some(c2));
 
     // 3. compute_identity
-    let id_nominal = core::compute_identity(&repo, metadata, IdentityKind::Nominal).unwrap();
+    let id_nominal = core::compute_identity(&repo, &rs, IdentityKind::Nominal).unwrap();
     assert_eq!(id_nominal, name);
 
-    let id_revision = core::compute_identity(&repo, metadata, IdentityKind::Revision).unwrap();
+    let id_revision = core::compute_identity(&repo, &rs, IdentityKind::Revision).unwrap();
     assert!(!id_revision.is_empty());
 
     // 4. verify (just check it doesn't crash, since we don't have policy)

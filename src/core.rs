@@ -349,12 +349,15 @@ pub fn find_by_name(repo: &GitRepo, name: &str) -> Result<Option<StaircaseMetada
 
 pub fn split(
     repo: &GitRepo,
-    id: &str,
+    staircase: &ResolvedStaircase,
     step_index: usize,
     at_commit: &str,
     new_step_name: Option<&str>,
 ) -> Result<()> {
-    let mut status = get_status(repo, id)?;
+    if !staircase.is_managed() {
+        adopt(repo, staircase.metadata())?;
+    }
+    let mut status = get_status_metadata(repo, staircase.metadata().clone())?;
     let metadata = &mut status.metadata;
 
     if step_index >= metadata.steps.len() {
@@ -410,8 +413,16 @@ pub fn split(
     Ok(())
 }
 
-pub fn join(repo: &GitRepo, id: &str, step_index_1: usize, step_index_2: usize) -> Result<()> {
-    let mut status = get_status(repo, id)?;
+pub fn join(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    step_index_1: usize,
+    step_index_2: usize,
+) -> Result<()> {
+    if !staircase.is_managed() {
+        adopt(repo, staircase.metadata())?;
+    }
+    let mut status = get_status_metadata(repo, staircase.metadata().clone())?;
     let metadata = &mut status.metadata;
 
     let (low, high) = if step_index_1 < step_index_2 {
@@ -442,8 +453,11 @@ pub fn join(repo: &GitRepo, id: &str, step_index_1: usize, step_index_2: usize) 
     Ok(())
 }
 
-pub fn restack(repo: &GitRepo, id: &str) -> Result<()> {
-    let mut status = get_status(repo, id)?;
+pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
+    if !staircase.is_managed() {
+        adopt(repo, staircase.metadata())?;
+    }
+    let mut status = get_status_metadata(repo, staircase.metadata().clone())?;
 
     if status.is_clean {
         return Ok(());
@@ -529,11 +543,14 @@ pub fn restack(repo: &GitRepo, id: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn rebase(repo: &GitRepo, id: &str, onto: &str) -> Result<()> {
-    let mut metadata = repo.read_metadata(id)?;
+pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
+    if !staircase.is_managed() {
+        adopt(repo, staircase.metadata())?;
+    }
+    let mut metadata = repo.read_metadata(&staircase.metadata().id)?;
     metadata.target = onto.to_string();
     repo.write_metadata(&metadata)?;
-    restack(repo, id)
+    restack(repo, staircase)
 }
 
 pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
@@ -553,9 +570,13 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
 
 pub fn compute_identity(
     repo: &GitRepo,
-    staircase: &StaircaseMetadata,
+    staircase: &ResolvedStaircase,
     kind: IdentityKind,
 ) -> Result<String> {
+    if kind == IdentityKind::Lineage && !staircase.is_managed() {
+        adopt(repo, staircase.metadata())?;
+    }
+    let staircase = staircase.metadata();
     match kind {
         IdentityKind::Lineage => Ok(staircase.id.clone()),
         IdentityKind::Nominal => Ok(staircase.name.clone()),
@@ -808,11 +829,21 @@ mod identity_tests {
         };
 
         assert_eq!(
-            compute_identity(&repo, &staircase, IdentityKind::Lineage).unwrap(),
+            compute_identity(
+                &repo,
+                &ResolvedStaircase::Managed(staircase.clone()),
+                IdentityKind::Lineage
+            )
+            .unwrap(),
             "test-uuid"
         );
         assert_eq!(
-            compute_identity(&repo, &staircase, IdentityKind::Nominal).unwrap(),
+            compute_identity(
+                &repo,
+                &ResolvedStaircase::Managed(staircase.clone()),
+                IdentityKind::Nominal
+            )
+            .unwrap(),
             "test-name"
         );
     }
@@ -835,7 +866,12 @@ mod identity_tests {
             }],
         };
 
-        let id1 = compute_identity(&repo, &s1, IdentityKind::Revision).unwrap();
+        let id1 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s1.clone()),
+            IdentityKind::Revision,
+        )
+        .unwrap();
         println!(
             "ID1 PATCHES: {:?}",
             repo.run(&[
@@ -862,7 +898,12 @@ mod identity_tests {
                 branch: None,
             }],
         };
-        let id2 = compute_identity(&repo, &s2, IdentityKind::Revision).unwrap();
+        let id2 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s2.clone()),
+            IdentityKind::Revision,
+        )
+        .unwrap();
         assert_ne!(id1, id2);
     }
 
@@ -892,7 +933,12 @@ mod identity_tests {
             ],
         };
 
-        let id1 = compute_identity(&repo, &s1, IdentityKind::Body).unwrap();
+        let id1 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s1.clone()),
+            IdentityKind::Body,
+        )
+        .unwrap();
         println!(
             "ID1 PATCHES: {:?}",
             repo.run(&[
@@ -918,7 +964,12 @@ mod identity_tests {
                 branch: None,
             }],
         };
-        let id2 = compute_identity(&repo, &s2, IdentityKind::Body).unwrap();
+        let id2 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s2.clone()),
+            IdentityKind::Body,
+        )
+        .unwrap();
         assert_eq!(id1, id2);
     }
 
@@ -948,7 +999,12 @@ mod identity_tests {
             ],
         };
 
-        let id1 = compute_identity(&repo, &s1, IdentityKind::Decomposition).unwrap();
+        let id1 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s1.clone()),
+            IdentityKind::Decomposition,
+        )
+        .unwrap();
         println!(
             "ID1 PATCHES: {:?}",
             repo.run(&[
@@ -985,7 +1041,12 @@ mod identity_tests {
                 },
             ],
         };
-        let id2 = compute_identity(&repo, &s2, IdentityKind::Decomposition).unwrap();
+        let id2 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s2.clone()),
+            IdentityKind::Decomposition,
+        )
+        .unwrap();
         assert_eq!(id1, id2);
 
         // Squash steps, decomposition ID should change
@@ -1000,7 +1061,12 @@ mod identity_tests {
                 branch: None,
             }],
         };
-        let id3 = compute_identity(&repo, &s3, IdentityKind::Decomposition).unwrap();
+        let id3 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s3.clone()),
+            IdentityKind::Decomposition,
+        )
+        .unwrap();
         assert_ne!(id2, id3);
     }
 
@@ -1030,7 +1096,12 @@ mod identity_tests {
             ],
         };
 
-        let id1 = compute_identity(&repo, &s1, IdentityKind::Outcome).unwrap();
+        let id1 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s1.clone()),
+            IdentityKind::Outcome,
+        )
+        .unwrap();
         println!(
             "ID1 PATCHES: {:?}",
             repo.run(&[
@@ -1063,7 +1134,12 @@ mod identity_tests {
                 branch: None,
             }],
         };
-        let id2 = compute_identity(&repo, &s2, IdentityKind::Outcome).unwrap();
+        let id2 = compute_identity(
+            &repo,
+            &ResolvedStaircase::Managed(s2.clone()),
+            IdentityKind::Outcome,
+        )
+        .unwrap();
         assert_eq!(id1, id2);
     }
 }

@@ -255,13 +255,13 @@ fn main() -> anyhow::Result<()> {
         }
         Commands::Split { step, at, name } => {
             let (sc_name, step_num) = parse_step_spec(&step)?;
-            let s = core::find_by_name(&repo, &sc_name)?
+            let rs = core::resolve_staircase(&repo, &sc_name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name))?;
 
             if step_num == 0 {
                 return Err(anyhow!("Step number must be 1-based"));
             }
-            core::split(&repo, &s.id, step_num - 1, &at, name.as_deref())?;
+            core::split(&repo, &rs, step_num - 1, &at, name.as_deref())?;
             println!(
                 "Split step {} of staircase '{}' at {}.",
                 step_num, sc_name, at
@@ -279,35 +279,35 @@ fn main() -> anyhow::Result<()> {
                 ));
             }
 
-            let s = core::find_by_name(&repo, &sc_name1)?
+            let rs = core::resolve_staircase(&repo, &sc_name1)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", sc_name1))?;
 
             if step_num1 == 0 || step_num2 == 0 {
                 return Err(anyhow!("Step numbers must be 1-based"));
             }
 
-            core::join(&repo, &s.id, step_num1 - 1, step_num2 - 1)?;
+            core::join(&repo, &rs, step_num1 - 1, step_num2 - 1)?;
             println!(
                 "Joined steps {} and {} of staircase '{}'.",
                 step_num1, step_num2, sc_name1
             );
         }
         Commands::Rebase { name, onto } => {
-            let s = core::find_by_name(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            core::rebase(&repo, &s.id, &onto)?;
+            core::rebase(&repo, &rs, &onto)?;
             println!("Rebased staircase '{}' onto '{}'.", name, onto);
         }
         Commands::Restack { name } => {
-            let s = core::find_by_name(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            core::restack(&repo, &s.id)?;
+            core::restack(&repo, &rs)?;
             println!("Restacked staircase '{}'.", name);
         }
         Commands::Id { name, kind } => {
-            let s = core::find_by_name(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            let id = core::compute_identity(&repo, &s, kind)?;
+            let id = core::compute_identity(&repo, &rs, kind)?;
             println!("{}", id);
         }
         Commands::Verify {
@@ -344,9 +344,9 @@ fn main() -> anyhow::Result<()> {
             name,
             delete_branches,
         } => {
-            let s = core::find_by_name(&repo, &name)?
+            let rs = core::resolve_staircase(&repo, &name)?
                 .ok_or_else(|| anyhow!("Staircase '{}' not found", name))?;
-            core::delete(&repo, &s.id, delete_branches)?;
+            core::delete(&repo, &rs.metadata().id, delete_branches)?;
             println!("Deleted staircase '{}'.", name);
         }
     }
