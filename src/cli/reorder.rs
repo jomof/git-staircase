@@ -9,6 +9,7 @@ pub fn run(
     order: Option<Vec<usize>>,
 ) -> anyhow::Result<ReorderResult> {
     let rs = staircase.resolve(repo)?;
+    let rs = &rs;
     let order = order.ok_or_else(|| anyhow!("--order (indices) must be provided"))?;
     let mut zero_based_steps = Vec::new();
     for &s in &order {

@@ -10,6 +10,7 @@ pub fn run(
     commits: Vec<String>,
 ) -> anyhow::Result<Success> {
     let rs = staircase.resolve(repo)?;
+    let rs = &rs;
     core::move_commits(repo, &rs, from - 1, to - 1, &commits)?;
     Ok(Success::new("Moved commits."))
 }

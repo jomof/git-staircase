@@ -15,7 +15,7 @@ pub use discovery::{
 pub use identity::compute_identity;
 pub use inference::infer_onto;
 pub use manipulation::{delete, drop, join, move_commits, rebase, reorder, restack, split};
-pub use resolved::ResolvedStaircase;
 pub use resolved::adopt;
+pub use resolved::{ResolvedSelector, ResolvedStaircase};
 pub use status::{get_status, get_status_metadata};
 pub use verification::verify;

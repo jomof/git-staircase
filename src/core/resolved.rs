@@ -3,6 +3,7 @@ use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
 use serde::{Deserialize, Serialize};
+use std::ops::Deref;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "management", rename_all = "kebab-case")]
@@ -10,6 +11,26 @@ pub enum ResolvedStaircase {
     Managed(StaircaseMetadata),
     Implicit(StaircaseMetadata),
     ImplicitFamily(StaircaseFamily),
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ResolvedSelector {
+    pub staircase: ResolvedStaircase,
+    pub step_index: Option<usize>,
+}
+
+impl Deref for ResolvedSelector {
+    type Target = ResolvedStaircase;
+
+    fn deref(&self) -> &Self::Target {
+        &self.staircase
+    }
+}
+
+impl ResolvedSelector {
+    pub fn metadata(&self) -> &StaircaseMetadata {
+        self.staircase.metadata()
+    }
 }
 
 impl ResolvedStaircase {

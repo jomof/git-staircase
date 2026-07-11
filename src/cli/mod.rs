@@ -1,4 +1,4 @@
-use crate::{GitRepo, ResolvedStaircase, core};
+use crate::{GitRepo, ResolvedSelector, core};
 use anyhow::{Result, anyhow};
 use clap::Args;
 use serde::Serialize;
@@ -65,33 +65,43 @@ pub struct StaircaseSelectorArgs {
 }
 
 impl StaircaseSelectorArgs {
-    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedStaircase> {
+    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
         if let Some(id) = &self.id {
-            return Ok(core::resolve_by_id(repo, id)?);
+            return Ok(ResolvedSelector {
+                staircase: core::resolve_by_id(repo, id)?,
+                step_index: None,
+            });
         }
         if let Some(revision) = &self.revision {
-            return Ok(core::resolve_by_revision(repo, revision)?);
+            return Ok(ResolvedSelector {
+                staircase: core::resolve_by_revision(repo, revision)?,
+                step_index: None,
+            });
         }
         if let Some(name) = &self.explicit_name {
-            return Ok(core::resolve_by_name(repo, name)?);
+            return Ok(ResolvedSelector {
+                staircase: core::resolve_by_name(repo, name)?,
+                step_index: None,
+            });
         }
         if let Some(r) = &self.r#ref {
-            return Ok(core::resolve_by_ref(repo, r)?);
+            return Ok(ResolvedSelector {
+                staircase: core::resolve_by_ref(repo, r)?,
+                step_index: None,
+            });
         }
         if let Some(key) = &self.structural_key {
-            return Ok(core::resolve_by_structural_key(
-                repo,
-                key,
-                self.onto.as_deref(),
-            )?);
+            return Ok(ResolvedSelector {
+                staircase: core::resolve_by_structural_key(repo, key, self.onto.as_deref())?,
+                step_index: None,
+            });
         }
 
         if let Some(s) = &self.steps {
-            Ok(core::resolve_explicit_staircase(
-                repo,
-                s,
-                self.onto.as_deref(),
-            )?)
+            Ok(ResolvedSelector {
+                staircase: core::resolve_explicit_staircase(repo, s, self.onto.as_deref())?,
+                step_index: None,
+            })
         } else {
             let name = self
                 .name

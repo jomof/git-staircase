@@ -8,6 +8,7 @@ pub fn run(
     git_args: Vec<String>,
 ) -> anyhow::Result<()> {
     let rs = staircase.resolve(repo)?;
+    let rs = &rs;
     let range = format!(
         "{}..{}",
         rs.metadata().target,

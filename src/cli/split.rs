@@ -10,20 +10,17 @@ pub fn run(
     at: String,
     step_name: Option<String>,
 ) -> anyhow::Result<Success> {
-    let (rs, step_num) = if let Some(s) = step {
-        (staircase.resolve(repo)?, s)
+    let rs = staircase.resolve(repo)?;
+    let step_num = if let Some(s) = step {
+        s
     } else {
-        let name_spec = staircase.name.as_ref().ok_or_else(|| anyhow!("Step number must be provided either via --step or as part of the staircase name (e.g. name:1)"))?;
-        let (sc_name, step_num) = crate::parse_step_spec(name_spec)?;
-        let mut sc_args = staircase.clone();
-        sc_args.name = Some(sc_name);
-        (sc_args.resolve(repo)?, step_num)
+        rs.step_index.map(|i| i + 1).ok_or_else(|| anyhow!("Step number must be provided either via --step or as part of the staircase name (e.g. name:1)"))?
     };
 
     if step_num == 0 {
         return Err(anyhow!("Step number must be 1-based"));
     }
-    core::split(repo, &rs, step_num - 1, &at, step_name.as_deref())?;
+    core::split(repo, &rs.staircase, step_num - 1, &at, step_name.as_deref())?;
     Ok(Success::new(format!(
         "Split step {} of staircase '{}' at {}.",
         step_num,

@@ -57,7 +57,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         structural_key: None,
     };
     let rs = args_name.resolve(&repo).expect("Should resolve by --name");
-    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().name, "auth");
 
     // 5. Test --id <uuid>
@@ -72,7 +72,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         structural_key: None,
     };
     let rs = args_id.resolve(&repo).expect("Should resolve by --id");
-    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().id, lineage_id);
 
     // 6. Test --ref refs/staircases/auth
@@ -87,7 +87,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         structural_key: None,
     };
     let rs = args_ref.resolve(&repo).expect("Should resolve by --ref");
-    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().name, "auth");
 
     // 7. Test --revision <oid>
@@ -104,7 +104,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
     let rs = args_rev
         .resolve(&repo)
         .expect("Should resolve by --revision");
-    assert!(matches!(rs, ResolvedStaircase::Managed(_)));
+    assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
     assert_eq!(
         repo.resolve_ref("refs/staircases/auth").unwrap(),
         revision_oid

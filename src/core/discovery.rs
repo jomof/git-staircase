@@ -1,5 +1,5 @@
-use super::ResolvedStaircase;
 use super::persistence;
+use super::{ResolvedSelector, ResolvedStaircase};
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{BranchInfo, Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, Step};
@@ -256,7 +256,7 @@ fn build_ambiguous_family(
     }
 }
 
-pub fn resolve_staircase(
+pub fn resolve_staircase_internal(
     repo: &GitRepo,
     name: &str,
     onto: Option<&str>,
@@ -724,4 +724,43 @@ pub fn resolve_by_structural_key(
         "Implicit staircase with structural key '{}' not found",
         key
     )))
+}
+
+pub fn resolve_staircase(
+    repo: &GitRepo,
+    name: &str,
+    onto: Option<&str>,
+) -> Result<Option<ResolvedSelector>> {
+    if name.contains(':') {
+        if let Some((sc_name, ordinal_str)) = name.rsplit_once(':') {
+            if let Ok(ordinal) = ordinal_str.parse::<usize>() {
+                if ordinal == 0 {
+                    return Err(StaircaseError::Other(
+                        "Step ordinal must be 1-based".to_string(),
+                    ));
+                }
+                if let Some(rs) = resolve_staircase_internal(repo, sc_name, onto)? {
+                    if ordinal > rs.metadata().steps.len() {
+                        return Err(StaircaseError::Other(format!(
+                            "Step ordinal {} out of range for staircase '{}' (which has {} steps)",
+                            ordinal,
+                            sc_name,
+                            rs.metadata().steps.len()
+                        )));
+                    }
+                    return Ok(Some(ResolvedSelector {
+                        staircase: rs,
+                        step_index: Some(ordinal - 1),
+                    }));
+                }
+            }
+        }
+    }
+
+    Ok(
+        resolve_staircase_internal(repo, name, onto)?.map(|rs| ResolvedSelector {
+            staircase: rs,
+            step_index: None,
+        }),
+    )
 }

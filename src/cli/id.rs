@@ -10,6 +10,7 @@ pub fn run(
     kind: IdentityKind,
 ) -> anyhow::Result<()> {
     let rs = staircase.resolve(repo)?;
+    let rs = &rs;
     let was_implicit = !rs.is_managed();
     let id = core::compute_identity(repo, &rs, kind)?;
     if was_implicit && kind == IdentityKind::Lineage && matches!(format, OutputFormat::Human) {

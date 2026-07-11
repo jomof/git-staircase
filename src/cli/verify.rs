@@ -15,6 +15,7 @@ pub fn run(
     let each_prefix_opt = if each_prefix { Some(true) } else { None };
 
     let rs = staircase.resolve(repo)?;
+    let rs = &rs;
 
     let results = core::verify(
         repo,

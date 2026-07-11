@@ -8,6 +8,7 @@ pub fn run(
     to: String,
 ) -> anyhow::Result<Success> {
     let rs = staircase.resolve(repo)?;
+    let rs = &rs;
     core::rebase(repo, &rs, &to)?;
     Ok(Success::new(format!("Rebased staircase onto {}", to)))
 }

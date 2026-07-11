@@ -4,7 +4,7 @@ pub mod error;
 pub mod git;
 pub mod model;
 
-pub use crate::core::ResolvedStaircase;
+pub use crate::core::{ResolvedSelector, ResolvedStaircase};
 pub use cli::formatting::{ToHuman, ToPorcelain};
 pub use error::{Result, StaircaseError};
 pub use git::GitRepo;

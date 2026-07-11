@@ -36,7 +36,7 @@ fn test_resolve_managed_by_internal_step_branch() {
     // ASSERT: It should resolve to the Managed staircase, not an implicit one,
     // and it should be the full staircase (3 steps), not truncated.
     assert!(resolved.is_managed());
-    if let ResolvedStaircase::Managed(meta) = resolved {
+    if let ResolvedStaircase::Managed(meta) = resolved.staircase {
         assert_eq!(meta.id, uuid);
         assert_eq!(meta.name, "my-staircase");
         assert_eq!(meta.steps.len(), 3);
