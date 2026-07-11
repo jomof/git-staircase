@@ -9,7 +9,7 @@ pub fn run(
     staircase: StaircaseSelectorArgs,
     kind: IdentityKind,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     let was_implicit = !rs.is_managed();
     let id = core::compute_identity(repo, &rs, kind)?;
     if was_implicit && kind == IdentityKind::Lineage && matches!(format, OutputFormat::Human) {

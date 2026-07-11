@@ -8,7 +8,7 @@ pub fn run(
     staircase: StaircaseSelectorArgs,
     step: Option<usize>,
 ) -> anyhow::Result<Success> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     let step_idx = step.ok_or_else(|| anyhow!("--step (index) must be provided"))?;
     if step_idx == 0 {
         return Err(anyhow!("Step index must be 1-based (got 0)"));

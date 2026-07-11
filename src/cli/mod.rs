@@ -64,6 +64,45 @@ pub struct StaircaseSelectorArgs {
     pub structural_key: Option<String>,
 }
 
+impl StaircaseSelectorArgs {
+    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedStaircase> {
+        if let Some(id) = &self.id {
+            return Ok(core::resolve_by_id(repo, id)?);
+        }
+        if let Some(revision) = &self.revision {
+            return Ok(core::resolve_by_revision(repo, revision)?);
+        }
+        if let Some(name) = &self.explicit_name {
+            return Ok(core::resolve_by_name(repo, name)?);
+        }
+        if let Some(r) = &self.r#ref {
+            return Ok(core::resolve_by_ref(repo, r)?);
+        }
+        if let Some(key) = &self.structural_key {
+            return Ok(core::resolve_by_structural_key(
+                repo,
+                key,
+                self.onto.as_deref(),
+            )?);
+        }
+
+        if let Some(s) = &self.steps {
+            Ok(core::resolve_explicit_staircase(
+                repo,
+                s,
+                self.onto.as_deref(),
+            )?)
+        } else {
+            let name = self
+                .name
+                .as_ref()
+                .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --revision, --structural-key) must be provided"))?;
+            core::resolve_staircase(repo, name, self.onto.as_deref())?
+                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
+        }
+    }
+}
+
 pub fn print_output<T>(format: OutputFormat, value: &T) -> Result<()>
 where
     T: Serialize + ToHuman + ToPorcelain,
@@ -100,42 +139,5 @@ where
     match result {
         Ok(val) => print_output(format, &val),
         Err(e) => Err(e),
-    }
-}
-
-pub fn resolve_rs(repo: &GitRepo, args: &StaircaseSelectorArgs) -> Result<ResolvedStaircase> {
-    if let Some(id) = &args.id {
-        return Ok(core::resolve_by_id(repo, id)?);
-    }
-    if let Some(revision) = &args.revision {
-        return Ok(core::resolve_by_revision(repo, revision)?);
-    }
-    if let Some(name) = &args.explicit_name {
-        return Ok(core::resolve_by_name(repo, name)?);
-    }
-    if let Some(r) = &args.r#ref {
-        return Ok(core::resolve_by_ref(repo, r)?);
-    }
-    if let Some(key) = &args.structural_key {
-        return Ok(core::resolve_by_structural_key(
-            repo,
-            key,
-            args.onto.as_deref(),
-        )?);
-    }
-
-    if let Some(s) = &args.steps {
-        Ok(core::resolve_explicit_staircase(
-            repo,
-            s,
-            args.onto.as_deref(),
-        )?)
-    } else {
-        let name = args
-            .name
-            .as_ref()
-            .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --revision, --structural-key) must be provided"))?;
-        core::resolve_staircase(repo, name, args.onto.as_deref())?
-            .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
     }
 }

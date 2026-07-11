@@ -1,4 +1,4 @@
-use super::{StaircaseSelectorArgs, Success, resolve_rs};
+use super::{StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 use anyhow::anyhow;
@@ -22,7 +22,7 @@ pub fn run(
                 "Second step number must be provided via --step2 or as a positional argument"
             ));
         };
-        (resolve_rs(repo, &staircase)?, s1, s2)
+        (staircase.resolve(repo)?, s1, s2)
     } else {
         let name_spec = staircase.name.as_ref().ok_or_else(|| anyhow!("Step number must be provided either via --step or as part of the staircase name (e.g. name:1)"))?;
         let (sc_name, s1) = crate::parse_step_spec(name_spec)?;
@@ -49,7 +49,7 @@ pub fn run(
 
         let mut sc_args = staircase.clone();
         sc_args.name = Some(sc_name);
-        (resolve_rs(repo, &sc_args)?, s1, s2)
+        (sc_args.resolve(repo)?, s1, s2)
     };
 
     if step_num1 == 0 || step_num2 == 0 {

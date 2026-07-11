@@ -7,7 +7,7 @@ pub fn run(
     staircase: StaircaseSelectorArgs,
     git_args: Vec<String>,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     let range = format!(
         "{}..{}",
         rs.metadata().target,

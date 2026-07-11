@@ -14,7 +14,7 @@ pub fn run(
     let aggregate_opt = if aggregate { Some(true) } else { None };
     let each_prefix_opt = if each_prefix { Some(true) } else { None };
 
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
 
     let results = core::verify(
         repo,

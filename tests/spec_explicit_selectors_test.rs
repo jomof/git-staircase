@@ -1,7 +1,7 @@
 mod common;
 use common::*;
 use git_staircase::ResolvedStaircase;
-use git_staircase::cli::{StaircaseSelectorArgs, resolve_rs};
+use git_staircase::cli::StaircaseSelectorArgs;
 use git_staircase::core;
 
 #[test]
@@ -41,7 +41,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         structural_key: None,
     };
 
-    let result = resolve_rs(&repo, &args_bare);
+    let result = args_bare.resolve(&repo);
     assert!(result.is_err(), "Bare 'auth' should be ambiguous");
     assert!(result.unwrap_err().to_string().contains("ambiguous"));
 
@@ -56,7 +56,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         r#ref: None,
         structural_key: None,
     };
-    let rs = resolve_rs(&repo, &args_name).expect("Should resolve by --name");
+    let rs = args_name.resolve(&repo).expect("Should resolve by --name");
     assert!(matches!(rs, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().name, "auth");
 
@@ -71,7 +71,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         r#ref: None,
         structural_key: None,
     };
-    let rs = resolve_rs(&repo, &args_id).expect("Should resolve by --id");
+    let rs = args_id.resolve(&repo).expect("Should resolve by --id");
     assert!(matches!(rs, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().id, lineage_id);
 
@@ -86,7 +86,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         r#ref: Some("refs/staircases/auth".to_string()),
         structural_key: None,
     };
-    let rs = resolve_rs(&repo, &args_ref).expect("Should resolve by --ref");
+    let rs = args_ref.resolve(&repo).expect("Should resolve by --ref");
     assert!(matches!(rs, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().name, "auth");
 
@@ -101,7 +101,9 @@ fn test_explicit_selectors_resolve_ambiguity() {
         r#ref: None,
         structural_key: None,
     };
-    let rs = resolve_rs(&repo, &args_rev).expect("Should resolve by --revision");
+    let rs = args_rev
+        .resolve(&repo)
+        .expect("Should resolve by --revision");
     assert!(matches!(rs, ResolvedStaircase::Managed(_)));
     assert_eq!(
         repo.resolve_ref("refs/staircases/auth").unwrap(),

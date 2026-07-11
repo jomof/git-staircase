@@ -7,7 +7,7 @@ pub fn run(
     staircase: StaircaseSelectorArgs,
     delete_branches: bool,
 ) -> anyhow::Result<Success> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     core::delete(repo, &rs.metadata().id, delete_branches)?;
     Ok(Success::new(format!(
         "Deleted staircase '{}'.",

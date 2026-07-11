@@ -9,7 +9,7 @@ pub fn run(
     to: usize,
     commits: Vec<String>,
 ) -> anyhow::Result<Success> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     core::move_commits(repo, &rs, from - 1, to - 1, &commits)?;
     Ok(Success::new("Moved commits."))
 }

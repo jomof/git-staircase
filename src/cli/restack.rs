@@ -3,7 +3,7 @@ use crate::GitRepo;
 use crate::core;
 
 pub fn run(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> anyhow::Result<Success> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     core::restack(repo, &rs)?;
     Ok(Success::new("Restacked staircase."))
 }

@@ -7,7 +7,7 @@ pub fn run(
     staircase: StaircaseSelectorArgs,
     to: String,
 ) -> anyhow::Result<Success> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     core::rebase(repo, &rs, &to)?;
     Ok(Success::new(format!("Rebased staircase onto {}", to)))
 }

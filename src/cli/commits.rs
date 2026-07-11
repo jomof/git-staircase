@@ -6,7 +6,7 @@ pub fn run(
     format: OutputFormat,
     staircase: StaircaseSelectorArgs,
 ) -> anyhow::Result<()> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     let target_oid = repo.resolve_commit(&rs.metadata().target)?;
     let mut current_base = target_oid;
     let mut steps = Vec::new();

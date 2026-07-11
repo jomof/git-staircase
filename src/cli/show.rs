@@ -3,6 +3,6 @@ use crate::GitRepo;
 use crate::model::StaircaseMetadata;
 
 pub fn run(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> anyhow::Result<StaircaseMetadata> {
-    let rs = super::resolve_rs(repo, &staircase)?;
+    let rs = staircase.resolve(repo)?;
     Ok(rs.metadata().clone())
 }
