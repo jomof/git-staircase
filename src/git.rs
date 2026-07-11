@@ -1,5 +1,5 @@
 use crate::error::{Result, StaircaseError};
-use crate::model::{BranchInfo, StaircaseMetadata};
+use crate::model::{BranchInfo, StaircaseMetadata, VerificationResult};
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -169,6 +169,34 @@ impl GitRepo {
         let json = self.run(&["cat-file", "-p", &format!("{}:staircase.json", ref_name)])?;
         let metadata: StaircaseMetadata = serde_json::from_str(&json)?;
         Ok(metadata)
+    }
+
+    pub fn record_verification(&self, id: &str, results: &[VerificationResult]) -> Result<String> {
+        let json = serde_json::to_string_pretty(results)?;
+
+        let blob_oid = self.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
+        let blob_oid = blob_oid.trim();
+
+        let tree_input = format!("100644 blob {}\tverification.json\n", blob_oid);
+        let tree_oid = self.run_with_stdin(&["mktree"], &tree_input)?;
+        let tree_oid = tree_oid.trim();
+
+        let commit_msg = format!("Record verification for staircase {}", id);
+        let mut commit_args = vec!["commit-tree", tree_oid, "-m", &commit_msg];
+
+        let ref_name = format!("refs/staircases/{}/verification", id);
+        let parent_oid = self.resolve_ref(&ref_name).ok();
+        if let Some(ref parent) = parent_oid {
+            commit_args.push("-p");
+            commit_args.push(parent);
+        }
+
+        let commit_oid = self.run(&commit_args)?;
+        let commit_oid = commit_oid.trim();
+
+        self.run(&["update-ref", &ref_name, commit_oid])?;
+
+        Ok(commit_oid.to_string())
     }
 
     pub fn list_staircases(&self) -> Result<Vec<StaircaseMetadata>> {

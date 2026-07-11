@@ -1,7 +1,9 @@
 use anyhow::{Context, anyhow};
 use clap::{Parser, Subcommand};
 use git_staircase::core;
-use git_staircase::{Discovery, GitRepo, StaircaseFamily, StaircaseMetadata, Step};
+use git_staircase::{
+    Discovery, GitRepo, StaircaseFamily, StaircaseMetadata, Step, VerificationPolicy,
+};
 use std::path::PathBuf;
 
 #[derive(Parser)]
@@ -26,6 +28,12 @@ enum Commands {
         onto: String,
         /// List of branch names in order (root to tip)
         branches: Vec<String>,
+        #[arg(long)]
+        build_command: Option<String>,
+        #[arg(long)]
+        test_command: Option<String>,
+        #[arg(long)]
+        verify_each_prefix: bool,
     },
     /// List managed staircases
     List {
@@ -64,6 +72,18 @@ enum Commands {
     },
     /// Restack stale steps
     Restack { name: String },
+    /// Verify a staircase
+    Verify {
+        name: String,
+        #[arg(long)]
+        aggregate: bool,
+        #[arg(long)]
+        each_prefix: bool,
+        #[arg(long)]
+        build_command: Option<String>,
+        #[arg(long)]
+        test_command: Option<String>,
+    },
     /// Delete a managed staircase
     Delete {
         name: String,
@@ -117,11 +137,13 @@ fn main() -> anyhow::Result<()> {
             name,
             onto,
             branches,
+            build_command,
+            test_command,
+            verify_each_prefix,
         } => {
             if branches.is_empty() {
                 return Err(anyhow!("At least one branch must be specified to adopt"));
             }
-            // We need to resolve branches to OIDs to build the Step list
             let mut steps = Vec::new();
             for b in branches {
                 let full_ref = if b.starts_with("refs/heads/") {
@@ -140,11 +162,22 @@ fn main() -> anyhow::Result<()> {
                 });
             }
 
+            let verification_policy = if build_command.is_some() || test_command.is_some() {
+                Some(VerificationPolicy {
+                    build_command,
+                    test_command,
+                    verify_each_prefix,
+                })
+            } else {
+                None
+            };
+
             let staircase = StaircaseMetadata {
                 id: uuid::Uuid::new_v4().to_string(),
                 name: name.clone(),
                 target: onto,
                 steps,
+                verification_policy,
             };
 
             core::adopt(&repo, &staircase)?;
@@ -262,6 +295,36 @@ fn main() -> anyhow::Result<()> {
             core::restack(&repo, &s.id)?;
             println!("Restacked staircase '{}'.", name);
         }
+        Commands::Verify {
+            name,
+            aggregate,
+            each_prefix,
+            build_command,
+            test_command,
+        } => {
+            let aggregate_opt = if aggregate { Some(true) } else { None };
+            let each_prefix_opt = if each_prefix { Some(true) } else { None };
+            let results = core::verify(
+                &repo,
+                &name,
+                build_command,
+                test_command,
+                aggregate_opt,
+                each_prefix_opt,
+            )?;
+
+            for result in results {
+                println!(
+                    "Step {}: {}",
+                    result.step_name,
+                    if result.success { "PASSED" } else { "FAILED" }
+                );
+                if !result.success {
+                    println!("Stdout:\n{}", result.stdout);
+                    println!("Stderr:\n{}", result.stderr);
+                }
+            }
+        }
         Commands::Delete {
             name,
             delete_branches,
@@ -295,6 +358,16 @@ fn print_staircase(s: &StaircaseMetadata) {
     println!("  Name: {}", s.name);
     println!("  ID: {}", s.id);
     println!("  Target: {}", s.target);
+    if let Some(ref policy) = s.verification_policy {
+        println!("  Verification Policy:");
+        if let Some(ref cmd) = policy.build_command {
+            println!("    Build: {}", cmd);
+        }
+        if let Some(ref cmd) = policy.test_command {
+            println!("    Test:  {}", cmd);
+        }
+        println!("    Verify each prefix: {}", policy.verify_each_prefix);
+    }
     println!("  Steps:");
     for (i, step) in s.steps.iter().enumerate() {
         println!("    Step {}:", i + 1);

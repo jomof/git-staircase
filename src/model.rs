@@ -9,11 +9,19 @@ pub struct Step {
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct VerificationPolicy {
+    pub build_command: Option<String>,
+    pub test_command: Option<String>,
+    pub verify_each_prefix: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseMetadata {
     pub id: String,     // UUID
     pub name: String,   // Nominal name
     pub target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
     pub steps: Vec<Step>,
+    pub verification_policy: Option<VerificationPolicy>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -31,6 +39,7 @@ pub struct StaircaseFamily {
     pub target: String,
     pub steps: HashMap<String, FamilyStep>,
     pub roots: Vec<String>, // Names of root steps
+    pub verification_policy: Option<VerificationPolicy>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -60,4 +69,13 @@ pub struct StaircaseStatus {
     pub metadata: StaircaseMetadata,
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct VerificationResult {
+    pub step_name: String,
+    pub cut: String,
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
 }

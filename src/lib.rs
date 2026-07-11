@@ -7,4 +7,5 @@ pub use error::{Result, StaircaseError};
 pub use git::GitRepo;
 pub use model::{
     Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, StepStatus,
+    VerificationPolicy, VerificationResult,
 };
