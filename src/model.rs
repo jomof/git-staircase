@@ -50,25 +50,6 @@ pub enum Discovery {
     Ambiguous(StaircaseFamily),
 }
 
-#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
-#[serde(tag = "management", rename_all = "kebab-case")]
-pub enum ResolvedStaircase {
-    Managed(StaircaseMetadata),
-    Implicit(StaircaseMetadata),
-}
-
-impl ResolvedStaircase {
-    pub fn metadata(&self) -> &StaircaseMetadata {
-        match self {
-            ResolvedStaircase::Managed(s) => s,
-            ResolvedStaircase::Implicit(s) => s,
-        }
-    }
-
-    pub fn is_managed(&self) -> bool {
-        matches!(self, ResolvedStaircase::Managed(_))
-    }
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct BranchInfo {
@@ -126,22 +107,6 @@ impl ToPorcelain for StaircaseMetadata {
     }
 }
 
-impl ToPorcelain for ResolvedStaircase {
-    fn to_porcelain(&self) -> String {
-        let m = self.metadata();
-        format!(
-            "{}\t{}\t{}\t{}",
-            m.name,
-            m.id,
-            if self.is_managed() {
-                "managed"
-            } else {
-                "implicit"
-            },
-            m.steps.len()
-        )
-    }
-}
 
 impl ToPorcelain for StaircaseStatus {
     fn to_porcelain(&self) -> String {
@@ -284,17 +249,6 @@ impl ToHuman for StaircaseFamily {
     }
 }
 
-impl ToHuman for ResolvedStaircase {
-    fn to_human(&self) -> String {
-        let mut out = if self.is_managed() {
-            format!("Managed Staircase: {}\n", self.metadata().name)
-        } else {
-            format!("Implicit Staircase: {}\n", self.metadata().name)
-        };
-        out.push_str(&self.metadata().to_human());
-        out
-    }
-}
 
 impl ToHuman for Discovery {
     fn to_human(&self) -> String {
