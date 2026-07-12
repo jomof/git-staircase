@@ -15,16 +15,32 @@ pub struct Join {
     pub step2: Option<usize>,
     /// Second step number if not using --step2.
     pub step2_pos: Option<String>,
+
+    #[arg(long, conflicts_with_all = &["rename_boundary_ref", "keep_boundary_ref"])]
+    pub delete_boundary_ref: bool,
+    #[arg(long, conflicts_with_all = &["delete_boundary_ref", "keep_boundary_ref"])]
+    pub rename_boundary_ref: Option<String>,
+    #[arg(long, conflicts_with_all = &["delete_boundary_ref", "rename_boundary_ref"])]
+    pub keep_boundary_ref: bool,
 }
 
 impl super::Command for Join {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let ref_action = if self.delete_boundary_ref {
+            core::JoinRefAction::Delete
+        } else if let Some(ref new_name) = self.rename_boundary_ref {
+            core::JoinRefAction::Rename(new_name.clone())
+        } else {
+            core::JoinRefAction::Keep
+        };
+
         let result = run_internal(
             repo,
             self.staircase.clone(),
             self.step,
             self.step2,
             self.step2_pos.clone(),
+            core::JoinOptions { ref_action },
         )?;
         Ok(Box::new(result))
     }
@@ -36,6 +52,7 @@ pub fn run_internal(
     step: Option<usize>,
     step2: Option<usize>,
     step2_pos: Option<String>,
+    options: core::JoinOptions,
 ) -> Result<Success> {
     let rs = staircase.resolve(repo)?;
 
@@ -70,7 +87,7 @@ pub fn run_internal(
         return Err(anyhow!("Step numbers must be 1-based"));
     }
 
-    core::join(repo, &rs.staircase, step_num1 - 1, step_num2 - 1)?;
+    core::join(repo, &rs.staircase, step_num1 - 1, step_num2 - 1, options)?;
     Ok(Success::new(format!(
         "Joined steps {} and {} of staircase '{}'.",
         step_num1,
@@ -85,6 +102,7 @@ pub fn run(
     step: Option<usize>,
     step2: Option<usize>,
     step2_pos: Option<String>,
+    options: core::JoinOptions,
 ) -> Result<Success> {
-    run_internal(repo, staircase, step, step2, step2_pos)
+    run_internal(repo, staircase, step, step2, step2_pos, options)
 }

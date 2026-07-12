@@ -61,7 +61,7 @@ fn test_restack_propagation() {
         .unwrap();
 
     // ACT: Run restack
-    git_staircase::core::restack(&ctx.repo, &rs).unwrap();
+    git_staircase::core::restack(&ctx.repo, &rs, core::RebaseOptions { leave_upper_steps_stale: false }).unwrap();
 
     // ASSERT: Verify results
     let s1_final = ctx.run_git(&["rev-parse", "s1"]);

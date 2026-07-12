@@ -6,12 +6,41 @@ use crate::model::Step;
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
+pub struct RebaseOptions {
+    pub leave_upper_steps_stale: bool,
+}
+
+pub struct ReorderOptions {
+    pub no_restack: bool,
+}
+
+pub struct DropOptions {
+    pub restack: bool,
+    pub leave_descendants_stale: bool,
+}
+
+pub struct SplitOptions {
+    pub no_ref: bool,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum JoinRefAction {
+    Delete,
+    Rename(String),
+    Keep,
+}
+
+pub struct JoinOptions {
+    pub ref_action: JoinRefAction,
+}
+
 pub fn split(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
     step_index: usize,
     at_commit: &str,
     new_step_name: Option<&str>,
+    options: SplitOptions,
 ) -> Result<()> {
     if step_index >= staircase.metadata().steps.len() {
         return Err(StaircaseError::InvalidStructure(format!(
@@ -55,7 +84,9 @@ pub fn split(
         id: Uuid::new_v4().to_string(),
         name: name.clone(),
         cut: at_oid.clone(),
-        branch: if staircase.is_managed() {
+        branch: if options.no_ref {
+            None
+        } else if staircase.is_managed() {
             None
         } else {
             new_step_name.map(|n| n.to_string())
@@ -71,6 +102,7 @@ pub fn join(
     staircase: &ResolvedStaircase,
     step_index_1: usize,
     step_index_2: usize,
+    options: JoinOptions,
 ) -> Result<()> {
     let (low, high) = if step_index_1 < step_index_2 {
         (step_index_1, step_index_2)
@@ -92,7 +124,34 @@ pub fn join(
         )));
     }
 
-    staircase.remove_step(repo, low)?;
+    let removed_step = staircase.metadata().steps[low].clone();
+    
+    // Perform ref action
+    if let Some(ref branch) = removed_step.branch {
+        match options.ref_action {
+            JoinRefAction::Delete => {
+                let _ = repo.run(&["branch", "-D", branch]);
+            }
+            JoinRefAction::Rename(ref new_name) => {
+                let _ = repo.run(&["branch", "-m", branch, new_name]);
+            }
+            JoinRefAction::Keep => {
+                // Do nothing to the ref. 
+                // This will trigger adoption in remove_step because it will detect a stale/untracked ref?
+                // Actually, ResolvedStaircase::remove_step just removes from metadata.
+                // If it remains in Git, discovery will see it.
+            }
+        }
+    }
+
+    let result_rs = staircase.remove_step(repo, low)?;
+    
+    if options.ref_action == JoinRefAction::Keep && !result_rs.is_managed() {
+        // Force adoption if we kept a boundary ref that is no longer in metadata.
+        let metadata = crate::core::adopt(repo, result_rs.metadata())?;
+        let _metadata = ResolvedStaircase::Managed(metadata);
+    }
+
     Ok(())
 }
 
@@ -175,7 +234,12 @@ impl<'a> StaircaseRebaser<'a> {
     }
 }
 
-pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize]) -> Result<()> {
+pub fn reorder(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    new_order: &[usize],
+    options: ReorderOptions,
+) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     let old_steps = metadata.steps.clone();
 
@@ -193,46 +257,54 @@ pub fn reorder(repo: &GitRepo, staircase: &ResolvedStaircase, new_order: &[usize
         new_steps.push(old_steps[idx].clone());
     }
 
-    let rebaser = StaircaseRebaser::new(repo, &old_steps)?;
+    if !options.no_restack {
+        let rebaser = StaircaseRebaser::new(repo, &old_steps)?;
 
-    let target_oid = repo.resolve_commit(&metadata.target)?;
-    let mut current_base = target_oid;
+        let target_oid = repo.resolve_commit(&metadata.target)?;
+        let mut current_base = target_oid;
 
-    for i in 0..new_steps.len() {
-        let step = &new_steps[i];
-        let actual_oid = repo.resolve_commit(&step.cut)?;
+        for i in 0..new_steps.len() {
+            let step = &new_steps[i];
+            let actual_oid = repo.resolve_commit(&step.cut)?;
 
-        let old_idx = new_order[i];
-        let old_parent_oid = if old_idx == 0 {
-            repo.merge_base(&actual_oid, &repo.resolve_commit(&metadata.target)?)?
-        } else {
-            old_steps[old_idx - 1].cut.clone()
-        };
+            let old_idx = new_order[i];
+            let old_parent_oid = if old_idx == 0 {
+                repo.merge_base(&actual_oid, &repo.resolve_commit(&metadata.target)?)?
+            } else {
+                old_steps[old_idx - 1].cut.clone()
+            };
 
-        if current_base != old_parent_oid {
-            match rebaser.rebase_step(step, &step.cut, &old_parent_oid, &current_base) {
-                Ok(new_oid) => {
-                    new_steps[i].cut = new_oid.clone();
-                    current_base = new_oid;
+            if current_base != old_parent_oid {
+                match rebaser.rebase_step(step, &step.cut, &old_parent_oid, &current_base) {
+                    Ok(new_oid) => {
+                        new_steps[i].cut = new_oid.clone();
+                        current_base = new_oid;
+                    }
+                    Err(e) => {
+                        rebaser.rollback();
+                        return Err(StaircaseError::Other(format!("Reorder failed: {}", e)));
+                    }
                 }
-                Err(e) => {
-                    rebaser.rollback();
-                    return Err(StaircaseError::Other(format!("Reorder failed: {}", e)));
-                }
+            } else {
+                current_base = actual_oid;
             }
-        } else {
-            current_base = actual_oid;
         }
-    }
 
-    rebaser.finalize()?;
+        rebaser.finalize()?;
+    }
 
     metadata.steps = new_steps;
     staircase.commit_metadata(repo, metadata)?;
 
     Ok(())
 }
-pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) -> Result<()> {
+
+pub fn drop(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    step_index: usize,
+    options: DropOptions,
+) -> Result<()> {
     let metadata = staircase.metadata().clone();
     if step_index >= metadata.steps.len() {
         return Err(StaircaseError::Other(
@@ -249,7 +321,14 @@ pub fn drop(repo: &GitRepo, staircase: &ResolvedStaircase, step_index: usize) ->
     let mut new_order: Vec<usize> = (0..metadata.steps.len()).collect();
     new_order.remove(step_index);
 
-    reorder(repo, staircase, &new_order)?;
+    reorder(
+        repo,
+        staircase,
+        &new_order,
+        ReorderOptions {
+            no_restack: !options.restack || options.leave_descendants_stale,
+        },
+    )?;
 
     if let Some(branch) = branch_to_delete {
         let _ = repo.run(&["branch", "-D", &branch]);
@@ -308,7 +387,11 @@ pub fn move_commits(
     ))
 }
 
-pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
+pub fn restack(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    options: RebaseOptions,
+) -> Result<()> {
     let mut status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
@@ -362,6 +445,11 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
                         status.metadata.steps[i].cut = new_oid.clone();
                         metadata_changed = true;
                         current_base = new_oid;
+                        
+                        if options.leave_upper_steps_stale {
+                            // Stop here.
+                            return Ok(());
+                        }
                     }
                     Err(e) => {
                         if metadata_changed {
@@ -400,7 +488,13 @@ pub fn restack(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<()> {
         }
     }
 }
-pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Result<()> {
+
+pub fn rebase(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    onto: &str,
+    options: RebaseOptions,
+) -> Result<()> {
     let mut metadata = staircase.metadata().clone();
     metadata.target = onto.to_string();
 
@@ -409,7 +503,7 @@ pub fn rebase(repo: &GitRepo, staircase: &ResolvedStaircase, onto: &str) -> Resu
     } else {
         ResolvedStaircase::Implicit(metadata)
     };
-    restack(repo, &updated_rs)
+    restack(repo, &updated_rs, options)
 }
 
 pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {

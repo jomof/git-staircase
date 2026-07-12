@@ -13,7 +13,10 @@ pub mod verification;
 pub use discovery::discover;
 pub use identity::compute_identity;
 pub use inference::infer_onto;
-pub use manipulation::{delete, drop, join, move_commits, rebase, reorder, restack, split};
+pub use manipulation::{ 
+    delete, drop, join, move_commits, rebase, reorder, restack, split, 
+    DropOptions, JoinOptions, JoinRefAction, RebaseOptions, ReorderOptions, SplitOptions 
+};
 pub use resolution::{
     find_by_name, resolve_by_id, resolve_by_name, resolve_by_ref, resolve_by_revision,
     resolve_by_structural_key, resolve_explicit_staircase, resolve_staircase,

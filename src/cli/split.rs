@@ -15,6 +15,8 @@ pub struct Split {
     /// Name of the new step.
     #[arg(long)]
     pub step_name: Option<String>,
+    #[arg(long)]
+    pub no_ref: bool,
 }
 
 impl super::Command for Split {
@@ -25,6 +27,7 @@ impl super::Command for Split {
             self.step,
             self.at.clone(),
             self.step_name.clone(),
+            self.no_ref,
         )?;
         Ok(Box::new(result))
     }
@@ -36,6 +39,7 @@ pub fn run_internal(
     step: Option<usize>,
     at: String,
     step_name: Option<String>,
+    no_ref: bool,
 ) -> Result<Success> {
     let rs = staircase.resolve(repo)?;
     let step_num = if let Some(s) = step {
@@ -47,7 +51,14 @@ pub fn run_internal(
     if step_num == 0 {
         return Err(anyhow!("Step number must be 1-based"));
     }
-    core::split(repo, &rs.staircase, step_num - 1, &at, step_name.as_deref())?;
+    core::split(
+        repo,
+        &rs.staircase,
+        step_num - 1,
+        &at,
+        step_name.as_deref(),
+        core::SplitOptions { no_ref },
+    )?;
     Ok(Success::new(format!(
         "Split step {} of staircase '{}' at {}.",
         step_num,
@@ -62,6 +73,7 @@ pub fn run(
     step: Option<usize>,
     at: String,
     step_name: Option<String>,
+    no_ref: bool,
 ) -> Result<Success> {
-    run_internal(repo, staircase, step, at, step_name)
+    run_internal(repo, staircase, step, at, step_name, no_ref)
 }

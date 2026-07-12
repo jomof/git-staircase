@@ -36,7 +36,7 @@ fn test_restack_conflict_handling() {
         .unwrap();
 
     // ACT
-    let result = git_staircase::core::restack(&ctx.repo, &rs);
+    let result = git_staircase::core::restack(&ctx.repo, &rs, core::RebaseOptions { leave_upper_steps_stale: false });
 
     // ASSERT
     assert!(
