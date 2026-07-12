@@ -85,3 +85,15 @@ pub fn run(
 
     Ok(all_results)
 }
+
+impl ToHuman for Vec<ListEntry> {
+    fn to_human(&self) -> String {
+        self.iter().map(|x| x.to_human()).collect::<Vec<_>>().join("\n")
+    }
+}
+
+impl ToPorcelain for Vec<ListEntry> {
+    fn to_porcelain(&self) -> String {
+        self.iter().map(|x| x.to_porcelain()).collect::<Vec<_>>().join("\n")
+    }
+}
