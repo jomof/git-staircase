@@ -85,6 +85,8 @@ enum Commands {
     Graph(cli::graph::Graph),
     /// List steps of a staircase
     Steps(cli::steps::Steps),
+    /// Review management and Gerrit integration
+    Review(cli::review::ReviewCmd),
     /// List commits in each step of a staircase
     Commits(cli::commits::Commits),
 }
@@ -113,6 +115,7 @@ impl Commands {
             Commands::Diff(cmd) => cmd.run(repo),
             Commands::Graph(cmd) => cmd.run(repo),
             Commands::Steps(cmd) => cmd.run(repo),
+            Commands::Review(cmd) => cmd.run(repo),
             Commands::Commits(cmd) => cmd.run(repo),
         }
     }

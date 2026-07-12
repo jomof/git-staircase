@@ -20,6 +20,7 @@ pub mod move_cmd;
 pub mod rebase;
 pub mod reorder;
 pub mod restack;
+pub mod review;
 pub mod show;
 pub mod split;
 pub mod status;

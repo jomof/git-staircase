@@ -89,7 +89,7 @@ impl WorkspaceCmd {
                 let names: Vec<String> = installed
                     .into_iter()
                     .map(|p| p.descriptor.name)
-                    .chain(vec!["repo".to_string(), "core.git".to_string()])
+                    .chain(vec!["gerrit".to_string(), "repo".to_string(), "core.git".to_string()])
                     .collect();
                 Ok(Box::new(WorkspaceProvidersOutput(names)))
             }
