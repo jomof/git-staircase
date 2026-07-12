@@ -40,3 +40,72 @@ fn test_git_command_failed_captures_info() {
         _ => panic!("Expected GitCommandFailed error, got {:?}", result),
     }
 }
+
+#[test]
+fn test_builder_basic_run() {
+    // ARRANGE
+    let ctx = TestContext::new();
+
+    // ACT
+    let output = ctx.repo.command()
+        .arg("rev-parse")
+        .arg("--is-inside-work-tree")
+        .run()
+        .unwrap();
+
+    // ASSERT
+    assert_eq!(output, "true");
+}
+
+#[test]
+fn test_builder_trim() {
+    // ARRANGE
+    let ctx = TestContext::new();
+
+    // ACT & ASSERT
+    // Default should be trimmed if we return String
+    let output = ctx.repo.command()
+        .args(&["rev-parse", "--is-inside-work-tree"])
+        .run()
+        .unwrap();
+    assert_eq!(output, "true");
+
+    let output_untrimmed = ctx.repo.command()
+        .args(&["rev-parse", "--is-inside-work-tree"])
+        .trim(false)
+        .run()
+        .unwrap();
+    assert!(output_untrimmed.ends_with("\n"));
+}
+
+#[test]
+fn test_builder_stdin() {
+    // ARRANGE
+    let ctx = TestContext::new();
+
+    // ACT
+    let output = ctx.repo.command()
+        .args(&["hash-object", "--stdin"])
+        .stdin("hello")
+        .run()
+        .unwrap();
+    
+    let expected = ctx.repo.run_with_stdin(&["hash-object", "--stdin"], "hello").unwrap();
+
+    // ASSERT
+    assert_eq!(output, expected);
+}
+
+#[test]
+fn test_builder_error_handling() {
+    // ARRANGE
+    let ctx = TestContext::new();
+
+    // ACT
+    let result = ctx.repo.command()
+        .args(&["rev-parse", "NON_EXISTENT"])
+        .run();
+    
+    // ASSERT
+    assert!(result.is_err());
+}
