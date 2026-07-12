@@ -8,33 +8,43 @@ use anyhow::{Result, anyhow};
 pub struct Drop {
     #[command(flatten)]
     pub staircase: StaircaseSelectorArgs,
+    /// Step number (1-based). Can be part of the staircase name (e.g. name:1)
     #[arg(long)]
-    pub restack: bool,
+    pub step: Option<usize>,
+    #[arg(long)]
+    pub no_restack: bool,
+    #[arg(long)]
+    pub leave_descendants_stale: bool,
 }
 
 impl super::Command for Drop {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
-        let step_index = self
-            .staircase
-            .name
-            .as_ref()
-            .and_then(|n| rs.metadata().steps.iter().position(|s| s.name == *n))
-            .ok_or_else(|| anyhow!("Could not determine which step to drop. Please provide a step name or use an explicit selector."))?;
+        let step_num = if let Some(s) = self.step {
+            s
+        } else {
+            rs.step_index.map(|i| i + 1).ok_or_else(|| anyhow!("Step number must be provided either via --step or as part of the staircase name (e.g. name:1)"))?
+        };
 
+        if step_num == 0 {
+            return Err(anyhow!("Step number must be 1-based"));
+        }
+        let step_index = step_num - 1;
+
+        let restack = !self.no_restack && !self.leave_descendants_stale;
         core::drop(
             repo,
             &rs,
             step_index,
             DropOptions {
-                restack: self.restack,
-                leave_descendants_stale: !self.restack,
+                restack,
+                leave_descendants_stale: !restack,
             },
         )?;
 
         Ok(Box::new(Success::new(format!(
             "Dropped step {} from staircase '{}'",
-            step_index + 1,
+            step_num,
             rs.metadata().name
         ))))
     }
