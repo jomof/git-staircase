@@ -16,7 +16,12 @@ pub struct Reorder {
 
 impl super::Command for Reorder {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let result = run_internal(repo, self.staircase.clone(), self.order.clone(), self.no_restack)?;
+        let result = run_internal(
+            repo,
+            self.staircase.clone(),
+            self.order.clone(),
+            self.no_restack,
+        )?;
         Ok(Box::new(result))
     }
 }

@@ -111,7 +111,14 @@ fn test_status_stale_and_restack() {
     let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .unwrap();
-    core::restack(&ctx.repo, &rs, core::RebaseOptions { leave_upper_steps_stale: false }).unwrap();
+    core::restack(
+        &ctx.repo,
+        &rs,
+        core::RebaseOptions {
+            leave_upper_steps_stale: false,
+        },
+    )
+    .unwrap();
 
     // ASSERT
     let status = core::get_status(&ctx.repo, &s.id).unwrap();
@@ -141,7 +148,15 @@ fn test_split_and_join() {
         .unwrap();
 
     // ACT (Split)
-    core::split(&ctx.repo, &rs, 0, &c1_2, Some("feature/auth-core-part1"), core::SplitOptions { no_ref: false }).unwrap();
+    core::split(
+        &ctx.repo,
+        &rs,
+        0,
+        &c1_2,
+        Some("feature/auth-core-part1"),
+        core::SplitOptions { no_ref: false },
+    )
+    .unwrap();
 
     // ASSERT (Split)
     let read = core::persistence::read_metadata(&ctx.repo, &s.id).unwrap();
@@ -151,7 +166,16 @@ fn test_split_and_join() {
     let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .unwrap();
-    core::join(&ctx.repo, &rs, 0, 1, core::JoinOptions { ref_action: core::JoinRefAction::Keep }).unwrap();
+    core::join(
+        &ctx.repo,
+        &rs,
+        0,
+        1,
+        core::JoinOptions {
+            ref_action: core::JoinRefAction::Keep,
+        },
+    )
+    .unwrap();
 
     // ASSERT (Join)
     let read = core::persistence::read_metadata(&ctx.repo, &s.id).unwrap();
@@ -319,8 +343,15 @@ fn test_split_implicit_staircase() {
     assert!(!rs.is_managed());
 
     // ACT
-    core::split(&ctx.repo, &rs, 0, &c1_2, Some("feature/auth-core-part1"), core::SplitOptions { no_ref: false })
-        .expect("Split should succeed");
+    core::split(
+        &ctx.repo,
+        &rs,
+        0,
+        &c1_2,
+        Some("feature/auth-core-part1"),
+        core::SplitOptions { no_ref: false },
+    )
+    .expect("Split should succeed");
 
     // ASSERT
     let discoveries_after = core::discover(&ctx.repo, Some("main")).unwrap();

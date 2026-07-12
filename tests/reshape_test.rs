@@ -21,7 +21,13 @@ fn test_reorder() {
         .expect("Staircase found");
 
     // Reorder: 1, 3, 2
-    core::reorder(&repo, &rs, &[0, 2, 1], core::ReorderOptions { no_restack: false }).expect("Reorder failed");
+    core::reorder(
+        &repo,
+        &rs,
+        &[0, 2, 1],
+        core::ReorderOptions { no_restack: false },
+    )
+    .expect("Reorder failed");
 
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
@@ -77,7 +83,16 @@ fn test_drop() {
         .expect("Staircase found");
 
     // Drop step 2
-    core::drop(&repo, &rs, 1, core::DropOptions { restack: true, leave_descendants_stale: false }).expect("Drop failed");
+    core::drop(
+        &repo,
+        &rs,
+        1,
+        core::DropOptions {
+            restack: true,
+            leave_descendants_stale: false,
+        },
+    )
+    .expect("Drop failed");
 
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
@@ -198,7 +213,13 @@ fn test_reorder_without_branches() {
         .expect("Staircase not found");
 
     // Reorder: 1, 3, 2
-    core::reorder(&repo, &rs, &[0, 2, 1], core::ReorderOptions { no_restack: false }).expect("Reorder failed");
+    core::reorder(
+        &repo,
+        &rs,
+        &[0, 2, 1],
+        core::ReorderOptions { no_restack: false },
+    )
+    .expect("Reorder failed");
 
     let rs = core::resolve_staircase(&repo, "mystaircase", None)
         .expect("Resolve failed")
@@ -290,7 +311,14 @@ fn test_restack_without_branches() {
         .expect("Staircase not found");
 
     // ACT: restack
-    core::restack(&repo, &rs, core::RebaseOptions { leave_upper_steps_stale: false }).expect("Restack failed");
+    core::restack(
+        &repo,
+        &rs,
+        core::RebaseOptions {
+            leave_upper_steps_stale: false,
+        },
+    )
+    .expect("Restack failed");
 
     let rs = core::resolve_staircase(&repo, "mystaircase", None)
         .expect("Resolve failed")

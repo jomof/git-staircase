@@ -5,7 +5,7 @@ use git_staircase::core::persistence;
 #[test]
 fn test_rebase_leave_upper_steps_stale() {
     let ctx = TestContext::new();
-    
+
     ctx.run_git(&["checkout", "-b", "s1"]);
     let _c1 = ctx.commit("s1.txt", "s1", "s1 commit");
     ctx.run_git(&["checkout", "-b", "s2"]);
@@ -39,13 +39,17 @@ fn test_rebase_leave_upper_steps_stale() {
     // Verify status shows state: stale
     let (success, stdout, stderr) = ctx.run_staircase(&["status", "test"]);
     assert!(success, "status failed: {}", stderr);
-    assert!(stdout.contains("state: stale"), "Expected state: stale, but output was:\n{}", stdout);
+    assert!(
+        stdout.contains("state: stale"),
+        "Expected state: stale, but output was:\n{}",
+        stdout
+    );
 }
 
 #[test]
 fn test_reorder_no_restack() {
     let ctx = TestContext::new();
-    
+
     ctx.run_git(&["checkout", "-b", "s1"]);
     let c1 = ctx.commit("s1.txt", "s1", "s1 commit");
     ctx.run_git(&["checkout", "-b", "s2"]);
@@ -55,13 +59,8 @@ fn test_reorder_no_restack() {
     assert!(success, "adopt failed: {}", stderr);
 
     // Reorder s2 before s1 (order 2,1) with --no-restack
-    let (success, _, stderr) = ctx.run_staircase(&[
-        "reorder",
-        "test",
-        "--order",
-        "2,1",
-        "--no-restack",
-    ]);
+    let (success, _, stderr) =
+        ctx.run_staircase(&["reorder", "test", "--order", "2,1", "--no-restack"]);
     assert!(success, "reorder failed: {}", stderr);
 
     // Verify branches are NOT rewritten (s1 and s2 still point to original OIDs)
@@ -73,13 +72,17 @@ fn test_reorder_no_restack() {
     // Verify status is stale
     let (success, stdout, stderr) = ctx.run_staircase(&["status", "test"]);
     assert!(success, "status failed: {}", stderr);
-    assert!(stdout.contains("state: stale"), "Expected state: stale, but output was:\n{}", stdout);
+    assert!(
+        stdout.contains("state: stale"),
+        "Expected state: stale, but output was:\n{}",
+        stdout
+    );
 }
 
 #[test]
 fn test_split_no_ref_triggers_adoption() {
     let ctx = TestContext::new();
-    
+
     ctx.run_git(&["checkout", "-b", "s1"]);
     let c1 = ctx.commit("1.txt", "1", "c1");
     let _c2 = ctx.commit("2.txt", "2", "c2");
@@ -100,7 +103,11 @@ fn test_split_no_ref_triggers_adoption() {
     // Verify it was adopted. The name should be "s1"
     let (success, stdout, stderr) = ctx.run_staircase(&["list", "--porcelain"]);
     assert!(success, "list failed: {}", stderr);
-    assert!(stdout.contains("s1"), "Staircase 's1' should be adopted and listed, but output was:\n{}", stdout);
+    assert!(
+        stdout.contains("s1"),
+        "Staircase 's1' should be adopted and listed, but output was:\n{}",
+        stdout
+    );
 
     // Also check that it has 2 steps in metadata
     let meta = persistence::read_metadata(&ctx.repo, "s1").expect("Should find adopted metadata");
@@ -114,7 +121,7 @@ fn test_split_no_ref_triggers_adoption() {
 #[test]
 fn test_join_keep_boundary_ref_triggers_adoption() {
     let ctx = TestContext::new();
-    
+
     ctx.run_git(&["checkout", "-b", "s1"]);
     let _c1 = ctx.commit("s1.txt", "s1", "s1 commit");
     ctx.run_git(&["checkout", "-b", "s2"]);
@@ -122,18 +129,17 @@ fn test_join_keep_boundary_ref_triggers_adoption() {
 
     // We have implicit staircase.
     // Join s1 and s2, keeping s1 branch ref.
-    let (success, _, stderr) = ctx.run_staircase(&[
-        "join",
-        "s:1",
-        "2",
-        "--keep-boundary-ref",
-    ]);
+    let (success, _, stderr) = ctx.run_staircase(&["join", "s:1", "2", "--keep-boundary-ref"]);
     assert!(success, "join failed: {}", stderr);
 
     // Verify it was adopted
     let (success, stdout, stderr) = ctx.run_staircase(&["list", "--porcelain"]);
     assert!(success, "list failed: {}", stderr);
-    assert!(stdout.contains("s"), "Staircase 's' should be adopted, but output was:\n{}", stdout);
+    assert!(
+        stdout.contains("s"),
+        "Staircase 's' should be adopted, but output was:\n{}",
+        stdout
+    );
 
     // Verify s1 branch still exists
     let s1_oid = ctx.run_git(&["rev-parse", "--verify", "s1"]);
@@ -143,7 +149,7 @@ fn test_join_keep_boundary_ref_triggers_adoption() {
 #[test]
 fn test_drop_leave_descendants_stale() {
     let ctx = TestContext::new();
-    
+
     ctx.run_git(&["checkout", "-b", "s1"]);
     let _c1 = ctx.commit("s1.txt", "s1", "s1 commit");
     ctx.run_git(&["checkout", "-b", "s2"]);

@@ -52,7 +52,15 @@ fn test_managed_staircase_updates() {
     let rs = ResolvedStaircase::Managed(metadata);
 
     // ACT (Split Step A)
-    core::split(&ctx.repo, &rs, 0, &a1_oid, Some("A-part1"), core::SplitOptions { no_ref: false }).unwrap();
+    core::split(
+        &ctx.repo,
+        &rs,
+        0,
+        &a1_oid,
+        Some("A-part1"),
+        core::SplitOptions { no_ref: false },
+    )
+    .unwrap();
 
     // ASSERT (Split)
     let rs = core::resolve_staircase(&ctx.repo, "test-managed", None)
@@ -70,7 +78,16 @@ fn test_managed_staircase_updates() {
     );
 
     // ACT (Join Step A-part1 and A)
-    core::join(&ctx.repo, &rs, 0, 1, core::JoinOptions { ref_action: core::JoinRefAction::Keep }).unwrap();
+    core::join(
+        &ctx.repo,
+        &rs,
+        0,
+        1,
+        core::JoinOptions {
+            ref_action: core::JoinRefAction::Keep,
+        },
+    )
+    .unwrap();
 
     // ASSERT (Join)
     let rs = core::resolve_staircase(&ctx.repo, "test-managed", None)
@@ -87,7 +104,14 @@ fn test_managed_staircase_updates() {
     );
 
     // ACT (Restack)
-    core::restack(&ctx.repo, &rs, core::RebaseOptions { leave_upper_steps_stale: false }).unwrap();
+    core::restack(
+        &ctx.repo,
+        &rs,
+        core::RebaseOptions {
+            leave_upper_steps_stale: false,
+        },
+    )
+    .unwrap();
 }
 
 #[test]
@@ -122,7 +146,15 @@ fn test_implicit_staircase_updates() {
     let rs = ResolvedStaircase::Implicit(metadata);
 
     // ACT
-    core::split(&ctx.repo, &rs, 0, &a1_oid, Some("branch-a-part1"), core::SplitOptions { no_ref: false }).unwrap();
+    core::split(
+        &ctx.repo,
+        &rs,
+        0,
+        &a1_oid,
+        Some("branch-a-part1"),
+        core::SplitOptions { no_ref: false },
+    )
+    .unwrap();
 
     // ASSERT
     assert!(ctx.repo.resolve_ref("branch-a-part1").is_ok());

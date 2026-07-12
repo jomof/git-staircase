@@ -125,7 +125,7 @@ pub fn join(
     }
 
     let removed_step = staircase.metadata().steps[low].clone();
-    
+
     // Perform ref action
     if let Some(ref branch) = removed_step.branch {
         match options.ref_action {
@@ -136,7 +136,7 @@ pub fn join(
                 let _ = repo.run(&["branch", "-m", branch, new_name]);
             }
             JoinRefAction::Keep => {
-                // Do nothing to the ref. 
+                // Do nothing to the ref.
                 // This will trigger adoption in remove_step because it will detect a stale/untracked ref?
                 // Actually, ResolvedStaircase::remove_step just removes from metadata.
                 // If it remains in Git, discovery will see it.
@@ -145,7 +145,7 @@ pub fn join(
     }
 
     let result_rs = staircase.remove_step(repo, low)?;
-    
+
     if options.ref_action == JoinRefAction::Keep && !result_rs.is_managed() {
         // Force adoption if we kept a boundary ref that is no longer in metadata.
         let metadata = crate::core::adopt(repo, result_rs.metadata())?;
@@ -445,7 +445,7 @@ pub fn restack(
                         status.metadata.steps[i].cut = new_oid.clone();
                         metadata_changed = true;
                         current_base = new_oid;
-                        
+
                         if options.leave_upper_steps_stale {
                             // Stop here.
                             return Ok(());
