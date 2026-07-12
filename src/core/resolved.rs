@@ -1,10 +1,10 @@
-use uuid::Uuid;
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
 use serde::{Deserialize, Serialize};
 use std::ops::Deref;
+use uuid::Uuid;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 #[serde(tag = "management", rename_all = "kebab-case")]

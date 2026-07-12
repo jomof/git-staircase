@@ -1,10 +1,55 @@
-use super::Summary;
 use super::formatting::{ToHuman, ToPorcelain};
+use super::{PresentationOutput, Summary};
 use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;
 use crate::{Discovery, ResolvedStaircase};
+use anyhow::Result;
 use serde::Serialize;
+
+#[derive(clap::Args, Clone, Debug)]
+pub struct List {
+    #[arg(long)]
+    pub managed: bool,
+    #[arg(long)]
+    pub discovered: bool,
+    #[arg(long, short)]
+    pub families: bool,
+    #[arg(long)]
+    pub implicit: bool,
+    #[arg(long)]
+    pub onto: Option<String>,
+}
+
+impl super::Command for List {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let result = run_internal(
+            repo,
+            self.managed,
+            self.implicit,
+            self.discovered,
+            self.families,
+            self.onto.clone(),
+        )?;
+        Ok(Box::new(ListResult(result)))
+    }
+}
+
+#[derive(Serialize)]
+#[serde(transparent)]
+pub struct ListResult(pub Vec<ListEntry>);
+
+impl ToHuman for ListResult {
+    fn to_human(&self) -> String {
+        self.0.to_human()
+    }
+}
+
+impl ToPorcelain for ListResult {
+    fn to_porcelain(&self) -> String {
+        self.0.to_porcelain()
+    }
+}
 
 #[derive(Serialize)]
 #[serde(untagged)]
@@ -31,14 +76,14 @@ impl ToPorcelain for ListEntry {
     }
 }
 
-pub fn run(
+pub fn run_internal(
     repo: &GitRepo,
     managed: bool,
     implicit: bool,
     discovered: bool,
     families: bool,
     onto: Option<String>,
-) -> anyhow::Result<Vec<ListEntry>> {
+) -> Result<Vec<ListEntry>> {
     let show_implicit = implicit || discovered;
     let show_all = !managed && !show_implicit && !families;
     let mut all_results = Vec::new();
@@ -86,14 +131,31 @@ pub fn run(
     Ok(all_results)
 }
 
+pub fn run(
+    repo: &GitRepo,
+    managed: bool,
+    implicit: bool,
+    discovered: bool,
+    families: bool,
+    onto: Option<String>,
+) -> Result<Vec<ListEntry>> {
+    run_internal(repo, managed, implicit, discovered, families, onto)
+}
+
 impl ToHuman for Vec<ListEntry> {
     fn to_human(&self) -> String {
-        self.iter().map(|x| x.to_human()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_human())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToPorcelain for Vec<ListEntry> {
     fn to_porcelain(&self) -> String {
-        self.iter().map(|x| x.to_porcelain()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_porcelain())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }

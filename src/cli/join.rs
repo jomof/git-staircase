@@ -1,15 +1,42 @@
-use super::{StaircaseSelectorArgs, Success};
+use super::{PresentationOutput, StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 
-pub fn run(
+#[derive(clap::Args, Clone, Debug)]
+pub struct Join {
+    #[command(flatten)]
+    pub staircase: StaircaseSelectorArgs,
+    /// First step number (1-based). Can be part of the staircase name (e.g. name:1)
+    #[arg(long)]
+    pub step: Option<usize>,
+    /// Second step number (1-based).
+    #[arg(long)]
+    pub step2: Option<usize>,
+    /// Second step number if not using --step2.
+    pub step2_pos: Option<String>,
+}
+
+impl super::Command for Join {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let result = run_internal(
+            repo,
+            self.staircase.clone(),
+            self.step,
+            self.step2,
+            self.step2_pos.clone(),
+        )?;
+        Ok(Box::new(result))
+    }
+}
+
+pub fn run_internal(
     repo: &GitRepo,
     staircase: StaircaseSelectorArgs,
     step: Option<usize>,
     step2: Option<usize>,
     step2_pos: Option<String>,
-) -> anyhow::Result<Success> {
+) -> Result<Success> {
     let rs = staircase.resolve(repo)?;
 
     let step_num1 = if let Some(s1) = step {
@@ -50,4 +77,14 @@ pub fn run(
         step_num2,
         rs.metadata().name
     )))
+}
+
+pub fn run(
+    repo: &GitRepo,
+    staircase: StaircaseSelectorArgs,
+    step: Option<usize>,
+    step2: Option<usize>,
+    step2_pos: Option<String>,
+) -> Result<Success> {
+    run_internal(repo, staircase, step, step2, step2_pos)
 }

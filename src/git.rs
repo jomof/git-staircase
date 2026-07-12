@@ -104,7 +104,10 @@ impl GitRepo {
         let stdout = self.run(&["rev-parse", "--symbolic-full-name", name])?;
         let full_name = stdout.trim().to_string();
         if full_name.is_empty() {
-            return Err(StaircaseError::Other(format!("Could not resolve \"{}\" to a full refname", name)));
+            return Err(StaircaseError::Other(format!(
+                "Could not resolve \"{}\" to a full refname",
+                name
+            )));
         }
         Ok(full_name)
     }

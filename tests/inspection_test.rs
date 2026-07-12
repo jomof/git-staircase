@@ -133,8 +133,7 @@ fn test_status_output_format_alignment() {
     //   steps: <count>
     //   lineage: none
 
-    let expected =
-        "feature/auth (implicit)\n  target: refs/heads/main\n  state: clean\n  steps: 2\n  lineage: none";
+    let expected = "feature/auth (implicit)\n  target: refs/heads/main\n  state: clean\n  steps: 2\n  lineage: none";
     assert_eq!(stdout, expected, "Status output does not match spec format");
 }
 

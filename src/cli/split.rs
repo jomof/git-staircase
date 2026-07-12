@@ -1,15 +1,42 @@
-use super::{StaircaseSelectorArgs, Success};
+use super::{PresentationOutput, StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 
-pub fn run(
+#[derive(clap::Args, Clone, Debug)]
+pub struct Split {
+    #[command(flatten)]
+    pub staircase: StaircaseSelectorArgs,
+    /// Step number (1-based). Can be part of the staircase name (e.g. name:1)
+    #[arg(long)]
+    pub step: Option<usize>,
+    #[arg(long)]
+    pub at: String,
+    /// Name of the new step.
+    #[arg(long)]
+    pub step_name: Option<String>,
+}
+
+impl super::Command for Split {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let result = run_internal(
+            repo,
+            self.staircase.clone(),
+            self.step,
+            self.at.clone(),
+            self.step_name.clone(),
+        )?;
+        Ok(Box::new(result))
+    }
+}
+
+pub fn run_internal(
     repo: &GitRepo,
     staircase: StaircaseSelectorArgs,
     step: Option<usize>,
     at: String,
     step_name: Option<String>,
-) -> anyhow::Result<Success> {
+) -> Result<Success> {
     let rs = staircase.resolve(repo)?;
     let step_num = if let Some(s) = step {
         s
@@ -27,4 +54,14 @@ pub fn run(
         rs.metadata().name,
         at
     )))
+}
+
+pub fn run(
+    repo: &GitRepo,
+    staircase: StaircaseSelectorArgs,
+    step: Option<usize>,
+    at: String,
+    step_name: Option<String>,
+) -> Result<Success> {
+    run_internal(repo, staircase, step, at, step_name)
 }

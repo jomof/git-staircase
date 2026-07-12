@@ -1,20 +1,49 @@
-use uuid::Uuid;
-use super::{OutputFormat, print_output};
+use super::PresentationOutput;
 use crate::GitRepo;
 use crate::core;
 use crate::model::{StaircaseMetadata, Step, VerificationPolicy};
-use anyhow::{Context, anyhow};
+use anyhow::{Context, Result, anyhow};
+use uuid::Uuid;
 
-pub fn run(
+#[derive(clap::Args, Clone, Debug)]
+pub struct Adopt {
+    pub name: String,
+    #[arg(long)]
+    pub onto: Option<String>,
+    /// List of branch names in order (root to tip)
+    pub branches: Vec<String>,
+    #[arg(long)]
+    pub build_command: Option<String>,
+    #[arg(long)]
+    pub test_command: Option<String>,
+    #[arg(long)]
+    pub verify_each_prefix: bool,
+}
+
+impl super::Command for Adopt {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let result = run_internal(
+            repo,
+            self.name.clone(),
+            self.onto.clone(),
+            self.branches.clone(),
+            self.build_command.clone(),
+            self.test_command.clone(),
+            self.verify_each_prefix,
+        )?;
+        Ok(Box::new(result))
+    }
+}
+
+pub fn run_internal(
     repo: &GitRepo,
-    format: OutputFormat,
     name: String,
     onto: Option<String>,
     branches: Vec<String>,
     build_command: Option<String>,
     test_command: Option<String>,
     verify_each_prefix: bool,
-) -> anyhow::Result<()> {
+) -> Result<StaircaseMetadata> {
     if branches.is_empty() {
         return Err(anyhow!("At least one branch must be specified to adopt"));
     }
@@ -59,12 +88,28 @@ pub fn run(
         verification_policy,
     };
 
-    let staircase = core::adopt(repo, &staircase)?;
+    Ok(core::adopt(repo, &staircase)?)
+}
 
-    if matches!(format, OutputFormat::Human) {
-        println!("Adopted staircase '{}' (ID: {}).", name, staircase.id);
-        Ok(())
-    } else {
-        print_output(format, &staircase)
-    }
+pub fn run(
+    repo: &GitRepo,
+    _format: super::OutputFormat,
+    name: String,
+    onto: Option<String>,
+    branches: Vec<String>,
+    build_command: Option<String>,
+    test_command: Option<String>,
+    verify_each_prefix: bool,
+) -> Result<()> {
+    let result = run_internal(
+        repo,
+        name,
+        onto,
+        branches,
+        build_command,
+        test_command,
+        verify_each_prefix,
+    )?;
+    println!("Adopted staircase '{}' (ID: {}).", result.name, result.id);
+    Ok(())
 }

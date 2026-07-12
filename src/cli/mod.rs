@@ -113,6 +113,49 @@ impl StaircaseSelectorArgs {
     }
 }
 
+pub trait PresentationOutput {
+    fn present(&self, format: OutputFormat, repo: &GitRepo) -> Result<()>;
+    fn to_json(&self) -> Result<String>;
+}
+
+impl<T> PresentationOutput for T
+where
+    T: Serialize + ToHuman + ToPorcelain,
+{
+    fn present(&self, format: OutputFormat, _repo: &GitRepo) -> Result<()> {
+        match format {
+            OutputFormat::Human => {
+                let human = self.to_human();
+                if !human.is_empty() {
+                    print!("{}", human);
+                    if !human.ends_with('\n') {
+                        println!();
+                    }
+                }
+                Ok(())
+            }
+            OutputFormat::Json => {
+                println!("{}", self.to_json()?);
+                Ok(())
+            }
+            OutputFormat::Porcelain => {
+                let porcelain = self.to_porcelain();
+                if !porcelain.is_empty() {
+                    println!("{}", porcelain);
+                }
+                Ok(())
+            }
+        }
+    }
+    fn to_json(&self) -> Result<String> {
+        Ok(serde_json::to_string_pretty(self)?)
+    }
+}
+
+pub trait Command {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>>;
+}
+
 pub fn print_output<T>(format: OutputFormat, value: &T) -> Result<()>
 where
     T: Serialize + ToHuman + ToPorcelain,
@@ -142,12 +185,13 @@ where
     }
 }
 
-pub fn dispatch<T>(format: OutputFormat, result: Result<T>) -> Result<()>
-where
-    T: Serialize + ToHuman + ToPorcelain,
-{
+pub fn dispatch(
+    format: OutputFormat,
+    repo: &GitRepo,
+    result: Result<Box<dyn PresentationOutput>>,
+) -> Result<()> {
     match result {
-        Ok(val) => print_output(format, &val),
+        Ok(val) => val.present(format, repo),
         Err(e) => Err(e),
     }
 }

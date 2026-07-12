@@ -81,9 +81,11 @@ fn render_porcelain(p: &Presentation) -> String {
         Presentation::Plain(s) => format!("{}\n", s),
         Presentation::Heading(_) => String::new(),
         Presentation::Field { label, value } => format!("{}\t{}\n", label, value),
-        Presentation::Section { children, .. } => {
-            children.iter().map(render_porcelain).collect::<Vec<_>>().join("")
-        }
+        Presentation::Section { children, .. } => children
+            .iter()
+            .map(render_porcelain)
+            .collect::<Vec<_>>()
+            .join(""),
         Presentation::Table { name, rows } => {
             let mut out = String::new();
             for row in rows {
@@ -101,9 +103,11 @@ fn render_porcelain(p: &Presentation) -> String {
             out.push('\n');
             out
         }
-        Presentation::List(items) => {
-            items.iter().map(render_porcelain).collect::<Vec<_>>().join("")
-        }
+        Presentation::List(items) => items
+            .iter()
+            .map(render_porcelain)
+            .collect::<Vec<_>>()
+            .join(""),
         Presentation::Human(_) => String::new(),
         Presentation::Porcelain(inner) => render_porcelain(inner),
     }
@@ -113,7 +117,9 @@ macro_rules! impl_formatting {
     ($t:ty) => {
         impl ToHuman for $t {
             fn to_human(&self) -> String {
-                render_human(&self.to_presentation(), 0).trim_end().to_string()
+                render_human(&self.to_presentation(), 0)
+                    .trim_end()
+                    .to_string()
             }
         }
         impl ToPorcelain for $t {
@@ -127,8 +133,16 @@ macro_rules! impl_formatting {
 impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!("{} ({})", self.name, &self.cut[..7])))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![self.id.clone(), self.name.clone(), self.cut.clone()])))
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "{} ({})",
+                self.name,
+                &self.cut[..7]
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.id.clone(),
+                self.name.clone(),
+                self.cut.clone(),
+            ]))),
         ])
     }
 }
@@ -136,21 +150,42 @@ impl ToPresentation for Step {
 impl ToPresentation for StaircaseMetadata {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![
-            Presentation::Field { label: "Name".to_string(), value: self.name.clone() },
-            Presentation::Field { label: "ID".to_string(), value: self.id.clone() },
-            Presentation::Field { label: "Target".to_string(), value: self.target.clone() },
+            Presentation::Field {
+                label: "Name".to_string(),
+                value: self.name.clone(),
+            },
+            Presentation::Field {
+                label: "ID".to_string(),
+                value: self.id.clone(),
+            },
+            Presentation::Field {
+                label: "Target".to_string(),
+                value: self.target.clone(),
+            },
         ];
-        
+
         if let Some(ref policy) = self.verification_policy {
             let mut policy_children = vec![];
             if let Some(ref cmd) = policy.build_command {
-                policy_children.push(Presentation::Field { label: "Build".to_string(), value: cmd.clone() });
+                policy_children.push(Presentation::Field {
+                    label: "Build".to_string(),
+                    value: cmd.clone(),
+                });
             }
             if let Some(ref cmd) = policy.test_command {
-                policy_children.push(Presentation::Field { label: "Test".to_string(), value: cmd.clone() });
+                policy_children.push(Presentation::Field {
+                    label: "Test".to_string(),
+                    value: cmd.clone(),
+                });
             }
-            policy_children.push(Presentation::Field { label: "Verify each prefix".to_string(), value: policy.verify_each_prefix.to_string() });
-            h_children.push(Presentation::Section { title: "Verification Policy:".to_string(), children: policy_children });
+            policy_children.push(Presentation::Field {
+                label: "Verify each prefix".to_string(),
+                value: policy.verify_each_prefix.to_string(),
+            });
+            h_children.push(Presentation::Section {
+                title: "Verification Policy:".to_string(),
+                children: policy_children,
+            });
         }
 
         let mut steps_children = vec![];
@@ -158,25 +193,43 @@ impl ToPresentation for StaircaseMetadata {
             steps_children.push(Presentation::Section {
                 title: format!("Step {}:", i + 1),
                 children: vec![
-                    Presentation::Field { label: "ID".to_string(), value: step.id.clone() },
-                    Presentation::Field { label: "Name".to_string(), value: step.name.clone() },
-                    Presentation::Field { label: "Cut".to_string(), value: step.cut.clone() },
+                    Presentation::Field {
+                        label: "ID".to_string(),
+                        value: step.id.clone(),
+                    },
+                    Presentation::Field {
+                        label: "Name".to_string(),
+                        value: step.name.clone(),
+                    },
+                    Presentation::Field {
+                        label: "Cut".to_string(),
+                        value: step.cut.clone(),
+                    },
                     if let Some(ref b) = step.branch {
-                        Presentation::Field { label: "Branch".to_string(), value: b.clone() }
+                        Presentation::Field {
+                            label: "Branch".to_string(),
+                            value: b.clone(),
+                        }
                     } else {
                         Presentation::Empty
-                    }
-                ]
+                    },
+                ],
             });
         }
-        h_children.push(Presentation::Section { title: "Steps:".to_string(), children: steps_children });
+        h_children.push(Presentation::Section {
+            title: "Steps:".to_string(),
+            children: steps_children,
+        });
 
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: String::new(),
-                children: h_children
+                children: h_children,
             })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![self.name.clone(), self.id.clone()])))
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.name.clone(),
+                self.id.clone(),
+            ]))),
         ])
     }
 }
@@ -185,10 +238,26 @@ impl_formatting!(StaircaseMetadata);
 impl ToPresentation for StaircaseStatus {
     fn to_presentation(&self) -> Presentation {
         let mut children = vec![
-            Presentation::Field { label: "target".to_string(), value: self.metadata.target.clone() },
-            Presentation::Field { label: "state".to_string(), value: self.state().to_string() },
-            Presentation::Field { label: "steps".to_string(), value: self.steps.len().to_string() },
-            Presentation::Field { label: "lineage".to_string(), value: if self.is_implicit { "none".to_string() } else { self.metadata.id.clone() } },
+            Presentation::Field {
+                label: "target".to_string(),
+                value: self.metadata.target.clone(),
+            },
+            Presentation::Field {
+                label: "state".to_string(),
+                value: self.state().to_string(),
+            },
+            Presentation::Field {
+                label: "steps".to_string(),
+                value: self.steps.len().to_string(),
+            },
+            Presentation::Field {
+                label: "lineage".to_string(),
+                value: if self.is_implicit {
+                    "none".to_string()
+                } else {
+                    self.metadata.id.clone()
+                },
+            },
         ];
 
         if let Some(ref results) = self.verification_results {
@@ -197,12 +266,28 @@ impl ToPresentation for StaircaseStatus {
                 v_children.push(Presentation::List(vec![
                     Presentation::Human(Box::new(Presentation::Field {
                         label: result.step_name.clone(),
-                        value: if result.success { "PASS".to_string() } else { "FAIL".to_string() }
+                        value: if result.success {
+                            "PASS".to_string()
+                        } else {
+                            "FAIL".to_string()
+                        },
                     })),
-                    Presentation::Porcelain(Box::new(Presentation::Record(vec!["verify".to_string(), result.step_name.clone(), if result.success { "pass".to_string() } else { "fail".to_string() }, result.cut.clone()])))
+                    Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                        "verify".to_string(),
+                        result.step_name.clone(),
+                        if result.success {
+                            "pass".to_string()
+                        } else {
+                            "fail".to_string()
+                        },
+                        result.cut.clone(),
+                    ]))),
                 ]));
             }
-            children.push(Presentation::Section { title: "verification:".to_string(), children: v_children });
+            children.push(Presentation::Section {
+                title: "verification:".to_string(),
+                children: v_children,
+            });
         }
 
         let mut steps_rows = vec![];
@@ -210,20 +295,39 @@ impl ToPresentation for StaircaseStatus {
             steps_rows.push(vec![
                 step.name.clone(),
                 step.actual_oid.as_deref().unwrap_or("none").to_string(),
-                if step.is_modified { "modified".to_string() } else { "clean".to_string() },
-                if step.is_stale { "stale".to_string() } else { "up-to-date".to_string() }
+                if step.is_modified {
+                    "modified".to_string()
+                } else {
+                    "clean".to_string()
+                },
+                if step.is_stale {
+                    "stale".to_string()
+                } else {
+                    "up-to-date".to_string()
+                },
             ]);
         }
-        
+
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
-                title: format!("{}{}", self.metadata.name, if self.is_implicit { " (implicit)" } else { "" }),
-                children
+                title: format!(
+                    "{}{}",
+                    self.metadata.name,
+                    if self.is_implicit { " (implicit)" } else { "" }
+                ),
+                children,
             })),
             Presentation::Porcelain(Box::new(Presentation::List(vec![
-                Presentation::Record(vec![self.metadata.name.clone(), self.metadata.id.clone(), self.state().to_string()]),
-                Presentation::Table { name: Some("step".to_string()), rows: steps_rows }
-            ])))
+                Presentation::Record(vec![
+                    self.metadata.name.clone(),
+                    self.metadata.id.clone(),
+                    self.state().to_string(),
+                ]),
+                Presentation::Table {
+                    name: Some("step".to_string()),
+                    rows: steps_rows,
+                },
+            ]))),
         ])
     }
 }
@@ -232,29 +336,59 @@ impl_formatting!(StaircaseStatus);
 impl ToPresentation for StaircaseFamily {
     fn to_presentation(&self) -> Presentation {
         let mut children = vec![
-            Presentation::Field { label: "ID".to_string(), value: self.id.clone() },
-            Presentation::Field { label: "Target".to_string(), value: self.target.clone() },
-            Presentation::Field { label: "Roots".to_string(), value: self.roots.join(", ") },
+            Presentation::Field {
+                label: "ID".to_string(),
+                value: self.id.clone(),
+            },
+            Presentation::Field {
+                label: "Target".to_string(),
+                value: self.target.clone(),
+            },
+            Presentation::Field {
+                label: "Roots".to_string(),
+                value: self.roots.join(", "),
+            },
         ];
 
         let mut steps_children = vec![];
         for (name, step) in &self.steps {
-            let mut step_children = vec![
-                Presentation::Field { label: "Cut".to_string(), value: step.cut.clone() },
-            ];
+            let mut step_children = vec![Presentation::Field {
+                label: "Cut".to_string(),
+                value: step.cut.clone(),
+            }];
             if let Some(ref b) = step.branch {
-                step_children.push(Presentation::Field { label: "Branch".to_string(), value: b.clone() });
+                step_children.push(Presentation::Field {
+                    label: "Branch".to_string(),
+                    value: b.clone(),
+                });
             }
             if !step.children.is_empty() {
-                step_children.push(Presentation::Field { label: "Children".to_string(), value: step.children.join(", ") });
+                step_children.push(Presentation::Field {
+                    label: "Children".to_string(),
+                    value: step.children.join(", "),
+                });
             }
-            steps_children.push(Presentation::Section { title: format!("Step {}:", name), children: step_children });
+            steps_children.push(Presentation::Section {
+                title: format!("Step {}:", name),
+                children: step_children,
+            });
         }
-        children.push(Presentation::Section { title: "Steps:".to_string(), children: steps_children });
+        children.push(Presentation::Section {
+            title: "Steps:".to_string(),
+            children: steps_children,
+        });
 
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section { title: format!("Name: {}", self.name), children })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![self.name.clone(), self.id.clone(), "family".to_string(), self.steps.len().to_string()])))
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Name: {}", self.name),
+                children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.name.clone(),
+                self.id.clone(),
+                "family".to_string(),
+                self.steps.len().to_string(),
+            ]))),
         ])
     }
 }
@@ -274,15 +408,33 @@ impl ToPresentation for VerificationResult {
     fn to_presentation(&self) -> Presentation {
         let mut children = vec![];
         if !self.success {
-            children.push(Presentation::Section { title: "Stdout:".to_string(), children: vec![Presentation::Plain(self.stdout.clone())] });
-            children.push(Presentation::Section { title: "Stderr:".to_string(), children: vec![Presentation::Plain(self.stderr.clone())] });
+            children.push(Presentation::Section {
+                title: "Stdout:".to_string(),
+                children: vec![Presentation::Plain(self.stdout.clone())],
+            });
+            children.push(Presentation::Section {
+                title: "Stderr:".to_string(),
+                children: vec![Presentation::Plain(self.stderr.clone())],
+            });
         }
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
-                title: format!("Step {}: {}", self.step_name, if self.success { "PASSED" } else { "FAILED" }),
-                children
+                title: format!(
+                    "Step {}: {}",
+                    self.step_name,
+                    if self.success { "PASSED" } else { "FAILED" }
+                ),
+                children,
             })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![self.step_name.clone(), if self.success { "pass".to_string() } else { "fail".to_string() }, self.cut.clone()])))
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.step_name.clone(),
+                if self.success {
+                    "pass".to_string()
+                } else {
+                    "fail".to_string()
+                },
+                self.cut.clone(),
+            ]))),
         ])
     }
 }
@@ -291,24 +443,27 @@ impl_formatting!(VerificationResult);
 impl ToPresentation for ResolvedStaircase {
     fn to_presentation(&self) -> Presentation {
         match self {
-            ResolvedStaircase::ImplicitFamily(f) => {
-                Presentation::List(vec![
-                    Presentation::Human(Box::new(Presentation::Heading(format!("Implicit Staircase Family: {}", f.name)))),
-                    f.to_presentation()
-                ])
-            }
-            ResolvedStaircase::Managed(m) => {
-                Presentation::List(vec![
-                    Presentation::Human(Box::new(Presentation::Heading(format!("Managed Staircase: {}", m.name)))),
-                    m.to_presentation()
-                ])
-            }
-            ResolvedStaircase::Implicit(m) => {
-                Presentation::List(vec![
-                    Presentation::Human(Box::new(Presentation::Heading(format!("Implicit Staircase: {}", m.name)))),
-                    m.to_presentation()
-                ])
-            }
+            ResolvedStaircase::ImplicitFamily(f) => Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Heading(format!(
+                    "Implicit Staircase Family: {}",
+                    f.name
+                )))),
+                f.to_presentation(),
+            ]),
+            ResolvedStaircase::Managed(m) => Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Heading(format!(
+                    "Managed Staircase: {}",
+                    m.name
+                )))),
+                m.to_presentation(),
+            ]),
+            ResolvedStaircase::Implicit(m) => Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Heading(format!(
+                    "Implicit Staircase: {}",
+                    m.name
+                )))),
+                m.to_presentation(),
+            ]),
         }
     }
 }
@@ -321,7 +476,9 @@ pub struct Success {
 
 impl Success {
     pub fn new(message: impl Into<String>) -> Self {
-        Self { message: message.into() }
+        Self {
+            message: message.into(),
+        }
     }
 }
 
@@ -352,7 +509,11 @@ impl ToPresentation for Summary<StaircaseStatus> {
                 s.state(),
                 implicit_marker
             )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![m.name.clone(), m.id.clone(), s.state().to_string()])))
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                m.name.clone(),
+                m.id.clone(),
+                s.state().to_string(),
+            ]))),
         ])
     }
 }
@@ -364,8 +525,16 @@ impl ToPresentation for Summary<StaircaseFamily> {
         let path_count = f.steps.values().filter(|s| s.children.is_empty()).count();
         let paths_word = if path_count == 1 { "path" } else { "paths" };
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!("{} {} {} (implicit)", f.name, path_count, paths_word)))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![f.name.clone(), f.id.clone(), "family".to_string(), f.steps.len().to_string()])))
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "{} {} {} (implicit)",
+                f.name, path_count, paths_word
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                f.name.clone(),
+                f.id.clone(),
+                "family".to_string(),
+                f.steps.len().to_string(),
+            ]))),
         ])
     }
 }
@@ -393,12 +562,27 @@ impl ToPresentation for StepsList {
         let mut h_rows = vec![];
         let mut p_rows = vec![];
         for (i, step) in self.0.iter().enumerate() {
-            h_rows.push(vec![format!("Step {}:", i + 1), step.name.clone(), format!("({})", &step.cut[..7])]);
-            p_rows.push(vec![(i + 1).to_string(), step.id.clone(), step.name.clone(), step.cut.clone()]);
+            h_rows.push(vec![
+                format!("Step {}:", i + 1),
+                step.name.clone(),
+                format!("({})", &step.cut[..7]),
+            ]);
+            p_rows.push(vec![
+                (i + 1).to_string(),
+                step.id.clone(),
+                step.name.clone(),
+                step.cut.clone(),
+            ]);
         }
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Table { name: None, rows: h_rows })),
-            Presentation::Porcelain(Box::new(Presentation::Table { name: None, rows: p_rows }))
+            Presentation::Human(Box::new(Presentation::Table {
+                name: None,
+                rows: h_rows,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Table {
+                name: None,
+                rows: p_rows,
+            })),
         ])
     }
 }
@@ -429,16 +613,27 @@ impl ToPresentation for StaircaseCommits {
             let mut h_commits = vec![];
             let mut p_commits = vec![];
             for commit in &step.commits {
-                h_commits.push(Presentation::Plain(format!("{} {}", commit.hash, commit.subject)));
-                p_commits.push(Presentation::Record(vec!["commit".to_string(), commit.hash.clone(), commit.subject.clone()]));
+                h_commits.push(Presentation::Plain(format!(
+                    "{} {}",
+                    commit.hash, commit.subject
+                )));
+                p_commits.push(Presentation::Record(vec![
+                    "commit".to_string(),
+                    commit.hash.clone(),
+                    commit.subject.clone(),
+                ]));
             }
             children.push(Presentation::List(vec![
                 Presentation::Human(Box::new(Presentation::Section {
                     title: format!("Step {}: {}", step.index, step.name),
-                    children: h_commits
+                    children: h_commits,
                 })),
-                Presentation::Porcelain(Box::new(Presentation::Record(vec!["step".to_string(), step.index.to_string(), step.name.clone()]))),
-                Presentation::Porcelain(Box::new(Presentation::List(p_commits)))
+                Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                    "step".to_string(),
+                    step.index.to_string(),
+                    step.name.clone(),
+                ]))),
+                Presentation::Porcelain(Box::new(Presentation::List(p_commits))),
             ]));
         }
         Presentation::List(children)
@@ -467,11 +662,14 @@ impl ToPresentation for LogOutput {
         let mut p_items = vec![];
         for c in &self.0 {
             h_items.push(Presentation::Plain(format!("{} {}", c.hash, c.subject)));
-            p_items.push(Presentation::Record(vec![c.hash.clone(), c.subject.clone()]));
+            p_items.push(Presentation::Record(vec![
+                c.hash.clone(),
+                c.subject.clone(),
+            ]));
         }
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::List(h_items))),
-            Presentation::Porcelain(Box::new(Presentation::List(p_items)))
+            Presentation::Porcelain(Box::new(Presentation::List(p_items))),
         ])
     }
 }
@@ -479,48 +677,72 @@ impl_formatting!(LogOutput);
 
 impl ToHuman for Vec<StaircaseStatus> {
     fn to_human(&self) -> String {
-        self.iter().map(|x| x.to_human()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_human())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToPorcelain for Vec<StaircaseStatus> {
     fn to_porcelain(&self) -> String {
-        self.iter().map(|x| x.to_porcelain()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_porcelain())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToHuman for Vec<Discovery> {
     fn to_human(&self) -> String {
-        self.iter().map(|x| x.to_human()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_human())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToPorcelain for Vec<Discovery> {
     fn to_porcelain(&self) -> String {
-        self.iter().map(|x| x.to_porcelain()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_porcelain())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToHuman for Vec<ResolvedStaircase> {
     fn to_human(&self) -> String {
-        self.iter().map(|x| x.to_human()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_human())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToPorcelain for Vec<ResolvedStaircase> {
     fn to_porcelain(&self) -> String {
-        self.iter().map(|x| x.to_porcelain()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_porcelain())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToHuman for Vec<VerificationResult> {
     fn to_human(&self) -> String {
-        self.iter().map(|x| x.to_human()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_human())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }
 
 impl ToPorcelain for Vec<VerificationResult> {
     fn to_porcelain(&self) -> String {
-        self.iter().map(|x| x.to_porcelain()).collect::<Vec<_>>().join("\n")
+        self.iter()
+            .map(|x| x.to_porcelain())
+            .collect::<Vec<_>>()
+            .join("\n")
     }
 }

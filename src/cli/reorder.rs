@@ -1,13 +1,29 @@
-use super::{ReorderResult, StaircaseSelectorArgs};
+use super::{PresentationOutput, ReorderResult, StaircaseSelectorArgs};
 use crate::GitRepo;
 use crate::core;
-use anyhow::anyhow;
+use anyhow::{Result, anyhow};
 
-pub fn run(
+#[derive(clap::Args, Clone, Debug)]
+pub struct Reorder {
+    #[command(flatten)]
+    pub staircase: StaircaseSelectorArgs,
+    /// New order of steps by 1-based index.
+    #[arg(long, value_delimiter = ',')]
+    pub order: Option<Vec<usize>>,
+}
+
+impl super::Command for Reorder {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let result = run_internal(repo, self.staircase.clone(), self.order.clone())?;
+        Ok(Box::new(result))
+    }
+}
+
+pub fn run_internal(
     repo: &GitRepo,
     staircase: StaircaseSelectorArgs,
     order: Option<Vec<usize>>,
-) -> anyhow::Result<ReorderResult> {
+) -> Result<ReorderResult> {
     let rs = staircase.resolve(repo)?;
     let rs = &rs;
     let order = order.ok_or_else(|| anyhow!("--order (indices) must be provided"))?;
@@ -29,4 +45,12 @@ pub fn run(
     )?;
 
     Ok(ReorderResult { status })
+}
+
+pub fn run(
+    repo: &GitRepo,
+    staircase: StaircaseSelectorArgs,
+    order: Option<Vec<usize>>,
+) -> Result<ReorderResult> {
+    run_internal(repo, staircase, order)
 }
