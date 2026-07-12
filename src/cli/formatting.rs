@@ -295,7 +295,9 @@ impl ToPresentation for StaircaseStatus {
             steps_rows.push(vec![
                 step.name.clone(),
                 step.actual_oid.as_deref().unwrap_or("none").to_string(),
-                if step.is_modified {
+                if step.is_incomplete {
+                    "incomplete".to_string()
+                } else if step.is_modified {
                     "modified".to_string()
                 } else {
                     "clean".to_string()

@@ -25,9 +25,10 @@ pub fn get_status_metadata(
             Some(step.cut.clone())
         };
 
+        let is_incomplete = actual_oid.is_none();
         let is_modified = match &actual_oid {
             Some(oid) => oid != &step.cut,
-            None => true,
+            None => false,
         };
 
         if is_modified {
@@ -42,6 +43,7 @@ pub fn get_status_metadata(
             actual_oid,
             is_stale: false,
             is_modified,
+            is_incomplete,
         });
     }
 
@@ -69,11 +71,35 @@ pub fn get_status_metadata(
         persistence::read_verification(repo, &metadata.id, IdentityKind::Lineage)?
     };
 
+    let mut is_diverged = false;
+    let mut is_ambiguous = false;
+
+    // Detect diverged: multiple branches matching the step name if we use conventions
+    // Or simply if refs and metadata disagree and it is not a clean FF.
+    for step in &steps {
+        if step.is_modified {
+            // For now, any disagreement is "Diverged" per spec 8.3
+            is_diverged = true;
+        }
+    }
+
+    // Detect ambiguous: if this managed staircase name is shared by an implicit one
+    if let Ok(discoveries) = super::discovery::discover(repo, Some(&metadata.target), None, false) {
+        for d in discoveries {
+            if let crate::model::Discovery::Linear(m) = d {
+                if m.name == metadata.name && m.id != metadata.id {
+                    is_ambiguous = true;
+                }
+            }
+        }
+    }
     Ok(StaircaseStatus {
         metadata,
         steps,
         is_clean,
         is_implicit,
+        is_diverged,
+        is_ambiguous,
         verification_results,
     })
 }

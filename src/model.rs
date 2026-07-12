@@ -68,13 +68,16 @@ pub struct StepStatus {
     pub actual_oid: Option<String>,
     pub is_stale: bool,
     pub is_modified: bool,
+    pub is_incomplete: bool,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
 #[serde(rename_all = "kebab-case")]
 pub enum StaircaseState {
     Clean,
-    Modified,
+    Incomplete,
+    Diverged,
+    Ambiguous,
     Stale,
 }
 
@@ -82,8 +85,10 @@ impl fmt::Display for StaircaseState {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             StaircaseState::Clean => write!(f, "clean"),
-            StaircaseState::Modified => write!(f, "modified"),
             StaircaseState::Stale => write!(f, "stale"),
+            StaircaseState::Incomplete => write!(f, "incomplete"),
+            StaircaseState::Diverged => write!(f, "diverged"),
+            StaircaseState::Ambiguous => write!(f, "ambiguous"),
         }
     }
 }
@@ -95,14 +100,22 @@ pub struct StaircaseStatus {
     pub steps: Vec<StepStatus>,
     pub is_clean: bool,
     pub is_implicit: bool,
+    pub is_diverged: bool,
+    pub is_ambiguous: bool,
 }
 
 impl StaircaseStatus {
     pub fn state(&self) -> StaircaseState {
-        if self.steps.iter().any(|s| s.is_stale) {
+        if self.is_ambiguous {
+            StaircaseState::Ambiguous
+        } else if self.is_diverged {
+            StaircaseState::Diverged
+        } else if self.steps.iter().any(|s| s.is_incomplete) {
+            StaircaseState::Incomplete
+        } else if self.steps.iter().any(|s| s.is_stale) {
             StaircaseState::Stale
-        } else if self.steps.iter().any(|s| s.is_modified) {
-            StaircaseState::Modified
+        } else if self.is_diverged || self.steps.iter().any(|s| s.is_modified) {
+            StaircaseState::Diverged
         } else {
             StaircaseState::Clean
         }
