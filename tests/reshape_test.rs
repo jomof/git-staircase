@@ -176,6 +176,7 @@ fn test_reorder_without_branches() {
     let c3 = commit(dir, "file3.txt", "3", "commit 3");
 
     let metadata = StaircaseMetadata {
+            landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
         target: "main".to_string(),
@@ -280,6 +281,7 @@ fn test_restack_without_branches() {
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
     let metadata = StaircaseMetadata {
+            landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
         target: "main".to_string(),

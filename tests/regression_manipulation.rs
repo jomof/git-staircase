@@ -242,6 +242,7 @@ fn test_restack_propagation() {
 
     // 3. Adopt as a staircase
     let sc = StaircaseMetadata {
+            landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),
@@ -324,6 +325,7 @@ fn test_restack_conflict_handling() {
 
     // 2. Adopt as a staircase
     let sc = StaircaseMetadata {
+            landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),
@@ -379,6 +381,7 @@ fn test_restack_inconsistency_on_failure() {
 
     // 2. Adopt as a managed staircase
     let sc = StaircaseMetadata {
+            landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),
@@ -443,6 +446,7 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
     let target_oid = run_git(repo_path, &["rev-parse", "HEAD"]);
 
     let metadata = StaircaseMetadata {
+            landing_policy: None,
         id: "test-id".to_string(),
         name: "test-staircase".to_string(),
         target: "main".to_string(),
@@ -483,6 +487,7 @@ fn test_move_commit_creates_empty_step_violating_invariant() {
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
     let meta = StaircaseMetadata {
+            landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
         target: target,

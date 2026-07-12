@@ -1,7 +1,7 @@
 use super::PresentationOutput;
 use crate::GitRepo;
 use crate::core;
-use crate::model::{StaircaseMetadata, Step, VerificationPolicy};
+use crate::model::{LandingPolicy, StaircaseMetadata, Step, VerificationPolicy};
 use anyhow::{Context, Result, anyhow};
 use uuid::Uuid;
 
@@ -16,6 +16,8 @@ pub struct Adopt {
     pub build_command: Option<String>,
     #[arg(long)]
     pub test_command: Option<String>,
+    #[arg(long)]
+    pub landing_policy: Option<LandingPolicy>,
     #[arg(long)]
     pub verify_each_prefix: bool,
 }
@@ -59,6 +61,7 @@ impl super::Command for Adopt {
             None => core::infer_onto(repo)?,
         };
         let staircase = StaircaseMetadata {
+            landing_policy: self.landing_policy,
             id: Uuid::new_v4().to_string(),
             name: self.name.clone(),
             target,

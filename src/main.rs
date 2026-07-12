@@ -20,6 +20,8 @@ struct Cli {
 #[derive(Subcommand)]
 enum Commands {
     /// Reorder steps of a staircase
+    /// Land a staircase into its target branch
+    Land(cli::land::Land),
     Reorder(cli::reorder::Reorder),
     /// Move commits between steps
     Move(cli::move_cmd::Move),
@@ -64,6 +66,7 @@ enum Commands {
 impl Commands {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
         match self {
+            Commands::Land(cmd) => cmd.run(repo),
             Commands::Reorder(cmd) => cmd.run(repo),
             Commands::Move(cmd) => cmd.run(repo),
             Commands::Drop(cmd) => cmd.run(repo),

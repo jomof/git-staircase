@@ -2,7 +2,7 @@ use super::persistence;
 use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::Step;
+use crate::model::{LandingPolicy, Step};
 use std::collections::{HashMap, HashSet};
 use uuid::Uuid;
 
@@ -527,5 +527,38 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
     }
 
     persistence::delete_staircase_refs(repo, id, &metadata.name)?;
+    Ok(())
+}
+
+pub struct LandOptions {
+    pub policy: Option<LandingPolicy>,
+}
+
+pub fn land(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    options: LandOptions,
+) -> Result<()> {
+    let metadata = staircase.metadata();
+    let policy = options.policy.or(metadata.landing_policy).unwrap_or(LandingPolicy::Stepwise);
+    
+    let top_cut = &metadata.steps.last().ok_or_else(|| StaircaseError::InvalidStructure("Empty staircase".to_string()))?.cut;
+    
+    if metadata.target.starts_with("refs/") {
+        match policy {
+            LandingPolicy::Stepwise => {
+                for step in &metadata.steps {
+                    repo.run(&["update-ref", &metadata.target, &step.cut])?;
+                }
+            }
+            LandingPolicy::AggregateOnly | LandingPolicy::Either => {
+                repo.run(&["update-ref", &metadata.target, top_cut])?;
+            }
+        }
+    } else {
+        // If it was an OID, we can't really "update" it.
+        return Err(StaircaseError::Other(format!("Target {} is not a ref, cannot land", metadata.target)));
+    }
+    
     Ok(())
 }

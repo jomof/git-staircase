@@ -198,6 +198,7 @@ fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
     }
 
     Ok(StaircaseMetadata {
+            landing_policy: None,
         id,
         name: String::new(),
         target,

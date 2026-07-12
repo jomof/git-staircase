@@ -68,6 +68,7 @@ fn test_adopt_with_invalid_name() {
         branches: vec!["valid-branch".to_string()],
         build_command: None,
         test_command: None,
+        landing_policy: None,
         verify_each_prefix: false,
     };
     let result = cmd.run(&ctx.repo);

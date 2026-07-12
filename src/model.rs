@@ -18,8 +18,17 @@ pub struct VerificationPolicy {
     pub verify_each_prefix: bool,
 }
 
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq, ValueEnum)]
+#[serde(rename_all = "kebab-case")]
+pub enum LandingPolicy {
+    AggregateOnly,
+    Stepwise,
+    Either,
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseMetadata {
+    pub landing_policy: Option<LandingPolicy>,
     pub id: String,     // UUID
     pub name: String,   // Nominal name
     pub target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
