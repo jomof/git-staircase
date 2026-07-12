@@ -1,0 +1,194 @@
+use crate::error::{Result, StaircaseError};
+use crate::git::GitRepo;
+use crate::model::{
+    LifecycleEvent, LifecycleState,
+};
+use crate::core::persistence;
+use crate::core::resolved::ResolvedSelector;
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub enum UnarchiveBranchesMode {
+    #[default]
+    Exact,
+    Rename,
+    None,
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct UnarchiveOptions {
+    pub new_name: Option<String>,
+    pub branch_base: Option<String>,
+    pub branches_mode: UnarchiveBranchesMode,
+    pub adopt_existing_branches: bool,
+    pub reattach_worktrees: bool,
+}
+
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct UnarchiveResult {
+    pub restored_staircase_id: String,
+    pub canonical_name: String,
+    pub restored_branches: Vec<String>,
+}
+
+pub fn unarchive_staircase(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    options: &UnarchiveOptions,
+) -> Result<UnarchiveResult> {
+    let meta = selector.staircase.metadata();
+    let archive_record_ref = format!("refs/staircase-archive/{}/record", meta.id);
+    let active_record_ref = format!("refs/staircase-state/{}/record", meta.id);
+
+    let record = persistence::read_record(repo, &archive_record_ref)
+        .or_else(|_| persistence::read_record(repo, &active_record_ref))
+        .or_else(|_| persistence::read_record(repo, &format!("refs/staircases/{}", meta.name)))?;
+
+    if record.lifecycle.state == LifecycleState::Active {
+        return Ok(UnarchiveResult {
+            restored_staircase_id: meta.id.clone(),
+            canonical_name: meta.name.clone(),
+            restored_branches: Vec::new(),
+        });
+    }
+
+    let target_name = options
+        .new_name
+        .clone()
+        .unwrap_or_else(|| record.metadata.name.clone());
+
+    let public_ref = format!("refs/staircases/{}", target_name);
+    if let Ok(existing_record_oid) = repo.resolve_ref_opt(&public_ref) {
+        if let Some(oid) = existing_record_oid {
+            if let Ok(existing_record) = persistence::read_record(repo, &oid) {
+                if existing_record.metadata.id != meta.id {
+                    return Err(StaircaseError::Other(format!(
+                        "canonical staircase name '{}' collides with an active staircase; specify --name <new-name>",
+                        target_name
+                    )));
+                }
+            }
+        }
+    }
+
+    let mut restored_branches = Vec::new();
+
+    if options.branches_mode != UnarchiveBranchesMode::None {
+        for (idx, step) in record.metadata.steps.iter().enumerate() {
+            let dest_branch_name = if let Some(ref base) = options.branch_base {
+                if record.metadata.steps.len() > 1 {
+                    format!("{}-{}", base, idx + 1)
+                } else {
+                    base.clone()
+                }
+            } else if let Some(ref b) = step.branch {
+                b.strip_prefix("refs/heads/").unwrap_or(b).to_string()
+            } else {
+                format!("{}-{}", target_name, idx + 1)
+            };
+
+            let dest_ref = format!("refs/heads/{}", dest_branch_name);
+
+            if let Ok(Some(existing_oid)) = repo.resolve_ref_opt(&dest_ref) {
+                if existing_oid == step.cut {
+                    if !options.adopt_existing_branches {
+                        return Err(StaircaseError::Other(format!(
+                            "branch '{}' exists at step cut {}; adoption requires --adopt-existing-branches",
+                            dest_ref, existing_oid
+                        )));
+                    }
+                } else {
+                    return Err(StaircaseError::Other(format!(
+                        "cannot restore {}: branch exists at different OID ({}, expected {})",
+                        dest_ref, existing_oid, step.cut
+                    )));
+                }
+            }
+
+            if let Ok(stdout) = repo.run(&["config", "--get-regexp", &format!("^branch\\.{}\\.", dest_branch_name)]) {
+                if !stdout.trim().is_empty() {
+                    let is_owned = record
+                        .archive_manifest
+                        .as_ref()
+                        .map(|m| m.branch_configs.iter().any(|bc| bc.branch_name == dest_branch_name))
+                        .unwrap_or(false);
+                    if !is_owned {
+                        return Err(StaircaseError::Other(format!(
+                            "configuration for branch '{}' exists and is not owned by the archived staircase",
+                            dest_branch_name
+                        )));
+                    }
+                }
+            }
+
+            restored_branches.push((dest_branch_name, step.cut.clone()));
+        }
+    }
+
+    let event_id = format!("evt-unarchive-{}", uuid::Uuid::new_v4().simple());
+    let mut updated_lifecycle = record.lifecycle.clone();
+    updated_lifecycle.state = LifecycleState::Active;
+    updated_lifecycle.events.push(LifecycleEvent {
+        event_id: event_id.clone(),
+        kind: "unarchived".to_string(),
+        timestamp: crate::core::utils::current_timestamp(),
+        actor: None,
+        record_oid_before: Some(record.record_oid.clone()),
+        record_oid_after: None,
+        canonical_name: Some(target_name.clone()),
+        reason: None,
+        details: serde_json::Value::Null,
+    });
+
+    let mut updated_metadata = record.metadata.clone();
+    updated_metadata.name = target_name.clone();
+
+    if options.branches_mode != UnarchiveBranchesMode::None {
+        for (idx, (b_name, _)) in restored_branches.iter().enumerate() {
+            if idx < updated_metadata.steps.len() {
+                updated_metadata.steps[idx].branch = Some(b_name.clone());
+            }
+        }
+    } else {
+        for step in &mut updated_metadata.steps {
+            step.branch = None;
+        }
+    }
+
+    let _active_record = persistence::write_record(
+        repo,
+        &updated_metadata,
+        &record.user_metadata,
+        &updated_lifecycle,
+        None,
+        true,
+    )?;
+
+    if options.branches_mode != UnarchiveBranchesMode::None {
+        for (b_name, cut_oid) in &restored_branches {
+            let full_ref = format!("refs/heads/{}", b_name);
+            repo.run(&["update-ref", &full_ref, cut_oid])?;
+        }
+    }
+
+    if let Some(ref manifest) = record.archive_manifest {
+        for bc in &manifest.branch_configs {
+            for entry in &bc.entries {
+                let _ = repo.run(&["config", &entry.key, &entry.value]);
+            }
+        }
+    }
+
+    let archive_prefix = format!("refs/staircase-archive/{}/", meta.id);
+    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &archive_prefix]) {
+        for line in stdout.lines() {
+            let r = line.trim();
+            let _ = repo.run(&["update-ref", "-d", r]);
+        }
+    }
+
+    Ok(UnarchiveResult {
+        restored_staircase_id: meta.id.clone(),
+        canonical_name: target_name,
+        restored_branches: restored_branches.into_iter().map(|(b, _)| b).collect(),
+    })
+}

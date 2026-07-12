@@ -270,6 +270,8 @@ fn test_restack_propagation() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
 
@@ -339,6 +341,8 @@ fn test_restack_conflict_handling() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
 
@@ -403,6 +407,8 @@ fn test_restack_inconsistency_on_failure() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
 
@@ -468,6 +474,8 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     let rs = ResolvedStaircase::Managed(metadata);
@@ -509,6 +517,8 @@ fn test_move_commit_creates_empty_step_violating_invariant() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     let rs = ResolvedStaircase::Managed(meta.clone());
     persistence::write_metadata(&ctx.repo, &meta).unwrap();

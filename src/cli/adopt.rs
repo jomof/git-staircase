@@ -70,6 +70,8 @@ impl super::Command for Adopt {
 
             primary_branch_layout: None,
             branch_layout_base: None,
+            user_metadata: None,
+            lifecycle: None,
         };
 
         let result = core::adopt(repo, &staircase)?;

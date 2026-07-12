@@ -1,30 +1,241 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult};
+use crate::model::{
+    ArchiveManifest, IdentityKind, LifecycleState, StaircaseLifecycle, StaircaseMetadata,
+    StaircaseRecord, StaircaseUserMetadata, Step, VerificationPolicy, VerificationResult,
+};
 
-pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
-    let content = serialize_descriptor(repo, metadata)?;
 
-    let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &content)?;
-    let blob_oid = blob_oid.trim().to_string();
+pub fn write_record(
+    repo: &GitRepo,
+    metadata: &StaircaseMetadata,
+    user_metadata: &StaircaseUserMetadata,
+    lifecycle: &StaircaseLifecycle,
+    archive_manifest: Option<&ArchiveManifest>,
+    update_refs: bool,
+) -> Result<StaircaseRecord> {
+    let structure_desc = serialize_descriptor(repo, metadata)?;
+    let structure_oid = repo
+        .run_with_stdin(&["hash-object", "-w", "--stdin"], &structure_desc)?
+        .trim()
+        .to_string();
 
-    let public_ref = format!("refs/staircases/{}", metadata.name);
-    repo.run(&["update-ref", &public_ref, &blob_oid])?;
+    let meta_json = serde_json::to_string_pretty(user_metadata)?;
+    let metadata_oid = repo
+        .run_with_stdin(&["hash-object", "-w", "--stdin"], &meta_json)?
+        .trim()
+        .to_string();
 
-    let state_ref = format!("refs/staircase-state/{}/descriptor", metadata.id);
-    repo.run(&["update-ref", &state_ref, &blob_oid])?;
+    let lifecycle_json = serde_json::to_string_pretty(lifecycle)?;
+    let lifecycle_oid = repo
+        .run_with_stdin(&["hash-object", "-w", "--stdin"], &lifecycle_json)?
+        .trim()
+        .to_string();
 
-    for step in &metadata.steps {
-        let key = if !step.id.is_empty() {
-            &step.id
-        } else {
-            &step.name
-        };
-        let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, key);
-        repo.run(&["update-ref", &step_ref, &step.cut])?;
+    let mut tree_input = format!(
+        "100644 blob {}\tstructure\n100644 blob {}\tmetadata\n100644 blob {}\tlifecycle\n",
+        structure_oid, metadata_oid, lifecycle_oid
+    );
+
+    let manifest_oid = if let Some(manifest) = archive_manifest {
+        let manifest_json = serde_json::to_string_pretty(manifest)?;
+        let m_oid = repo
+            .run_with_stdin(&["hash-object", "-w", "--stdin"], &manifest_json)?
+            .trim()
+            .to_string();
+        tree_input.push_str(&format!("100644 blob {}\tarchive-manifest\n", m_oid));
+        Some(m_oid)
+    } else {
+        None
+    };
+
+    let record_oid = repo
+        .run_with_stdin(&["mktree"], &tree_input)?
+        .trim()
+        .to_string();
+
+    let mut full_meta = metadata.clone();
+    full_meta.user_metadata = Some(user_metadata.clone());
+    full_meta.lifecycle = Some(lifecycle.clone());
+
+    if update_refs {
+        if lifecycle.state == LifecycleState::Active {
+            if !metadata.name.is_empty() {
+                let public_ref = format!("refs/staircases/{}", metadata.name);
+                repo.run(&["update-ref", &public_ref, &record_oid])?;
+            }
+            let state_record_ref = format!("refs/staircase-state/{}/record", metadata.id);
+            repo.run(&["update-ref", &state_record_ref, &record_oid])?;
+
+            let state_desc_ref = format!("refs/staircase-state/{}/descriptor", metadata.id);
+            repo.run(&["update-ref", &state_desc_ref, &structure_oid])?;
+
+            for step in &metadata.steps {
+                let key = if !step.id.is_empty() {
+                    &step.id
+                } else {
+                    &step.name
+                };
+                let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, key);
+                repo.run(&["update-ref", &step_ref, &step.cut])?;
+            }
+        } else if lifecycle.state == LifecycleState::Archived {
+            let archive_record_ref = format!("refs/staircase-archive/{}/record", metadata.id);
+            repo.run(&["update-ref", &archive_record_ref, &record_oid])?;
+
+            for step in &metadata.steps {
+                let key = if !step.id.is_empty() {
+                    &step.id
+                } else {
+                    &step.name
+                };
+                let step_ref = format!("refs/staircase-archive/{}/steps/{}", metadata.id, key);
+                repo.run(&["update-ref", &step_ref, &step.cut])?;
+            }
+        }
     }
 
-    Ok(blob_oid)
+    Ok(StaircaseRecord {
+        record_oid,
+        structure_oid,
+        metadata_oid,
+        lifecycle_oid,
+        archive_manifest_oid: manifest_oid,
+        metadata: full_meta,
+        user_metadata: user_metadata.clone(),
+        lifecycle: lifecycle.clone(),
+        archive_manifest: archive_manifest.cloned(),
+    })
+}
+
+pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
+    let target_oid = repo
+        .resolve_ref_opt(target)?
+        .unwrap_or_else(|| target.to_string());
+
+    let obj_type = repo
+        .run(&["cat-file", "-t", &target_oid])
+        .unwrap_or_default()
+        .trim()
+        .to_string();
+
+    if obj_type == "blob" {
+        let content = repo.run(&["cat-file", "-p", &target_oid])?;
+        let mut meta = parse_descriptor(&content)?;
+        let user_meta = meta.user_metadata.clone().unwrap_or_default();
+        let lifecycle = meta.lifecycle.clone().unwrap_or_default();
+
+        let meta_json = serde_json::to_string_pretty(&user_meta)?;
+        let metadata_oid = repo
+            .run_with_stdin(&["hash-object", "-w", "--stdin"], &meta_json)?
+            .trim()
+            .to_string();
+
+        let lifecycle_json = serde_json::to_string_pretty(&lifecycle)?;
+        let lifecycle_oid = repo
+            .run_with_stdin(&["hash-object", "-w", "--stdin"], &lifecycle_json)?
+            .trim()
+            .to_string();
+
+        meta.user_metadata = Some(user_meta.clone());
+        meta.lifecycle = Some(lifecycle.clone());
+
+        return Ok(StaircaseRecord {
+            record_oid: target_oid.clone(),
+            structure_oid: target_oid,
+            metadata_oid,
+            lifecycle_oid,
+            archive_manifest_oid: None,
+            metadata: meta,
+            user_metadata: user_meta,
+            lifecycle,
+            archive_manifest: None,
+        });
+    }
+
+    if obj_type == "tree" {
+        let ls_output = repo.run(&["ls-tree", &target_oid])?;
+        let mut structure_oid = None;
+        let mut metadata_oid = None;
+        let mut lifecycle_oid = None;
+        let mut manifest_oid = None;
+
+        for line in ls_output.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() >= 4 {
+                let oid = parts[2].to_string();
+                let name = parts[3];
+                match name {
+                    "structure" => structure_oid = Some(oid),
+                    "metadata" => metadata_oid = Some(oid),
+                    "lifecycle" => lifecycle_oid = Some(oid),
+                    "archive-manifest" => manifest_oid = Some(oid),
+                    _ => {}
+                }
+            }
+        }
+
+        let struct_oid = structure_oid.ok_or_else(|| {
+            StaircaseError::Other(format!("Record tree {} missing 'structure' entry", target_oid))
+        })?;
+
+        let struct_content = repo.run(&["cat-file", "-p", &struct_oid])?;
+        let mut metadata = parse_descriptor(&struct_content)?;
+
+        let user_metadata: StaircaseUserMetadata = if let Some(ref m_oid) = metadata_oid {
+            let m_content = repo.run(&["cat-file", "-p", m_oid])?;
+            serde_json::from_str(&m_content).unwrap_or_default()
+        } else {
+            StaircaseUserMetadata::default()
+        };
+
+        let lifecycle: StaircaseLifecycle = if let Some(ref l_oid) = lifecycle_oid {
+            let l_content = repo.run(&["cat-file", "-p", l_oid])?;
+            serde_json::from_str(&l_content).unwrap_or_default()
+        } else {
+            StaircaseLifecycle::default()
+        };
+
+        let archive_manifest: Option<ArchiveManifest> = if let Some(ref am_oid) = manifest_oid {
+            let am_content = repo.run(&["cat-file", "-p", am_oid])?;
+            serde_json::from_str(&am_content).ok()
+        } else {
+            None
+        };
+
+        if metadata.name.is_empty() {
+            if let Some(ref manifest) = archive_manifest {
+                metadata.name = manifest.canonical_name.clone();
+            }
+        }
+
+        metadata.user_metadata = Some(user_metadata.clone());
+        metadata.lifecycle = Some(lifecycle.clone());
+
+        return Ok(StaircaseRecord {
+            record_oid: target_oid,
+            structure_oid: struct_oid,
+            metadata_oid: metadata_oid.unwrap_or_default(),
+            lifecycle_oid: lifecycle_oid.unwrap_or_default(),
+            archive_manifest_oid: manifest_oid,
+            metadata,
+            user_metadata,
+            lifecycle,
+            archive_manifest,
+        });
+    }
+
+    Err(StaircaseError::Other(format!(
+        "Target {} is not a blob or tree (type: {})",
+        target, obj_type
+    )))
+}
+
+pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
+    let user_metadata = metadata.user_metadata.clone().unwrap_or_default();
+    let lifecycle = metadata.lifecycle.clone().unwrap_or_default();
+    let record = write_record(repo, metadata, &user_metadata, &lifecycle, None, true)?;
+    Ok(record.record_oid)
 }
 
 pub fn serialize_descriptor(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
@@ -71,12 +282,18 @@ pub fn serialize_descriptor(repo: &GitRepo, metadata: &StaircaseMetadata) -> Res
 
 pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetadata> {
     let name_ref = format!("refs/staircases/{}", id_or_name);
-    let id_ref = format!("refs/staircase-state/{}/descriptor", id_or_name);
+    let id_record_ref = format!("refs/staircase-state/{}/record", id_or_name);
+    let id_desc_ref = format!("refs/staircase-state/{}/descriptor", id_or_name);
+    let archive_ref = format!("refs/staircase-archive/{}/record", id_or_name);
 
     let (ref_name, is_name) = if repo.resolve_ref_opt(&name_ref)?.is_some() {
         (name_ref, true)
-    } else if repo.resolve_ref_opt(&id_ref)?.is_some() {
-        (id_ref, false)
+    } else if repo.resolve_ref_opt(&id_record_ref)?.is_some() {
+        (id_record_ref, false)
+    } else if repo.resolve_ref_opt(&id_desc_ref)?.is_some() {
+        (id_desc_ref, false)
+    } else if repo.resolve_ref_opt(&archive_ref)?.is_some() {
+        (archive_ref, false)
     } else {
         return Err(StaircaseError::Other(format!(
             "Staircase not found: {}",
@@ -84,13 +301,12 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
         )));
     };
 
-    let content = repo.run(&["cat-file", "-p", &ref_name])?;
-    let mut meta = parse_descriptor(&content)?;
+    let record = read_record(repo, &ref_name)?;
+    let mut meta = record.metadata;
 
     if is_name {
         meta.name = id_or_name.to_string();
-    } else {
-        // If we read from ID, we might need to find the name elsewhere
+    } else if meta.name.is_empty() {
         let oid = repo.resolve_ref(&ref_name)?;
         if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", &oid, "refs/staircases/"]) {
             if let Some(line) = stdout.lines().next() {
@@ -112,12 +328,10 @@ pub fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
         return parse_canonical_descriptor(content);
     }
 
-    // Try JSON as fallback for transition
     if let Ok(meta) = serde_json::from_str::<StaircaseMetadata>(content) {
         return Ok(meta);
     }
 
-    // Fallback to legacy format
     parse_legacy_descriptor(content)
 }
 
@@ -208,14 +422,14 @@ fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
         target,
         steps,
         verification_policy,
-
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     })
 }
 
 fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
-    // Legacy format was also KVP but without the header
     parse_canonical_descriptor(content)
 }
 
@@ -248,43 +462,33 @@ pub fn record_verification(
 }
 
 pub fn list_staircases(repo: &GitRepo) -> Result<Vec<StaircaseMetadata>> {
+    list_staircases_filtered(repo, true, false)
+}
+
+pub fn list_archived_staircases(repo: &GitRepo) -> Result<Vec<StaircaseMetadata>> {
+    list_staircases_filtered(repo, false, true)
+}
+
+pub fn list_all_staircases(repo: &GitRepo) -> Result<Vec<StaircaseMetadata>> {
+    list_staircases_filtered(repo, true, true)
+}
+
+pub fn list_staircases_filtered(
+    repo: &GitRepo,
+    include_active: bool,
+    include_archived: bool,
+) -> Result<Vec<StaircaseMetadata>> {
     let mut staircases = Vec::new();
     let mut seen_ids = std::collections::HashSet::new();
 
-    // Check public names
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", "refs/staircases/"]) {
-        for line in stdout.lines() {
-            let refname = line.trim();
-            if refname.starts_with("refs/staircases/") {
-                let name = refname.strip_prefix("refs/staircases/").unwrap();
-                if !name.contains('/') {
-                    if let Ok(meta) = read_metadata(repo, name) {
-                        seen_ids.insert(meta.id.clone());
-                        staircases.push(meta);
-                    }
-                }
-            }
-        }
-    }
-
-    // Check internal state for any missed ones (unnamed managed staircases)
-    if let Ok(stdout) = repo.run(&[
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/staircase-state/",
-    ]) {
-        for line in stdout.lines() {
-            let refname = line.trim();
-            if refname.ends_with("/descriptor") {
-                let parts: Vec<&str> = refname
-                    .strip_prefix("refs/staircase-state/")
-                    .unwrap()
-                    .split('/')
-                    .collect();
-                if parts.len() == 2 && parts[1] == "descriptor" {
-                    let id = parts[0];
-                    if !seen_ids.contains(id) {
-                        if let Ok(meta) = read_metadata(repo, id) {
+    if include_active {
+        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", "refs/staircases/"]) {
+            for line in stdout.lines() {
+                let refname = line.trim();
+                if refname.starts_with("refs/staircases/") {
+                    let name = refname.strip_prefix("refs/staircases/").unwrap();
+                    if !name.contains('/') {
+                        if let Ok(meta) = read_metadata(repo, name) {
                             seen_ids.insert(meta.id.clone());
                             staircases.push(meta);
                         }
@@ -292,12 +496,66 @@ pub fn list_staircases(repo: &GitRepo) -> Result<Vec<StaircaseMetadata>> {
                 }
             }
         }
+
+        if let Ok(stdout) = repo.run(&[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/staircase-state/",
+        ]) {
+            for line in stdout.lines() {
+                let refname = line.trim();
+                if refname.ends_with("/record") || refname.ends_with("/descriptor") {
+                    let parts: Vec<&str> = refname
+                        .strip_prefix("refs/staircase-state/")
+                        .unwrap()
+                        .split('/')
+                        .collect();
+                    if parts.len() == 2 {
+                        let id = parts[0];
+                        if !seen_ids.contains(id) {
+                            if let Ok(meta) = read_metadata(repo, id) {
+                                seen_ids.insert(meta.id.clone());
+                                staircases.push(meta);
+                            }
+                        }
+                    }
+                }
+            }
+        }
     }
+
+    if include_archived {
+        if let Ok(stdout) = repo.run(&[
+            "for-each-ref",
+            "--format=%(refname)",
+            "refs/staircase-archive/",
+        ]) {
+            for line in stdout.lines() {
+                let refname = line.trim();
+                if refname.ends_with("/record") {
+                    let parts: Vec<&str> = refname
+                        .strip_prefix("refs/staircase-archive/")
+                        .unwrap()
+                        .split('/')
+                        .collect();
+                    if parts.len() == 2 && parts[1] == "record" {
+                        let id = parts[0];
+                        if !seen_ids.contains(id) {
+                            if let Ok(record) = read_record(repo, refname) {
+                                seen_ids.insert(record.metadata.id.clone());
+                                staircases.push(record.metadata);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     Ok(staircases)
 }
 
 pub fn delete_staircase_refs(repo: &GitRepo, id: &str, name: &str) -> Result<()> {
-    // Delete state refs
     let state_prefix = format!("refs/staircase-state/{}/", id);
     if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &state_prefix]) {
         for line in stdout.lines() {
@@ -305,7 +563,13 @@ pub fn delete_staircase_refs(repo: &GitRepo, id: &str, name: &str) -> Result<()>
             repo.run(&["update-ref", "-d", refname])?;
         }
     }
-    // Delete public ref
+    let archive_prefix = format!("refs/staircase-archive/{}/", id);
+    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &archive_prefix]) {
+        for line in stdout.lines() {
+            let refname = line.trim();
+            repo.run(&["update-ref", "-d", refname])?;
+        }
+    }
     let ref_name = format!("refs/staircases/{}", name);
     repo.run(&["update-ref", "-d", &ref_name])?;
     Ok(())
@@ -320,19 +584,15 @@ fn commit_json_data<T: serde::Serialize>(
 ) -> Result<String> {
     let json = serde_json::to_string_pretty(data)?;
 
-    // 1. Hash and write the JSON blob
     let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
     let blob_oid = blob_oid.trim();
 
-    // 2. Create a tree containing the blob
     let tree_input = format!("100644 blob {}\t{}\n", blob_oid, filename);
     let tree_oid = repo.run_with_stdin(&["mktree"], &tree_input)?;
     let tree_oid = tree_oid.trim();
 
-    // 3. Create a commit
     let mut commit_args = vec!["commit-tree", tree_oid, "-m", commit_msg];
 
-    // Check if ref already exists to use as parent
     let parent_oid = repo.resolve_commit_opt(ref_name).unwrap_or(None);
     if let Some(ref parent) = parent_oid {
         commit_args.push("-p");
@@ -342,17 +602,15 @@ fn commit_json_data<T: serde::Serialize>(
     let commit_oid = repo.run(&commit_args)?;
     let commit_oid = commit_oid.trim();
 
-    // 4. Update the ref
     repo.run(&["update-ref", ref_name, commit_oid])?;
 
     Ok(commit_oid.to_string())
 }
 
 pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMetadata> {
-    let content = repo.run(&["cat-file", "-p", oid])?;
-    let mut meta = parse_descriptor(&content)?;
+    let record = read_record(repo, oid)?;
+    let mut meta = record.metadata;
 
-    // Try to find a name for this revision
     if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", oid, "refs/staircases/"]) {
         if let Some(name) = stdout.lines().next().and_then(|line| {
             line.split_whitespace()
@@ -390,3 +648,4 @@ pub fn read_verification(
     let results: Vec<VerificationResult> = serde_json::from_str(&content)?;
     Ok(Some(results))
 }
+

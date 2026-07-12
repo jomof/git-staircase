@@ -112,5 +112,7 @@ pub fn extract_path_to(
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     })
 }

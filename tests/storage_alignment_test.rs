@@ -29,17 +29,16 @@ fn test_staircase_storage_alignment() {
         .resolve_ref(ref_name)
         .expect("refs/staircases/auth should exist");
 
-    // ASSERT: Verify it points to a descriptor object
-    // According to new spec, it should be a canonical descriptor blob
-    let content = repo.run(&["cat-file", "-p", &oid]).unwrap();
+    // ASSERT: Verify it points to a tree record object (Spec Addendum I)
+    let content = repo.run(&["cat-file", "-p", &format!("{}:structure", ref_name)]).unwrap();
     assert!(
         content.starts_with("git-staircase-descriptor 1\n"),
         "Descriptor should have canonical header"
     );
 
-    // Also verify it is a blob type
+    // Also verify refs/staircases/auth is a tree type
     let obj_type = repo.run(&["cat-file", "-t", &oid]).unwrap();
-    assert_eq!(obj_type.trim(), "blob");
+    assert_eq!(obj_type.trim(), "tree");
 
     // Verify old fragmented structure is GONE
     let meta_ref = format!("refs/staircases/{}/meta", s.id);
@@ -61,9 +60,9 @@ fn test_staircase_storage_alignment() {
     // ACT: Get the new revision ID
     let new_oid = repo.resolve_ref(ref_name).unwrap();
 
-    // ASSERT: Verify the ID matches the new descriptor OID
+    // ASSERT: Verify the ID matches the new record OID
     assert_ne!(oid, new_oid, "Revision ID should change after update");
-    let new_content = repo.run(&["cat-file", "-p", &new_oid]).unwrap();
+    let new_content = repo.run(&["cat-file", "-p", &format!("{}:structure", ref_name)]).unwrap();
     assert!(
         new_content.contains(&c2_new),
         "New descriptor should contain new cut OID"

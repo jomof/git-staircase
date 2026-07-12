@@ -25,7 +25,7 @@ fn test_canonical_descriptor_format() {
     let oid = repo
         .resolve_ref(ref_name)
         .expect("refs/staircases/my-staircase should exist");
-    let content = repo.run(&["cat-file", "-p", &oid]).unwrap();
+    let content = repo.run(&["cat-file", "-p", &format!("{}:structure", ref_name)]).unwrap();
 
     // ASSERT: Verify it starts with the mandatory header (Spec 8.4)
     assert!(

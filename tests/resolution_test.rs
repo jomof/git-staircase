@@ -80,6 +80,8 @@ fn test_selector_args_resolve_id() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     core::adopt(&repo, &sc).unwrap();
 
@@ -122,6 +124,8 @@ fn test_selector_args_resolve_explicit_name() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     core::adopt(&repo, &sc).unwrap();
 
@@ -165,6 +169,8 @@ fn test_selector_args_ambiguity() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     core::adopt(&repo, &sc).unwrap();
 

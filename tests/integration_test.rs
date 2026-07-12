@@ -217,6 +217,8 @@ fn test_adopt_validation() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT & ASSERT
@@ -422,6 +424,8 @@ fn test_slash_name_discovery() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     core::persistence::write_metadata(&ctx.repo, &metadata).unwrap();

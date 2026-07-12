@@ -42,6 +42,8 @@ fn test_verification_status_in_show_output() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     persistence::write_metadata(&repo, &metadata).unwrap();
 

@@ -95,6 +95,8 @@ fn test_reorder_data_loss_on_dirty_workdir() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     let rs = ResolvedStaircase::Implicit(metadata);
 
@@ -234,6 +236,8 @@ fn test_verify_leaves_detached_head() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     git_staircase::core::adopt(&repo, &sc).unwrap();
 

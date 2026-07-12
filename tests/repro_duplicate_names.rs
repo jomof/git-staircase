@@ -58,6 +58,8 @@ fn test_duplicate_step_names_leak() {
         verification_policy: None,
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
         landing_policy: None,
     };
 

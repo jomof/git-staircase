@@ -68,7 +68,7 @@ fn resolve_managed(
         .or_else(|| name.strip_prefix("staircases/"))
         .unwrap_or(name);
 
-    let managed = persistence::list_staircases(repo)?;
+    let managed = persistence::list_all_staircases(repo)?;
     // Exact name or ID match
     for s in &managed {
         if s.name == stripped_name || s.id == stripped_name {
@@ -300,11 +300,13 @@ pub fn resolve_explicit_staircase(
         verification_policy: None,
         primary_branch_layout: layout,
         branch_layout_base: layout_base,
+        user_metadata: None,
+        lifecycle: None,
     }))
 }
 
 pub fn resolve_by_id(repo: &GitRepo, id: &str) -> Result<ResolvedStaircase> {
-    let staircases = persistence::list_staircases(repo)?;
+    let staircases = persistence::list_all_staircases(repo)?;
     for s in staircases {
         if s.id == id {
             return Ok(ResolvedStaircase::Managed(s));
@@ -317,7 +319,7 @@ pub fn resolve_by_id(repo: &GitRepo, id: &str) -> Result<ResolvedStaircase> {
 }
 
 pub fn resolve_by_name(repo: &GitRepo, name: &str) -> Result<ResolvedStaircase> {
-    let staircases = persistence::list_staircases(repo)?;
+    let staircases = persistence::list_all_staircases(repo)?;
     for s in staircases {
         if s.name == name {
             return Ok(ResolvedStaircase::Managed(s));

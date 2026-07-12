@@ -4,8 +4,10 @@ use clap::Args;
 use serde::Serialize;
 
 pub mod adopt;
+pub mod archive;
 pub mod commits;
 pub mod delete;
+pub mod describe;
 pub mod diff;
 pub mod discover;
 pub mod draft;
@@ -17,6 +19,7 @@ pub mod join;
 pub mod land;
 pub mod list;
 pub mod log;
+pub mod metadata;
 pub mod move_cmd;
 pub mod rebase;
 pub mod reorder;
@@ -26,6 +29,7 @@ pub mod show;
 pub mod split;
 pub mod status;
 pub mod steps;
+pub mod unarchive;
 pub mod verify;
 pub mod workspace;
 

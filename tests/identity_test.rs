@@ -18,6 +18,8 @@ fn test_identity_lineage_and_nominal() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT & ASSERT
@@ -63,6 +65,8 @@ fn test_identity_revision() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT
@@ -90,6 +94,8 @@ fn test_identity_revision() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT (New identity)
@@ -135,6 +141,8 @@ fn test_identity_body() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT
@@ -161,6 +169,8 @@ fn test_identity_body() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT (New identity)
@@ -206,6 +216,8 @@ fn test_identity_decomposition() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT
@@ -244,6 +256,8 @@ fn test_identity_decomposition() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT (New identity)
@@ -273,6 +287,8 @@ fn test_identity_decomposition() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT (New identity)
@@ -318,6 +334,8 @@ fn test_identity_outcome() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT
@@ -350,6 +368,8 @@ fn test_identity_outcome() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT (New identity)
@@ -378,6 +398,8 @@ fn test_revision_identity_prefix() {
         verification_policy: None,
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT

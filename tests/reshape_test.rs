@@ -204,6 +204,8 @@ fn test_reorder_without_branches() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     core::adopt(&repo, &metadata).expect("Adoption failed");
@@ -312,6 +314,8 @@ fn test_restack_without_branches() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     core::adopt(&repo, &metadata).expect("Adoption failed");

@@ -20,8 +20,7 @@ fn test_adopt_canonicalizes_onto() {
     assert!(success, "Adopt failed: {}", stderr);
 
     // ASSERT: Check the descriptor for full refname
-    let oid = ctx.run_git(&["rev-parse", "refs/staircases/my-staircase"]);
-    let content = ctx.run_git(&["cat-file", "-p", &oid]);
+    let content = ctx.run_git(&["cat-file", "-p", "refs/staircases/my-staircase:structure"]);
 
     // The spec requires full refname
     assert!(
@@ -51,8 +50,7 @@ fn test_infer_onto_canonicalizes() {
     assert!(success, "Adopt failed: {}", stderr);
 
     // ASSERT: Check the descriptor for full refname
-    let oid = ctx.run_git(&["rev-parse", "refs/staircases/my-staircase"]);
-    let content = ctx.run_git(&["cat-file", "-p", &oid]);
+    let content = ctx.run_git(&["cat-file", "-p", "refs/staircases/my-staircase:structure"]);
 
     // It should infer 'refs/heads/main' from upstream
     assert!(

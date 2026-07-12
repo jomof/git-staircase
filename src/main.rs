@@ -94,6 +94,14 @@ enum Commands {
     Commits(cli::commits::Commits),
     /// Worktree draft management and materialization
     Draft(cli::draft::DraftCmd),
+    /// Describe staircase title and description
+    Describe(cli::describe::Describe),
+    /// User-facing metadata management
+    Metadata(cli::metadata::MetadataCmd),
+    /// Archive a staircase
+    Archive(cli::archive::ArchiveCmd),
+    /// Unarchive a staircase
+    Unarchive(cli::unarchive::UnarchiveCmd),
 }
 
 impl Commands {
@@ -123,6 +131,10 @@ impl Commands {
             Commands::Review(cmd) => cmd.run(repo),
             Commands::Commits(cmd) => cmd.run(repo),
             Commands::Draft(cmd) => cmd.run(repo),
+            Commands::Describe(cmd) => cmd.run(repo),
+            Commands::Metadata(cmd) => cmd.run(repo),
+            Commands::Archive(cmd) => cmd.run(repo),
+            Commands::Unarchive(cmd) => cmd.run(repo),
         }
     }
 }

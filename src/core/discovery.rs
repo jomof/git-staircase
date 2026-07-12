@@ -105,6 +105,8 @@ pub fn discover(
                     steps,
                     primary_branch_layout: layout,
                     branch_layout_base: layout_base,
+                    user_metadata: None,
+                    lifecycle: None,
                 }));
             }
         }

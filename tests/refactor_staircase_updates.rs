@@ -50,6 +50,8 @@ fn test_managed_staircase_updates() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     core::adopt(&ctx.repo, &metadata).unwrap();
 
@@ -152,6 +154,8 @@ fn test_implicit_staircase_updates() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     let rs = ResolvedStaircase::Implicit(metadata);

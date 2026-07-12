@@ -34,6 +34,21 @@ pub struct JoinOptions {
     pub ref_action: JoinRefAction,
 }
 
+fn check_active(staircase: &ResolvedStaircase) -> Result<()> {
+    if staircase
+        .metadata()
+        .lifecycle
+        .as_ref()
+        .map(|l| l.state == crate::model::LifecycleState::Archived)
+        .unwrap_or(false)
+    {
+        return Err(StaircaseError::Other(
+            "staircase is archived; unarchive it before mutation".to_string(),
+        ));
+    }
+    Ok(())
+}
+
 pub fn split(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
@@ -42,6 +57,8 @@ pub fn split(
     new_step_name: Option<&str>,
     options: SplitOptions,
 ) -> Result<()> {
+    check_active(staircase)?;
+
     if step_index >= staircase.metadata().steps.len() {
         return Err(StaircaseError::InvalidStructure(format!(
             "Step index {} out of bounds",
@@ -104,6 +121,7 @@ pub fn join(
     step_index_2: usize,
     options: JoinOptions,
 ) -> Result<()> {
+    check_active(staircase)?;
     let (low, high) = if step_index_1 < step_index_2 {
         (step_index_1, step_index_2)
     } else {
@@ -280,6 +298,7 @@ pub fn reorder(
     new_order: &[usize],
     options: ReorderOptions,
 ) -> Result<()> {
+    check_active(staircase)?;
     let mut metadata = staircase.metadata().clone();
     let old_steps = metadata.steps.clone();
 
@@ -345,6 +364,7 @@ pub fn drop(
     step_index: usize,
     options: DropOptions,
 ) -> Result<()> {
+    check_active(staircase)?;
     let metadata = staircase.metadata().clone();
     if step_index >= metadata.steps.len() {
         return Err(StaircaseError::Other(
@@ -384,6 +404,7 @@ pub fn move_commits(
     to_step_index: usize,
     commits: &[String],
 ) -> Result<()> {
+    check_active(staircase)?;
     if commits.is_empty() {
         return Ok(());
     }
@@ -432,6 +453,7 @@ pub fn restack(
     staircase: &ResolvedStaircase,
     options: RebaseOptions,
 ) -> Result<()> {
+    check_active(staircase)?;
     let status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
@@ -504,6 +526,7 @@ pub fn rebase(
     onto: &str,
     options: RebaseOptions,
 ) -> Result<()> {
+    check_active(staircase)?;
     let mut metadata = staircase.metadata().clone();
     metadata.target = onto.to_string();
 
@@ -535,6 +558,7 @@ pub struct LandOptions {
 }
 
 pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions) -> Result<()> {
+    check_active(staircase)?;
     let status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),

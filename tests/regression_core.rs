@@ -165,6 +165,8 @@ fn test_split_duplicate_name() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
     let rs = ResolvedStaircase::Managed(sc);

@@ -36,6 +36,10 @@ pub struct StaircaseMetadata {
     pub verification_policy: Option<VerificationPolicy>,
     pub primary_branch_layout: Option<String>,
     pub branch_layout_base: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub user_metadata: Option<StaircaseUserMetadata>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub lifecycle: Option<StaircaseLifecycle>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -238,4 +242,185 @@ pub struct VerificationResult {
     pub success: bool,
     pub stdout: String,
     pub stderr: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct StaircaseLink {
+    pub id: String,
+    pub relationship: String,
+    pub url: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub label: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct StepMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<StaircaseLink>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq, Default)]
+pub struct StaircaseUserMetadata {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub labels: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub links: Vec<StaircaseLink>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub step_metadata: HashMap<String, StepMetadata>,
+    #[serde(default, skip_serializing_if = "HashMap::is_empty")]
+    pub extensions: HashMap<String, serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub created_by: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_at: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub updated_by: Option<String>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, Copy, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
+pub enum LifecycleState {
+    Active,
+    Archived,
+}
+
+impl Default for LifecycleState {
+    fn default() -> Self {
+        LifecycleState::Active
+    }
+}
+
+impl fmt::Display for LifecycleState {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            LifecycleState::Active => write!(f, "active"),
+            LifecycleState::Archived => write!(f, "archived"),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct LifecycleEvent {
+    pub event_id: String,
+    pub kind: String,
+    pub timestamp: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_oid_before: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub record_oid_after: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub canonical_name: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    #[serde(default, skip_serializing_if = "serde_json::Value::is_null")]
+    pub details: serde_json::Value,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct StaircaseLifecycle {
+    pub state: LifecycleState,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_reason: Option<String>,
+    #[serde(default = "default_true")]
+    pub name_reserved: bool,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub events: Vec<LifecycleEvent>,
+}
+
+fn default_true() -> bool {
+    true
+}
+
+impl Default for StaircaseLifecycle {
+    fn default() -> Self {
+        Self {
+            state: LifecycleState::Active,
+            archive_reason: None,
+            name_reserved: true,
+            events: Vec::new(),
+        }
+    }
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ArchivedOwnedRef {
+    pub ref_id: String,
+    pub original_refname: String,
+    pub object_type: String,
+    pub original_oid: String,
+    pub archive_refname: String,
+    pub ownership_class: String,
+    pub visibility_class: String,
+    pub restoration_policy: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct BranchConfigEntry {
+    pub key: String,
+    pub value: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct BranchConfigSnapshot {
+    pub branch_name: String,
+    pub entries: Vec<BranchConfigEntry>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ArchiveManifest {
+    pub archive_event_id: String,
+    pub lineage_id: String,
+    pub archive_time: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub actor: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reason: Option<String>,
+    pub previous_record_oid: String,
+    pub canonical_name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_layout_profile: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub branch_layout_base: Option<String>,
+    pub owned_refs: Vec<ArchivedOwnedRef>,
+    pub expected_source_oids: HashMap<String, String>,
+    pub archive_retention_refs: HashMap<String, String>,
+    pub branch_configs: Vec<BranchConfigSnapshot>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub worktree_attachments: Vec<serde_json::Value>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub draft_disposition: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub provider_disposition: Option<String>,
+    pub name_reservation: bool,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct StaircaseRecord {
+    pub record_oid: String,
+    pub structure_oid: String,
+    pub metadata_oid: String,
+    pub lifecycle_oid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_manifest_oid: Option<String>,
+    pub metadata: StaircaseMetadata,
+    pub user_metadata: StaircaseUserMetadata,
+    pub lifecycle: StaircaseLifecycle,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_manifest: Option<ArchiveManifest>,
 }

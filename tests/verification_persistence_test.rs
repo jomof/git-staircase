@@ -31,6 +31,8 @@ fn test_verification_policy_persistence() {
 
         primary_branch_layout: None,
         branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
     };
 
     // ACT: Write and then read the metadata

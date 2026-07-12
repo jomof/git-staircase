@@ -20,6 +20,10 @@ pub struct List {
     #[arg(long)]
     pub stale: bool,
     #[arg(long)]
+    pub archived: bool,
+    #[arg(long)]
+    pub all: bool,
+    #[arg(long)]
     pub onto: Option<String>,
     #[arg(long)]
     pub strict: bool,
@@ -28,13 +32,23 @@ pub struct List {
 impl super::Command for List {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let show_implicit = self.implicit || self.discovered;
-        let show_all = !self.managed && !show_implicit && !self.families && !self.stale;
+        let show_all = !self.managed && !show_implicit && !self.families && !self.stale && !self.archived;
         let mut all_results = Vec::new();
         let mut unresolved_errors = Vec::new();
 
         let mut resolved_staircases = Vec::new();
 
-        if self.managed || self.stale || show_all {
+        if self.archived {
+            let list = persistence::list_archived_staircases(repo)?;
+            for s in list {
+                resolved_staircases.push(ResolvedStaircase::Managed(s));
+            }
+        } else if self.all {
+            let list = persistence::list_all_staircases(repo)?;
+            for s in list {
+                resolved_staircases.push(ResolvedStaircase::Managed(s));
+            }
+        } else if self.managed || self.stale || show_all {
             let list = persistence::list_staircases(repo)?;
             for s in list {
                 resolved_staircases.push(ResolvedStaircase::Managed(s));
