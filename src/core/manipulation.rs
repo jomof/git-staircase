@@ -245,7 +245,8 @@ fn perform_restack(
         let actual_oid = repo.resolve_commit(&step.cut)?;
         let old_parent_oid = &old_parent_oids[i];
 
-        let should_rebase = &current_base != old_parent_oid || !repo.is_ancestor(&current_base, &actual_oid)?;
+        let should_rebase =
+            &current_base != old_parent_oid || !repo.is_ancestor(&current_base, &actual_oid)?;
 
         if should_rebase {
             match rebaser.rebase_step(step, &actual_oid, old_parent_oid, &current_base) {
@@ -480,13 +481,13 @@ pub fn restack(
     ) {
         Ok(stop_index) => {
             rebaser.finalize()?;
-            
+
             if let Some(idx) = stop_index {
                 for i in (idx + 1)..metadata.steps.len() {
                     metadata.steps[i].cut = original_cuts[i].clone();
                 }
             }
-            
+
             staircase.commit_metadata(repo, metadata)?;
             Ok(())
         }

@@ -63,10 +63,15 @@ fn resolve_managed(
     name: &str,
     resolved_staircases: &mut HashMap<String, ResolvedStaircase>,
 ) -> Result<()> {
+    let stripped_name = name
+        .strip_prefix("refs/staircases/")
+        .or_else(|| name.strip_prefix("staircases/"))
+        .unwrap_or(name);
+
     let managed = persistence::list_staircases(repo)?;
     // Exact name or ID match
     for s in &managed {
-        if s.name == name || s.id == name {
+        if s.name == stripped_name || s.id == stripped_name {
             resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s.clone()));
         }
     }
