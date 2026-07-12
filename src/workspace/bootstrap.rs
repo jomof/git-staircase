@@ -109,6 +109,27 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                 );
                 record.binding_provenance.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
                 updated = true;
+            } else if let Ok(Some(_gh_route)) = crate::workspace::github_provider::probe_github_route(repo, Some(&record)) {
+                record.capability_bindings.insert(
+                    Capability::Review,
+                    CapabilityBinding {
+                        provider: "github".to_string(),
+                        provenance: BindingProvenance::AutoDiscovered,
+                        evidence: Some("GitHub review route discovered".to_string()),
+                    },
+                );
+                record.binding_provenance.insert(Capability::Review, BindingProvenance::AutoDiscovered);
+
+                record.capability_bindings.insert(
+                    Capability::Verification,
+                    CapabilityBinding {
+                        provider: "github".to_string(),
+                        provenance: BindingProvenance::AutoDiscovered,
+                        evidence: Some("GitHub verification route discovered".to_string()),
+                    },
+                );
+                record.binding_provenance.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+                updated = true;
             }
         }
 
@@ -270,6 +291,26 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                     provider: "gerrit".to_string(),
                     provenance: BindingProvenance::AutoDiscovered,
                     evidence: Some("Gerrit verification route discovered".to_string()),
+                },
+            );
+            provenances.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+        } else if let Ok(Some(_gh_route)) = crate::workspace::github_provider::probe_github_route(repo, Some(&temp_record)) {
+            bindings.insert(
+                Capability::Review,
+                CapabilityBinding {
+                    provider: "github".to_string(),
+                    provenance: BindingProvenance::AutoDiscovered,
+                    evidence: Some("GitHub review route discovered".to_string()),
+                },
+            );
+            provenances.insert(Capability::Review, BindingProvenance::AutoDiscovered);
+
+            bindings.insert(
+                Capability::Verification,
+                CapabilityBinding {
+                    provider: "github".to_string(),
+                    provenance: BindingProvenance::AutoDiscovered,
+                    evidence: Some("GitHub verification route discovered".to_string()),
                 },
             );
             provenances.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
