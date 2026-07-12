@@ -129,6 +129,36 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
         }
     }
 
+    // Attempt to extract server identity from git remotes
+    if server_id.is_none() {
+        if let Ok(remotes) = repo.run(&["remote", "-v"]) {
+            for line in remotes.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let url = parts[1];
+                    if url.contains("googlesource.com")
+                        || url.contains("gerrit")
+                        || url.contains("review")
+                        || url.contains("git.corp.google.com")
+                    {
+                        if let Some(host) = extract_host_from_git_url(url) {
+                            server_id = Some(host);
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    if project.is_none() && record.is_some() {
+        if let Some(rec) = record {
+            if let Some(proj_name) = rec.discovery_fingerprint.get("project_name") {
+                project = Some(proj_name.clone());
+            }
+        }
+    }
+
     if let (Some(server), Some(proj)) = (server_id, project) {
         let branch = dest_branch.unwrap_or_else(|| "main".to_string());
         let upload_ref = format!("refs/for/{}", branch);
@@ -142,6 +172,29 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
     } else {
         Ok(None)
     }
+}
+
+fn extract_host_from_git_url(url: &str) -> Option<String> {
+    let s = url.trim();
+    if let Some(stripped) = s
+        .strip_prefix("https://")
+        .or_else(|| s.strip_prefix("http://"))
+        .or_else(|| s.strip_prefix("ssh://"))
+        .or_else(|| s.strip_prefix("sso://"))
+        .or_else(|| s.strip_prefix("rpc://"))
+    {
+        let host_part = stripped.split('/').next()?;
+        let host = host_part.split('@').last()?.split(':').next()?;
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    } else if let Some((user_host, _path)) = s.split_once(':') {
+        let host = user_host.split('@').last()?;
+        if !host.is_empty() {
+            return Some(host.to_string());
+        }
+    }
+    None
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -231,7 +284,7 @@ pub struct GerritVerificationReport {
     pub server_id: String,
     pub project: String,
     pub destination_branch: String,
-    pub aggregate_status: String, // "passed", "pending", "failed", "stale", "unknown"
+    pub aggregate_status: String,
     pub submittable: bool,
     pub mergeable: bool,
     pub labels: HashMap<String, String>,

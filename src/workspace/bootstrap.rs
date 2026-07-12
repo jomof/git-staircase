@@ -206,6 +206,45 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         provenances.insert(Capability::Review, BindingProvenance::Explicit);
     }
 
+    // Phase 5: Probe dependent capabilities (review & verification)
+    let temp_record = WorkspaceRecord {
+        workspace_id: uuid::Uuid::new_v4().to_string(),
+        canonical_root: selected_candidate.workspace_root.clone(),
+        provider_native_key: selected_candidate.workspace_key.clone(),
+        capability_bindings: bindings.clone(),
+        binding_provenance: provenances.clone(),
+        discovery_fingerprint: selected_candidate.fingerprint.clone(),
+        last_successful_validation: current_timestamp(),
+        current_project_id: selected_candidate
+            .current_project
+            .as_ref()
+            .map(|p| p.identity.clone()),
+    };
+
+    if !bindings.contains_key(&Capability::Review) {
+        if let Ok(Some(_gerrit_route)) = crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&temp_record)) {
+            bindings.insert(
+                Capability::Review,
+                CapabilityBinding {
+                    provider: "gerrit".to_string(),
+                    provenance: BindingProvenance::AutoDiscovered,
+                    evidence: Some("Gerrit review route discovered".to_string()),
+                },
+            );
+            provenances.insert(Capability::Review, BindingProvenance::AutoDiscovered);
+
+            bindings.insert(
+                Capability::Verification,
+                CapabilityBinding {
+                    provider: "gerrit".to_string(),
+                    provenance: BindingProvenance::AutoDiscovered,
+                    evidence: Some("Gerrit verification route discovered".to_string()),
+                },
+            );
+            provenances.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+        }
+    }
+
     let workspace_id = uuid::Uuid::new_v4().to_string();
     let current_project_id = selected_candidate
         .current_project
