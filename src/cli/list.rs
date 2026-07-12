@@ -4,7 +4,7 @@ use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;
 use crate::{Discovery, ResolvedStaircase};
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use serde::Serialize;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -19,6 +19,8 @@ pub struct List {
     pub implicit: bool,
     #[arg(long)]
     pub onto: Option<String>,
+    #[arg(long)]
+    pub strict: bool,
 }
 
 impl super::Command for List {
@@ -26,6 +28,7 @@ impl super::Command for List {
         let show_implicit = self.implicit || self.discovered;
         let show_all = !self.managed && !show_implicit && !self.families;
         let mut all_results = Vec::new();
+        let mut unresolved_errors = Vec::new();
 
         let mut resolved_staircases = Vec::new();
 
@@ -37,21 +40,34 @@ impl super::Command for List {
         }
 
         if show_implicit || self.families || show_all {
-            let list = core::discover(repo, self.onto.as_deref(), None, self.families)?;
-            for d in list {
-                match d {
-                    Discovery::Linear(s) => {
-                        if show_implicit || show_all {
-                            resolved_staircases.push(ResolvedStaircase::Implicit(s));
-                        }
-                    }
-                    Discovery::Ambiguous(f) => {
-                        if self.families || show_all {
-                            resolved_staircases.push(ResolvedStaircase::ImplicitFamily(f));
+            match core::discover(repo, self.onto.as_deref(), None, self.families) {
+                Ok(list) => {
+                    for d in list {
+                        match d {
+                            Discovery::Linear(s) => {
+                                if show_implicit || show_all {
+                                    resolved_staircases.push(ResolvedStaircase::Implicit(s));
+                                }
+                            }
+                            Discovery::Ambiguous(f) => {
+                                if self.families || show_all {
+                                    resolved_staircases.push(ResolvedStaircase::ImplicitFamily(f));
+                                }
+                            }
                         }
                     }
                 }
+                Err(e) => {
+                    unresolved_errors.push(format!("Unresolved implicit candidates: {}", e));
+                }
             }
+        }
+
+        if self.strict && !unresolved_errors.is_empty() {
+            return Err(anyhow!(
+                "Strict mode: unresolved candidates detected:\n{}",
+                unresolved_errors.join("\n")
+            ));
         }
 
         for rs in resolved_staircases {
@@ -77,13 +93,21 @@ pub struct ListResult(pub Vec<ListEntry>);
 
 impl ToHuman for ListResult {
     fn to_human(&self) -> String {
-        self.0.to_human()
+        if self.0.is_empty() {
+            "No staircases.".to_string()
+        } else {
+            self.0.to_human()
+        }
     }
 }
 
 impl ToPorcelain for ListResult {
     fn to_porcelain(&self) -> String {
-        self.0.to_porcelain()
+        if self.0.is_empty() {
+            String::new()
+        } else {
+            self.0.to_porcelain()
+        }
     }
 }
 

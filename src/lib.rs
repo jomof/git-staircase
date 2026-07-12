@@ -3,6 +3,7 @@ pub mod core;
 pub mod error;
 pub mod git;
 pub mod model;
+pub mod workspace;
 
 pub use crate::core::{ResolvedSelector, ResolvedStaircase};
 pub use cli::formatting::{ToHuman, ToPorcelain};

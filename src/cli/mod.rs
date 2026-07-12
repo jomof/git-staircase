@@ -25,6 +25,7 @@ pub mod split;
 pub mod status;
 pub mod steps;
 pub mod verify;
+pub mod workspace;
 
 pub use formatting::{
     CommitInfo, LogOutput, PlainOutput, ReorderResult, StaircaseCommits, StepCommits, StepsList,

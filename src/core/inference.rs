@@ -1,24 +1,65 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
+use crate::workspace::storage::find_workspace_record_for_path;
 
 pub fn infer_onto(repo: &GitRepo) -> Result<String> {
     let mut inferred = None;
 
-    if let Ok(Some(head)) = repo.current_branch() {
-        let branches = repo.local_branches(None)?;
-        if let Some(b) = branches.iter().find(|b| b.refname == head) {
-            if let Some(ref u) = b.upstream {
-                inferred = Some(u.clone());
+    // 1. Bound integration-context provider / workspace configuration
+    if let Ok(Some(ws)) = find_workspace_record_for_path(&repo.workdir) {
+        if let Some(proj_id) = ws.current_project_id {
+            if let Ok(Some(oid)) = repo.resolve_commit_opt(&proj_id) {
+                inferred = Some(oid);
             }
         }
     }
 
+    // 2. Applicable branch upstream configuration
     if inferred.is_none() {
-        for common in &["main", "master", "trunk", "develop"] {
+        if let Ok(Some(head)) = repo.current_branch() {
+            let branches = repo.local_branches(None)?;
+            if let Some(b) = branches.iter().find(|b| b.refname == head) {
+                if let Some(ref u) = b.upstream {
+                    inferred = Some(u.clone());
+                }
+            }
+        }
+    }
+
+    // 3. Eligible detached HEAD
+    if inferred.is_none() {
+        if let Ok(None) = repo.current_branch() {
+            // Check no active git rebase/merge operation
+            let git_dir = repo.workdir.join(".git");
+            let rebase_interactive = git_dir.join("rebase-merge").exists();
+            let rebase_apply = git_dir.join("rebase-apply").exists();
+            let merge_head = git_dir.join("MERGE_HEAD").exists();
+            let cherry_pick_head = git_dir.join("CHERRY_PICK_HEAD").exists();
+
+            if !rebase_interactive && !rebase_apply && !merge_head && !cherry_pick_head {
+                if let Ok(head_oid) = repo.resolve_commit("HEAD") {
+                    inferred = Some(head_oid);
+                }
+            }
+        }
+    }
+
+    // 4. Unique compatible remote-default evidence or common branch names
+    if inferred.is_none() {
+        for common in &[
+            "refs/remotes/origin/main",
+            "refs/remotes/origin/master",
+            "main",
+            "master",
+            "trunk",
+            "develop",
+        ] {
             if let Ok(Some(_)) = repo.resolve_commit_opt(common) {
-                inferred = Some(repo.resolve_symbolic_full_name(common)?);
-                break;
+                if let Ok(full) = repo.resolve_symbolic_full_name(common) {
+                    inferred = Some(full);
+                    break;
+                }
             }
         }
     }

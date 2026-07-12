@@ -18,7 +18,16 @@ fn test_list_implicit_flag_and_output() {
     // ASSERT: Verify success and output format
     assert!(success, "list --implicit failed: {}", stderr);
 
-    let output = stdout.trim();
+    let output = if stdout.starts_with("Configured Staircase workspace:") {
+        stdout
+            .lines()
+            .skip_while(|l| !l.starts_with("feature/"))
+            .collect::<Vec<_>>()
+            .join("\n")
+    } else {
+        stdout
+    };
+    let output = output.trim();
     assert_eq!(output, "feature/auth 2 steps clean (implicit)");
 }
 

@@ -4,6 +4,7 @@ use git_staircase::GitRepo;
 use std::path::PathBuf;
 
 use git_staircase::cli::{self, Command};
+use git_staircase::workspace::{bootstrap, BootstrapOptions};
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -11,17 +12,42 @@ use git_staircase::cli::{self, Command};
 struct Cli {
     #[command(subcommand)]
     command: Commands,
+
     #[arg(long, global = true)]
     json: bool,
+
     #[arg(long, global = true)]
     porcelain: bool,
+
+    #[arg(long, global = true)]
+    no_bootstrap: bool,
+
+    #[arg(long, global = true)]
+    no_configure: bool,
+
+    #[arg(long, global = true)]
+    workspace: Option<String>,
+
+    #[arg(long, global = true)]
+    workspace_provider: Option<String>,
+
+    #[arg(long, global = true)]
+    review_provider: Option<String>,
+
+    #[arg(long, global = true)]
+    provider_profile: Option<String>,
+
+    #[arg(long, global = true)]
+    workspace_mode: Option<String>,
 }
 
 #[derive(Subcommand)]
 enum Commands {
-    /// Reorder steps of a staircase
+    /// Workspace configuration and provider management
+    Workspace(cli::workspace::WorkspaceCmd),
     /// Land a staircase into its target branch
     Land(cli::land::Land),
+    /// Reorder steps of a staircase
     Reorder(cli::reorder::Reorder),
     /// Move commits between steps
     Move(cli::move_cmd::Move),
@@ -66,6 +92,7 @@ enum Commands {
 impl Commands {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
         match self {
+            Commands::Workspace(cmd) => cmd.run(repo),
             Commands::Land(cmd) => cmd.run(repo),
             Commands::Reorder(cmd) => cmd.run(repo),
             Commands::Move(cmd) => cmd.run(repo),
@@ -117,6 +144,24 @@ fn main() -> Result<()> {
     } else {
         cli::OutputFormat::Human
     };
+
+    let options = BootstrapOptions {
+        no_bootstrap: cli.no_bootstrap,
+        no_configure: cli.no_configure,
+        workspace_id: cli.workspace,
+        workspace_provider: cli.workspace_provider,
+        review_provider: cli.review_provider,
+        provider_profile: cli.provider_profile,
+        workspace_mode: cli.workspace_mode,
+        is_porcelain_or_json: cli.json || cli.porcelain,
+    };
+
+    let bootstrap_res = bootstrap(&repo, &options)?;
+    if let Some(ref msg) = bootstrap_res.message {
+        if matches!(format, cli::OutputFormat::Human) {
+            println!("{}", msg);
+        }
+    }
 
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
