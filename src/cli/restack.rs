@@ -11,27 +11,17 @@ pub struct Restack {
 
 impl super::Command for Restack {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let result = run_internal(repo, self.staircase.clone())?;
-        Ok(Box::new(result))
+        let rs = self.staircase.resolve(repo)?;
+        core::restack(
+            repo,
+            &rs,
+            core::RebaseOptions {
+                leave_upper_steps_stale: false,
+            },
+        )?;
+        Ok(Box::new(Success::new(format!(
+            "Restacked staircase '{}'",
+            rs.metadata().name
+        ))))
     }
-}
-
-pub fn run_internal(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> Result<Success> {
-    let rs = staircase.resolve(repo)?;
-    let rs = &rs;
-    core::restack(
-        repo,
-        &rs,
-        core::RebaseOptions {
-            leave_upper_steps_stale: false,
-        },
-    )?;
-    Ok(Success::new(format!(
-        "Restacked staircase '{}'",
-        rs.metadata().name
-    )))
-}
-
-pub fn run(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> Result<Success> {
-    run_internal(repo, staircase)
 }

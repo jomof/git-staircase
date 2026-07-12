@@ -59,6 +59,13 @@ fn test_consistent_json_output() {
     assert!(success, "status --json failed: {}", stderr);
     let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
     assert!(json.is_object(), "status --json should return an object");
+
+    // Test 'id --json'
+    let (success, stdout, stderr) = run_staircase(dir, &["id", "feature/2", "--json"]);
+    assert!(success, "id --json failed: {}", stderr);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert!(json.is_object(), "id --json should return an object");
+    assert!(json.get("id").is_some());
 }
 
 #[test]
@@ -68,14 +75,15 @@ fn test_consistent_porcelain_output() {
     run_git(dir, &["init", "-b", "main"]);
     let root = commit(dir, "root.txt", "root", "root");
     run_git(dir, &["checkout", "-b", "feature/1", &root]);
-    let c1 = commit(dir, "1.txt", "1", "c1");
+    let _c1 = commit(dir, "1.txt", "1", "c1");
 
     // Test 'list --porcelain'
     let (success, stdout, _stderr) = run_staircase(dir, &["list", "--porcelain"]);
     assert!(success);
     assert!(
         stdout.contains("feature/1\timplicit@"),
-        "porcelain list should contain staircase info"
+        "porcelain list should contain staircase info: {}",
+        stdout
     );
 
     // Test 'status --porcelain'
@@ -83,6 +91,37 @@ fn test_consistent_porcelain_output() {
     assert!(success);
     assert!(
         stdout.contains("feature/1\timplicit@"),
-        "porcelain status should contain staircase info"
+        "porcelain status should contain staircase info: {}",
+        stdout
     );
+
+    // Test 'id --porcelain'
+    let (success, stdout, _stderr) = run_staircase(dir, &["id", "feature/1", "--porcelain"]);
+    assert!(success);
+    assert!(!stdout.trim().is_empty());
+}
+
+#[test]
+fn test_adopt_output_consistency() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
+    run_git(dir, &["init", "-b", "main"]);
+    commit(dir, "root.txt", "root", "root");
+    run_git(dir, &["checkout", "-b", "feat1"]);
+    commit(dir, "f1.txt", "f1", "f1");
+
+    // Test 'adopt' default human output
+    let (success, stdout, stderr) = run_staircase(dir, &["adopt", "my-sc", "feat1"]);
+    assert!(success, "adopt failed: {}", stderr);
+    assert!(
+        stdout.contains("Name: my-sc"),
+        "adopt output should contain Name: {}",
+        stdout
+    );
+
+    // Test 'adopt --json'
+    let (success, stdout, stderr) = run_staircase(dir, &["adopt", "my-sc2", "feat1", "--json"]);
+    assert!(success, "adopt --json failed: {}", stderr);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    assert_eq!(json.get("name").unwrap().as_str().unwrap(), "my-sc2");
 }

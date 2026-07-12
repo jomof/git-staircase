@@ -56,15 +56,3 @@ impl ToPorcelain for IdResult {
         self.id.clone()
     }
 }
-
-pub fn run(
-    repo: &GitRepo,
-    _format: super::OutputFormat,
-    staircase: StaircaseSelectorArgs,
-    kind: IdentityKind,
-) -> Result<()> {
-    let rs = staircase.resolve(repo)?;
-    let id = core::compute_identity(repo, &rs, kind)?;
-    println!("{}", id);
-    Ok(())
-}

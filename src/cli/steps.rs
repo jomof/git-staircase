@@ -10,17 +10,7 @@ pub struct Steps {
 
 impl super::Command for Steps {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let result = run_internal(repo, self.staircase.clone())?;
-        Ok(Box::new(result))
+        let rs = self.staircase.resolve(repo)?;
+        Ok(Box::new(StepsList(rs.metadata().steps.clone())))
     }
-}
-
-pub fn run_internal(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> Result<StepsList> {
-    let rs = staircase.resolve(repo)?;
-    let rs = &rs;
-    Ok(StepsList(rs.metadata().steps.clone()))
-}
-
-pub fn run(repo: &GitRepo, staircase: StaircaseSelectorArgs) -> Result<StepsList> {
-    run_internal(repo, staircase)
 }

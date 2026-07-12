@@ -156,35 +156,6 @@ pub trait Command {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>>;
 }
 
-pub fn print_output<T>(format: OutputFormat, value: &T) -> Result<()>
-where
-    T: Serialize + ToHuman + ToPorcelain,
-{
-    match format {
-        OutputFormat::Human => {
-            let human = value.to_human();
-            if !human.is_empty() {
-                print!("{}", human);
-                if !human.ends_with('\n') {
-                    println!();
-                }
-            }
-            Ok(())
-        }
-        OutputFormat::Json => {
-            println!("{}", serde_json::to_string_pretty(value)?);
-            Ok(())
-        }
-        OutputFormat::Porcelain => {
-            let porcelain = value.to_porcelain();
-            if !porcelain.is_empty() {
-                println!("{}", porcelain);
-            }
-            Ok(())
-        }
-    }
-}
-
 pub fn dispatch(
     format: OutputFormat,
     repo: &GitRepo,

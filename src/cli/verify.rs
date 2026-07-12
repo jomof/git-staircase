@@ -22,15 +22,19 @@ pub struct Verify {
 
 impl super::Command for Verify {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let result = run_internal(
+        let aggregate_opt = if self.aggregate { Some(true) } else { None };
+        let each_prefix_opt = if self.each_prefix { Some(true) } else { None };
+
+        let rs = self.staircase.resolve(repo)?;
+        let results = core::verify(
             repo,
-            self.staircase.clone(),
-            self.aggregate,
-            self.each_prefix,
+            &rs,
             self.build_command.clone(),
             self.test_command.clone(),
+            aggregate_opt,
+            each_prefix_opt,
         )?;
-        Ok(Box::new(VerificationResults(result)))
+        Ok(Box::new(VerificationResults(results)))
     }
 }
 
@@ -48,49 +52,4 @@ impl ToPorcelain for VerificationResults {
     fn to_porcelain(&self) -> String {
         self.0.to_porcelain()
     }
-}
-
-pub fn run_internal(
-    repo: &GitRepo,
-    staircase: StaircaseSelectorArgs,
-    aggregate: bool,
-    each_prefix: bool,
-    build_command: Option<String>,
-    test_command: Option<String>,
-) -> Result<Vec<VerificationResult>> {
-    let aggregate_opt = if aggregate { Some(true) } else { None };
-    let each_prefix_opt = if each_prefix { Some(true) } else { None };
-
-    let rs = staircase.resolve(repo)?;
-    let rs = &rs;
-
-    Ok(core::verify(
-        repo,
-        &rs,
-        build_command,
-        test_command,
-        aggregate_opt,
-        each_prefix_opt,
-    )?)
-}
-
-pub fn run(
-    repo: &GitRepo,
-    _format: super::OutputFormat,
-    staircase: StaircaseSelectorArgs,
-    aggregate: bool,
-    each_prefix: bool,
-    build_command: Option<String>,
-    test_command: Option<String>,
-) -> Result<()> {
-    let results = run_internal(
-        repo,
-        staircase,
-        aggregate,
-        each_prefix,
-        build_command,
-        test_command,
-    )?;
-    println!("{}", results.to_human());
-    Ok(())
 }

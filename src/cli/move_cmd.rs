@@ -16,36 +16,8 @@ pub struct Move {
 
 impl super::Command for Move {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let result = run_internal(
-            repo,
-            self.staircase.clone(),
-            self.from,
-            self.to,
-            self.commits.clone(),
-        )?;
-        Ok(Box::new(result))
+        let rs = self.staircase.resolve(repo)?;
+        core::move_commits(repo, &rs, self.from - 1, self.to - 1, &self.commits)?;
+        Ok(Box::new(Success::new("Moved commits.")))
     }
-}
-
-pub fn run_internal(
-    repo: &GitRepo,
-    staircase: StaircaseSelectorArgs,
-    from: usize,
-    to: usize,
-    commits: Vec<String>,
-) -> Result<Success> {
-    let rs = staircase.resolve(repo)?;
-    let rs = &rs;
-    core::move_commits(repo, &rs, from - 1, to - 1, &commits)?;
-    Ok(Success::new("Moved commits."))
-}
-
-pub fn run(
-    repo: &GitRepo,
-    staircase: StaircaseSelectorArgs,
-    from: usize,
-    to: usize,
-    commits: Vec<String>,
-) -> Result<Success> {
-    run_internal(repo, staircase, from, to, commits)
 }

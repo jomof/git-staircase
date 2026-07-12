@@ -1,12 +1,4 @@
-use git_staircase::core::*;
-use git_staircase::model::*;
-use git_staircase::*;
-use std::fs;
-use std::path::Path;
-use std::process::Command;
-use std::time::Instant;
-use tempfile::TempDir;
-
+use git_staircase::cli::{self, Command};
 mod common;
 use common::*;
 
@@ -70,16 +62,15 @@ fn test_adopt_with_invalid_name() {
     ctx.commit("a.txt", "a", "A");
 
     // ACT
-    let result = cli::adopt::run(
-        &ctx.repo,
-        cli::OutputFormat::Human,
-        "invalid name".to_string(), // Space in name
-        Some("main".to_string()),
-        vec!["valid-branch".to_string()],
-        None,
-        None,
-        false,
-    );
+    let cmd = cli::adopt::Adopt {
+        name: "invalid name".to_string(),
+        onto: Some("main".to_string()),
+        branches: vec!["valid-branch".to_string()],
+        build_command: None,
+        test_command: None,
+        verify_each_prefix: false,
+    };
+    let result = cmd.run(&ctx.repo);
 
     // ASSERT
     assert!(
