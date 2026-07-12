@@ -46,7 +46,13 @@ fn test_restack_inconsistency_on_failure() {
     let rs = git_staircase::core::resolve_staircase(&ctx.repo, "test", None).unwrap().unwrap();
     
     // 4. Run restack. It should succeed on s1 and fail on s2.
-    let result = git_staircase::core::manipulation::restack(&ctx.repo, &rs);
+    let result = git_staircase::core::manipulation::restack(
+        &ctx.repo,
+        &rs,
+        git_staircase::core::RebaseOptions {
+            leave_upper_steps_stale: false,
+        },
+    );
     assert!(result.is_err(), "Restack should fail on s2 conflict");
     
     // 5. Check consistency

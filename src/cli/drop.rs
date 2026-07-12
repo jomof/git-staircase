@@ -12,7 +12,7 @@ pub struct Drop {
     pub step: Option<usize>,
     #[arg(long = "restack", default_value_t = true, action = clap::ArgAction::SetTrue)]
     pub restack: bool,
-    #[arg(long = "no-restack", action = clap::ArgAction::SetFalse, overrides_with = "restack")]
+    #[arg(long = "no-restack", overrides_with = "restack")]
     pub no_restack: bool,
     #[arg(long = "leave-descendants-stale")]
     pub leave_descendants_stale: bool,

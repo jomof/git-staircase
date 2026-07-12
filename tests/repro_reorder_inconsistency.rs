@@ -51,7 +51,7 @@ fn test_reorder_metadata_inconsistency() {
     // Attempt reorder to: [branch-a, branch-c, branch-b]
     // Rebase of branch-c onto branch-a (step 1) will succeed.
     // Rebase of branch-b onto branch-c' (step 2) will fail.
-    let result = reorder(&repo, &rs, &[0, 2, 1]);
+    let result = reorder(&repo, &rs, &[0, 2, 1], git_staircase::core::ReorderOptions { no_restack: false });
     assert!(result.is_err(), "Reorder should fail due to conflict");
 
     // 4. Verify metadata remains UNCHANGED on failure

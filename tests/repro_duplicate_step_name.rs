@@ -30,7 +30,14 @@ fn test_split_duplicate_name() {
     let rs = ResolvedStaircase::Managed(sc);
 
     // 3. Split at c1 with name "s1" (which already exists)
-    let result = git_staircase::core::manipulation::split(&ctx.repo, &rs, 0, &c1, Some("s1"));
+    let result = git_staircase::core::manipulation::split(
+        &ctx.repo,
+        &rs,
+        0,
+        &c1,
+        Some("s1"),
+        git_staircase::core::SplitOptions { no_ref: false },
+    );
 
     // FAILURE: Result is Ok(()), meaning a duplicate name was allowed
     assert!(

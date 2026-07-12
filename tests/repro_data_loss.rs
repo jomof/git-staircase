@@ -54,7 +54,7 @@ fn test_reorder_data_loss_on_dirty_workdir() {
 
     // ACT
     // Run reorder. It will trigger a rebase failure or just the finalize() call.
-    let _ = core::manipulation::reorder(&repo, &rs, &[0]);
+    let _ = core::manipulation::reorder(&repo, &rs, &[0], core::ReorderOptions { no_restack: false });
 
     // ASSERT
     let content = fs::read_to_string(dir.join("file.txt")).unwrap();
