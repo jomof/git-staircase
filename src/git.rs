@@ -1,13 +1,16 @@
 use crate::error::{Result, StaircaseError};
 use crate::model::BranchInfo;
+use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::{Arc, Mutex};
 use std::thread;
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
     pub workdir: PathBuf,
+    ancestry_cache: Arc<Mutex<HashMap<(String, String), bool>>>,
 }
 
 pub struct GitCommand<'a> {
@@ -120,7 +123,10 @@ impl<'a> GitCommand<'a> {
 
 impl GitRepo {
     pub fn new(workdir: PathBuf) -> Self {
-        GitRepo { workdir }
+        GitRepo {
+            workdir,
+            ancestry_cache: Arc::new(Mutex::new(HashMap::new())),
+        }
     }
 
     pub fn git_cmd(&self) -> Command {
@@ -192,15 +198,25 @@ impl GitRepo {
     }
 
     pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool> {
+        if ancestor == descendant {
+            return Ok(true);
+        }
+        let key = (ancestor.to_string(), descendant.to_string());
+        if let Ok(cache) = self.ancestry_cache.lock() {
+            if let Some(&res) = cache.get(&key) {
+                return Ok(res);
+            }
+        }
+
         let output = self
             .command()
             .args(&["merge-base", "--is-ancestor", ancestor, descendant])
             .check_status(false)
             .run_output()?;
 
-        match output.status.code() {
-            Some(0) => Ok(true),
-            Some(1) => Ok(false),
+        let res = match output.status.code() {
+            Some(0) => true,
+            Some(1) => false,
             _ => {
                 if !output.status.success() {
                     return Err(StaircaseError::GitCommandFailed {
@@ -212,9 +228,14 @@ impl GitRepo {
                         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
                     });
                 }
-                Ok(false)
+                false
             }
+        };
+
+        if let Ok(mut cache) = self.ancestry_cache.lock() {
+            cache.insert(key, res);
         }
+        Ok(res)
     }
 
     pub fn merge_base(&self, a: &str, b: &str) -> Result<String> {

@@ -1,7 +1,9 @@
 use super::persistence;
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::model::{IdentityKind, StaircaseMetadata, StaircaseStatus, StepStatus};
+use crate::model::{
+    Discovery, IdentityKind, StaircaseMetadata, StaircaseStatus, StepStatus, WorktreeDraft,
+};
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
     let metadata = persistence::read_metadata(repo, id)?;
@@ -12,6 +14,16 @@ pub fn get_status_metadata(
     repo: &GitRepo,
     metadata: StaircaseMetadata,
     is_implicit: bool,
+) -> Result<StaircaseStatus> {
+    get_status_metadata_ext(repo, metadata, is_implicit, None, None)
+}
+
+pub fn get_status_metadata_ext(
+    repo: &GitRepo,
+    metadata: StaircaseMetadata,
+    is_implicit: bool,
+    known_discoveries: Option<&[Discovery]>,
+    cached_draft: Option<Option<WorktreeDraft>>,
 ) -> Result<StaircaseStatus> {
     let mut steps = Vec::new();
     let mut is_clean = true;
@@ -84,16 +96,25 @@ pub fn get_status_metadata(
     }
 
     // Detect ambiguous: if this managed staircase name is shared by an implicit one
-    if let Ok(discoveries) = super::discovery::discover(repo, Some(&metadata.target), None, false) {
+    if let Some(discoveries) = known_discoveries {
         for d in discoveries {
-            if let crate::model::Discovery::Linear(m) = d {
+            if let Discovery::Linear(m) = d {
+                if m.name == metadata.name && m.id != metadata.id {
+                    is_ambiguous = true;
+                }
+            }
+        }
+    } else if let Ok(discoveries) = super::discovery::discover(repo, Some(&metadata.target), None, false) {
+        for d in discoveries {
+            if let Discovery::Linear(m) = d {
                 if m.name == metadata.name && m.id != metadata.id {
                     is_ambiguous = true;
                 }
             }
         }
     }
-    let worktree_draft = super::draft::get_worktree_draft(repo).ok().filter(|d| {
+
+    let filter_draft = |d: &WorktreeDraft| {
         if let Some(ref att) = d.attachment {
             if let Some(ref sname) = att.staircase_name {
                 if sname == &metadata.name {
@@ -107,7 +128,12 @@ pub fn get_status_metadata(
             }
         }
         metadata.steps.iter().any(|s| s.cut == d.basis)
-    });
+    };
+
+    let worktree_draft = match cached_draft {
+        Some(draft_opt) => draft_opt.filter(filter_draft),
+        None => super::draft::get_worktree_draft(repo).ok().filter(filter_draft),
+    };
 
     Ok(StaircaseStatus {
         metadata,

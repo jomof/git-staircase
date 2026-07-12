@@ -55,19 +55,22 @@ impl super::Command for List {
             }
         }
 
+        let mut discovered_items = Vec::new();
+
         if show_implicit || self.families || show_all {
             match core::discover(repo, self.onto.as_deref(), None, self.families) {
                 Ok(list) => {
-                    for d in list {
+                    discovered_items = list;
+                    for d in &discovered_items {
                         match d {
                             Discovery::Linear(s) => {
                                 if show_implicit || show_all {
-                                    resolved_staircases.push(ResolvedStaircase::Implicit(s));
+                                    resolved_staircases.push(ResolvedStaircase::Implicit(s.clone()));
                                 }
                             }
                             Discovery::Ambiguous(f) => {
                                 if self.families || show_all {
-                                    resolved_staircases.push(ResolvedStaircase::ImplicitFamily(f));
+                                    resolved_staircases.push(ResolvedStaircase::ImplicitFamily(f.clone()));
                                 }
                             }
                         }
@@ -86,6 +89,8 @@ impl super::Command for List {
             ));
         }
 
+        let cached_draft = core::draft::get_worktree_draft(repo).ok();
+
         for rs in resolved_staircases {
             match rs {
                 ResolvedStaircase::ImplicitFamily(f) => {
@@ -95,7 +100,13 @@ impl super::Command for List {
                 }
                 _ => {
                     let m = rs.metadata();
-                    let status = core::get_status_metadata(repo, m.clone(), !rs.is_managed())?;
+                    let status = core::status::get_status_metadata_ext(
+                        repo,
+                        m.clone(),
+                        !rs.is_managed(),
+                        Some(&discovered_items),
+                        Some(cached_draft.clone()),
+                    )?;
                     if self.stale {
                         if matches!(status.state(), crate::model::StaircaseState::Stale) {
                             all_results.push(ListEntry::Staircase(Summary(status)));
