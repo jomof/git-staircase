@@ -27,7 +27,7 @@ fn test_discover_linear() {
         panic!("Expected linear discovery");
     };
     assert_eq!(s.name, "feature/auth");
-    assert_eq!(s.target, "main");
+    assert_eq!(s.target, "refs/heads/main");
     assert_eq!(s.steps.len(), 3);
 
     assert_eq!(s.steps[0].name, "feature/auth-core");

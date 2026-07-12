@@ -134,7 +134,7 @@ fn test_status_output_format_alignment() {
     //   lineage: none
 
     let expected =
-        "feature/auth (implicit)\n  target: main\n  state: clean\n  steps: 2\n  lineage: none";
+        "feature/auth (implicit)\n  target: refs/heads/main\n  state: clean\n  steps: 2\n  lineage: none";
     assert_eq!(stdout, expected, "Status output does not match spec format");
 }
 
@@ -178,7 +178,7 @@ fn test_status_output_format_alignment_managed() {
         stdout
     );
     assert!(
-        stdout.contains("  target: main\n"),
+        stdout.contains("  target: refs/heads/main\n"),
         "Output should contain target"
     );
     assert!(

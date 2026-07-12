@@ -24,7 +24,7 @@ fn test_resolve_staircase_inferred_develop() {
         .unwrap()
         .expect("Should find implicit staircase by inferring develop");
     assert_eq!(rs.metadata().name, "feat");
-    assert_eq!(rs.metadata().target, "develop");
+    assert_eq!(rs.metadata().target, "refs/heads/develop");
 }
 
 #[test]
@@ -45,7 +45,7 @@ fn test_resolve_staircase_with_explicit_onto() {
         .unwrap()
         .expect("Should find staircase relative to develop explicitly");
     assert_eq!(rs.metadata().steps.len(), 2);
-    assert_eq!(rs.metadata().target, "develop");
+    assert_eq!(rs.metadata().target, "refs/heads/develop");
 }
 
 #[test]
