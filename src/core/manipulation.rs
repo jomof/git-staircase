@@ -143,8 +143,7 @@ impl<'a> StaircaseRebaser<'a> {
             let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
             self.repo.run(&["checkout", target])?;
         } else {
-            self.repo
-                .run(&["checkout", &self.original_head_oid])?;
+            self.repo.run(&["checkout", &self.original_head_oid])?;
         }
         Ok(())
     }

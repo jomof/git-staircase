@@ -3,9 +3,9 @@ use crate::git::GitRepo;
 use crate::model::{IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult};
 
 pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
-    let json = serde_json::to_string_pretty(metadata)?;
+    let content = serialize_descriptor(repo, metadata)?;
 
-    let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
+    let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &content)?;
     let blob_oid = blob_oid.trim().to_string();
 
     let public_ref = format!("refs/staircases/{}", metadata.name);
@@ -21,6 +21,47 @@ pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<St
     }
 
     Ok(blob_oid)
+}
+
+pub fn serialize_descriptor(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
+    let mut out = String::new();
+    out.push_str("git-staircase-descriptor 1\n");
+
+    if let Ok(format) = repo.get_object_format() {
+        out.push_str(&format!("object-format {}\n", format));
+    }
+
+    out.push_str(&format!("lineage {}\n", metadata.id));
+    out.push_str(&format!("target-ref {}\n", metadata.target));
+
+    if let Some(ref policy) = metadata.verification_policy {
+        if let Some(ref build) = policy.build_command {
+            out.push_str(&format!("build-command {}\n", build));
+        }
+        if let Some(ref test) = policy.test_command {
+            out.push_str(&format!("test-command {}\n", test));
+        }
+        out.push_str(&format!(
+            "verify-each-prefix {}\n",
+            policy.verify_each_prefix
+        ));
+    }
+
+    for step in &metadata.steps {
+        out.push_str("\n");
+        out.push_str(&format!("step {}\n", step.name));
+        out.push_str(&format!("cut {}\n", step.cut));
+        if let Some(ref branch) = step.branch {
+            let full_ref = if branch.starts_with("refs/") {
+                branch.clone()
+            } else {
+                format!("refs/heads/{}", branch)
+            };
+            out.push_str(&format!("materializing-ref {}\n", full_ref));
+        }
+    }
+
+    Ok(out)
 }
 
 pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetadata> {
@@ -62,7 +103,11 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
 }
 
 pub fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
-    // Try JSON first
+    if content.starts_with("git-staircase-descriptor 1\n") {
+        return parse_canonical_descriptor(content);
+    }
+
+    // Try JSON as fallback for transition
     if let Ok(meta) = serde_json::from_str::<StaircaseMetadata>(content) {
         return Ok(meta);
     }
@@ -71,7 +116,7 @@ pub fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
     parse_legacy_descriptor(content)
 }
 
-fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
+fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
     let mut id = String::new();
     let mut target = String::new();
     let mut steps = Vec::new();
@@ -80,7 +125,7 @@ fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
 
     for line in content.lines() {
         let line = line.trim();
-        if line.is_empty() {
+        if line.is_empty() || line == "git-staircase-descriptor 1" {
             continue;
         }
 
@@ -152,6 +197,11 @@ fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
         steps,
         verification_policy,
     })
+}
+
+fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
+    // Legacy format was also KVP but without the header
+    parse_canonical_descriptor(content)
 }
 
 pub fn record_verification(
