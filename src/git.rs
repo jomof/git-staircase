@@ -1,16 +1,15 @@
 use crate::error::{Result, StaircaseError};
+use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
-use std::collections::HashMap;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
-use std::sync::{Arc, Mutex};
 use std::thread;
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
     pub workdir: PathBuf,
-    ancestry_cache: Arc<Mutex<HashMap<(String, String), bool>>>,
+    pub memoizer: Memoizer,
 }
 
 pub struct GitCommand<'a> {
@@ -125,8 +124,12 @@ impl GitRepo {
     pub fn new(workdir: PathBuf) -> Self {
         GitRepo {
             workdir,
-            ancestry_cache: Arc::new(Mutex::new(HashMap::new())),
+            memoizer: Memoizer::new(),
         }
+    }
+
+    pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
+        GitRepo { workdir, memoizer }
     }
 
     pub fn git_cmd(&self) -> Command {
@@ -201,11 +204,8 @@ impl GitRepo {
         if ancestor == descendant {
             return Ok(true);
         }
-        let key = (ancestor.to_string(), descendant.to_string());
-        if let Ok(cache) = self.ancestry_cache.lock() {
-            if let Some(&res) = cache.get(&key) {
-                return Ok(res);
-            }
+        if let Some(res) = self.memoizer.get_ancestry(ancestor, descendant) {
+            return Ok(res);
         }
 
         let output = self
@@ -232,14 +232,17 @@ impl GitRepo {
             }
         };
 
-        if let Ok(mut cache) = self.ancestry_cache.lock() {
-            cache.insert(key, res);
-        }
+        self.memoizer.set_ancestry(ancestor, descendant, res);
         Ok(res)
     }
 
     pub fn merge_base(&self, a: &str, b: &str) -> Result<String> {
-        self.command().args(&["merge-base", a, b]).run()
+        if let Some(mb) = self.memoizer.get_merge_base(a, b) {
+            return Ok(mb);
+        }
+        let mb = self.command().args(&["merge-base", a, b]).run()?;
+        self.memoizer.set_merge_base(a, b, &mb);
+        Ok(mb)
     }
 
     pub fn commits_between(&self, base: &str, tip: &str) -> Result<Vec<String>> {
@@ -271,28 +274,51 @@ impl GitRepo {
     }
 
     pub fn get_object_format(&self) -> Result<String> {
-        self.command()
+        if let Some(fmt) = self.memoizer.get_object_format() {
+            return Ok(fmt);
+        }
+        let fmt = self
+            .command()
             .args(&["rev-parse", "--show-object-format"])
-            .run()
+            .run()?;
+        self.memoizer.set_object_format(&fmt);
+        Ok(fmt)
     }
 
     pub fn get_tree_id(&self, rev: &str) -> Result<String> {
-        self.command()
+        if let Some(tree) = self.memoizer.get_tree_id(rev) {
+            return Ok(tree);
+        }
+        let tree = self
+            .command()
             .args(&["rev-parse", &format!("{}^{{tree}}", rev)])
-            .run()
+            .run()?;
+        self.memoizer.set_tree_id(rev, &tree);
+        Ok(tree)
     }
 
     pub fn hash_data(&self, data: &str) -> Result<String> {
-        self.command()
+        if let Some(hash) = self.memoizer.get_hash_data(data) {
+            return Ok(hash);
+        }
+        let hash = self
+            .command()
             .args(&["hash-object", "--stdin"])
             .stdin(data)
-            .run()
+            .run()?;
+        self.memoizer.set_hash_data(data, &hash);
+        Ok(hash)
     }
 
     pub fn get_patch_id(&self, base: &str, tip: &str) -> Result<String> {
+        if let Some(pid) = self.memoizer.get_patch_id(base, tip) {
+            return Ok(pid);
+        }
         let diff = self.command().args(&["diff-tree", "-p", base, tip]).run()?;
         let stdout = self.command().args(&["patch-id"]).stdin(diff).run()?;
-        Ok(stdout.split_whitespace().next().unwrap_or("").to_string())
+        let pid = stdout.split_whitespace().next().unwrap_or("").to_string();
+        self.memoizer.set_patch_id(base, tip, &pid);
+        Ok(pid)
     }
 
     pub fn current_branch(&self) -> Result<Option<String>> {

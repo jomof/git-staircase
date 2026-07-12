@@ -2,6 +2,7 @@ pub mod cli;
 pub mod core;
 pub mod error;
 pub mod git;
+pub mod memoization;
 pub mod model;
 pub mod workspace;
 
