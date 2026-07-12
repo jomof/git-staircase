@@ -1,4 +1,5 @@
 pub mod discovery;
+pub mod draft;
 pub mod graph;
 pub mod identity;
 pub mod inference;
@@ -11,6 +12,10 @@ pub mod utils;
 pub mod verification;
 
 pub use discovery::discover;
+pub use draft::{
+    DraftDiffMode, MaterializeOptions, MaterializeResult, attach_draft, create_snapshot,
+    detach_draft, diff_draft, get_worktree_draft, materialize_draft, restore_snapshot,
+};
 pub use identity::compute_identity;
 pub use inference::infer_onto;
 pub use manipulation::{

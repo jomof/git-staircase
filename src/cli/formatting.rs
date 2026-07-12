@@ -310,6 +310,70 @@ impl ToPresentation for StaircaseStatus {
             ]);
         }
 
+        if let Some(ref draft) = self.worktree_draft {
+            let mut draft_children = vec![];
+            if draft.is_attachment_stale {
+                draft_children.push(Presentation::Field {
+                    label: "attachment".to_string(),
+                    value: "stale".to_string(),
+                });
+            } else if let Some(ref att) = draft.attachment {
+                let attached_to = format!(
+                    "{} {}",
+                    att.staircase_name.as_deref().unwrap_or("unnamed"),
+                    att.step_name.as_deref().unwrap_or("")
+                );
+                draft_children.push(Presentation::Field {
+                    label: "attached to".to_string(),
+                    value: attached_to.trim().to_string(),
+                });
+                let intent_str = match &att.intent {
+                    crate::model::DraftIntent::ExtendStep => "extend-step",
+                    crate::model::DraftIntent::NewStep => "new-step",
+                    crate::model::DraftIntent::Unassigned => "unassigned",
+                    crate::model::DraftIntent::RewriteStep(_) => "rewrite-step",
+                };
+                draft_children.push(Presentation::Field {
+                    label: "intent".to_string(),
+                    value: intent_str.to_string(),
+                });
+            }
+            let basis_short = if draft.basis.len() >= 7 {
+                &draft.basis[..7]
+            } else {
+                &draft.basis
+            };
+            draft_children.push(Presentation::Field {
+                label: "basis".to_string(),
+                value: basis_short.to_string(),
+            });
+            draft_children.push(Presentation::Field {
+                label: "staged".to_string(),
+                value: format!("{} paths", draft.staged_paths.len()),
+            });
+            draft_children.push(Presentation::Field {
+                label: "unstaged".to_string(),
+                value: format!("{} paths", draft.unstaged_paths.len()),
+            });
+            draft_children.push(Presentation::Field {
+                label: "untracked".to_string(),
+                value: format!("{} paths", draft.untracked_paths.len()),
+            });
+            draft_children.push(Presentation::Field {
+                label: "conflicts".to_string(),
+                value: if draft.conflicted_paths.is_empty() {
+                    "none".to_string()
+                } else {
+                    format!("{} paths", draft.conflicted_paths.len())
+                },
+            });
+
+            children.push(Presentation::Section {
+                title: "current worktree draft:".to_string(),
+                children: draft_children,
+            });
+        }
+
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: format!(
@@ -676,6 +740,165 @@ impl ToPresentation for LogOutput {
     }
 }
 impl_formatting!(LogOutput);
+
+impl ToPresentation for crate::model::WorktreeDraft {
+    fn to_presentation(&self) -> Presentation {
+        let mut children = vec![];
+        if self.is_attachment_stale {
+            children.push(Presentation::Field {
+                label: "attachment".to_string(),
+                value: "stale".to_string(),
+            });
+        } else if let Some(ref att) = self.attachment {
+            let attached_to = format!(
+                "{} {}",
+                att.staircase_name.as_deref().unwrap_or("unnamed"),
+                att.step_name.as_deref().unwrap_or("")
+            );
+            children.push(Presentation::Field {
+                label: "attached to".to_string(),
+                value: attached_to.trim().to_string(),
+            });
+            let intent_str = match &att.intent {
+                crate::model::DraftIntent::ExtendStep => "extend-step",
+                crate::model::DraftIntent::NewStep => "new-step",
+                crate::model::DraftIntent::Unassigned => "unassigned",
+                crate::model::DraftIntent::RewriteStep(_) => "rewrite-step",
+            };
+            children.push(Presentation::Field {
+                label: "intent".to_string(),
+                value: intent_str.to_string(),
+            });
+        }
+        let basis_short = if self.basis.len() >= 7 {
+            &self.basis[..7]
+        } else {
+            &self.basis
+        };
+        children.push(Presentation::Field {
+            label: "basis".to_string(),
+            value: basis_short.to_string(),
+        });
+        children.push(Presentation::Field {
+            label: "staged".to_string(),
+            value: format!("{} paths", self.staged_paths.len()),
+        });
+        children.push(Presentation::Field {
+            label: "unstaged".to_string(),
+            value: format!("{} paths", self.unstaged_paths.len()),
+        });
+        children.push(Presentation::Field {
+            label: "untracked".to_string(),
+            value: format!("{} paths", self.untracked_paths.len()),
+        });
+        children.push(Presentation::Field {
+            label: "conflicts".to_string(),
+            value: if self.conflicted_paths.is_empty() {
+                "none".to_string()
+            } else {
+                format!("{} paths", self.conflicted_paths.len())
+            },
+        });
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: "current worktree draft:".to_string(),
+                children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "draft".to_string(),
+                self.basis.clone(),
+                self.classification.to_string(),
+                self.staged_paths.len().to_string(),
+                self.unstaged_paths.len().to_string(),
+                self.untracked_paths.len().to_string(),
+            ]))),
+        ])
+    }
+}
+impl_formatting!(crate::model::WorktreeDraft);
+
+impl ToPresentation for crate::model::DraftAttachment {
+    fn to_presentation(&self) -> Presentation {
+        let attached_to = format!(
+            "{} {}",
+            self.staircase_name.as_deref().unwrap_or("unnamed"),
+            self.step_name.as_deref().unwrap_or("")
+        );
+        let intent_str = match &self.intent {
+            crate::model::DraftIntent::ExtendStep => "extend-step",
+            crate::model::DraftIntent::NewStep => "new-step",
+            crate::model::DraftIntent::Unassigned => "unassigned",
+            crate::model::DraftIntent::RewriteStep(_) => "rewrite-step",
+        };
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Attached to {} with intent '{}' (expected basis: {})",
+                attached_to.trim(),
+                intent_str,
+                if self.expected_basis.len() >= 7 {
+                    &self.expected_basis[..7]
+                } else {
+                    &self.expected_basis
+                }
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "attached".to_string(),
+                self.staircase_name.as_deref().unwrap_or("").to_string(),
+                self.step_name.as_deref().unwrap_or("").to_string(),
+                intent_str.to_string(),
+                self.expected_basis.clone(),
+            ]))),
+        ])
+    }
+}
+impl_formatting!(crate::model::DraftAttachment);
+
+impl ToPresentation for crate::model::DraftSnapshot {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Created snapshot {} (basis: {})",
+                self.id,
+                if self.basis.len() >= 7 {
+                    &self.basis[..7]
+                } else {
+                    &self.basis
+                }
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "snapshot".to_string(),
+                self.id.clone(),
+                self.basis.clone(),
+            ]))),
+        ])
+    }
+}
+impl_formatting!(crate::model::DraftSnapshot);
+
+impl ToPresentation for crate::core::draft::MaterializeResult {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Materialized draft as commit {} on step '{}' of staircase '{}'",
+                if self.commit_oid.len() >= 7 {
+                    &self.commit_oid[..7]
+                } else {
+                    &self.commit_oid
+                },
+                self.step_name,
+                self.staircase_name
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "materialized".to_string(),
+                self.staircase_name.clone(),
+                self.step_name.clone(),
+                self.commit_oid.clone(),
+            ]))),
+        ])
+    }
+}
+impl_formatting!(crate::core::draft::MaterializeResult);
 
 impl<T: ToHuman> ToHuman for Vec<T> {
     fn to_human(&self) -> String {

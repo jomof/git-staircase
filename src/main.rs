@@ -92,6 +92,8 @@ enum Commands {
     Review(cli::review::ReviewCmd),
     /// List commits in each step of a staircase
     Commits(cli::commits::Commits),
+    /// Worktree draft management and materialization
+    Draft(cli::draft::DraftCmd),
 }
 
 impl Commands {
@@ -120,6 +122,7 @@ impl Commands {
             Commands::Steps(cmd) => cmd.run(repo),
             Commands::Review(cmd) => cmd.run(repo),
             Commands::Commits(cmd) => cmd.run(repo),
+            Commands::Draft(cmd) => cmd.run(repo),
         }
     }
 }

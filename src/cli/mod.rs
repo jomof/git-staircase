@@ -8,6 +8,7 @@ pub mod commits;
 pub mod delete;
 pub mod diff;
 pub mod discover;
+pub mod draft;
 pub mod drop;
 pub mod formatting;
 pub mod graph;

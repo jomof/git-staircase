@@ -93,6 +93,22 @@ pub fn get_status_metadata(
             }
         }
     }
+    let worktree_draft = super::draft::get_worktree_draft(repo).ok().filter(|d| {
+        if let Some(ref att) = d.attachment {
+            if let Some(ref sname) = att.staircase_name {
+                if sname == &metadata.name {
+                    return true;
+                }
+            }
+            if let Some(ref sid) = att.staircase_id {
+                if sid == &metadata.id {
+                    return true;
+                }
+            }
+        }
+        metadata.steps.iter().any(|s| s.cut == d.basis)
+    });
+
     Ok(StaircaseStatus {
         metadata,
         steps,
@@ -101,5 +117,6 @@ pub fn get_status_metadata(
         is_diverged,
         is_ambiguous,
         verification_results,
+        worktree_draft,
     })
 }

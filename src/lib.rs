@@ -10,8 +10,9 @@ pub use cli::formatting::{ToHuman, ToPorcelain};
 pub use error::{Result, StaircaseError};
 pub use git::GitRepo;
 pub use model::{
-    Discovery, FamilyStep, IdentityKind, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step,
-    StepStatus, VerificationPolicy, VerificationResult,
+    Discovery, DraftAttachment, DraftClassification, DraftIntent, DraftSnapshot, FamilyStep,
+    IdentityKind, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, StepStatus,
+    VerificationPolicy, VerificationResult, WorktreeDraft,
 };
 
 pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
