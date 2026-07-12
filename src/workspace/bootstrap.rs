@@ -7,6 +7,7 @@ use crate::workspace::provider::{
     discover_installed_providers, expand_profile, get_core_git_candidate,
     invoke_provider_probe_workspace,
 };
+use crate::workspace::repo_provider::probe_repo_workspace;
 use crate::workspace::storage::{
     current_timestamp, find_workspace_record_for_path, load_workspace_record_by_id,
     save_workspace_record,
@@ -117,6 +118,10 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         if let Ok(Some(cand)) = invoke_provider_probe_workspace(prov, repo) {
             candidates.push(cand);
         }
+    }
+
+    if let Ok(Some(repo_cand)) = probe_repo_workspace(repo) {
+        candidates.push(repo_cand);
     }
 
     let fallback_cand = get_core_git_candidate(repo);
