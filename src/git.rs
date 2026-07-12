@@ -100,6 +100,15 @@ impl GitRepo {
         Ok(stdout.trim().to_string())
     }
 
+    pub fn resolve_symbolic_full_name(&self, name: &str) -> Result<String> {
+        let stdout = self.run(&["rev-parse", "--symbolic-full-name", name])?;
+        let full_name = stdout.trim().to_string();
+        if full_name.is_empty() {
+            return Err(StaircaseError::Other(format!("Could not resolve \"{}\" to a full refname", name)));
+        }
+        Ok(full_name)
+    }
+
     pub fn resolve_commit_opt(&self, rev: &str) -> Result<Option<String>> {
         self.resolve_ref_opt(&format!("{}^{{commit}}", rev))
     }

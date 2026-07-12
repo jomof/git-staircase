@@ -20,7 +20,7 @@ pub fn resolve_staircase_internal(
     resolve_managed(repo, name, &mut resolved_staircases)?;
 
     let onto_final = match onto {
-        Some(o) => o.to_string(),
+        Some(o) => repo.resolve_symbolic_full_name(o).unwrap_or_else(|_| o.to_string()),
         None => infer_onto(repo)?,
     };
     let onto_oid = repo.resolve_commit(&onto_final)?;
@@ -262,7 +262,7 @@ pub fn resolve_explicit_staircase(
     onto: Option<&str>,
 ) -> Result<ResolvedStaircase> {
     let onto_final = match onto {
-        Some(o) => o.to_string(),
+        Some(o) => repo.resolve_symbolic_full_name(o).unwrap_or_else(|_| o.to_string()),
         None => infer_onto(repo)?,
     };
     let onto_oid = repo.resolve_commit(&onto_final)?;
@@ -349,7 +349,7 @@ pub fn resolve_by_structural_key(
     onto: Option<&str>,
 ) -> Result<ResolvedStaircase> {
     let onto_final = match onto {
-        Some(o) => o.to_string(),
+        Some(o) => repo.resolve_symbolic_full_name(o).unwrap_or_else(|_| o.to_string()),
         None => infer_onto(repo)?,
     };
     let discoveries = discover(repo, Some(&onto_final))?;

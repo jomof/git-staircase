@@ -33,7 +33,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
     let branches = repo.local_branches()?;
 
     let onto_final = match onto {
-        Some(o) => o.to_string(),
+        Some(o) => repo.resolve_symbolic_full_name(o).unwrap_or_else(|_| o.to_string()),
         None => infer_onto(repo)?,
     };
     let onto_oid = match repo.resolve_commit(&onto_final) {
