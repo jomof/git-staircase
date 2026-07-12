@@ -95,6 +95,13 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
     let mut has_strong_evidence = false;
 
     if let Some(rec) = record {
+        // In a 'repo' workspace, repo provider evidence implies Gerrit review integration
+        if let Some(binding) = rec.capability_bindings.get(&Capability::Workspace) {
+            if binding.provider == "repo" {
+                has_strong_evidence = true;
+            }
+        }
+
         if let Some(endpoint) = rec.discovery_fingerprint.get("review_endpoint") {
             server_id = Some(endpoint.clone());
             has_strong_evidence = true;
@@ -148,12 +155,31 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
         return Ok(None);
     }
 
+    if server_id.is_none() {
+        if let Ok(remotes) = repo.run(&["remote", "-v"]) {
+            for line in remotes.lines() {
+                let parts: Vec<&str> = line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let url = parts[1];
+                    if let Some(host) = extract_host_from_git_url(url) {
+                        server_id = Some(host);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+
     if project.is_none() && record.is_some() {
         if let Some(rec) = record {
             if let Some(proj_name) = rec.discovery_fingerprint.get("project_name") {
                 project = Some(proj_name.clone());
             }
         }
+    }
+
+    if server_id.is_none() && project.is_some() {
+        server_id = Some("gerrit".to_string());
     }
 
     if let (Some(server), Some(proj)) = (server_id, project) {
@@ -171,7 +197,6 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
     }
 }
 
-#[allow(dead_code)]
 fn extract_host_from_git_url(url: &str) -> Option<String> {
     let s = url.trim();
     if let Some(stripped) = s
