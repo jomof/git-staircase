@@ -15,7 +15,7 @@ fn test_verification_policy_persistence() {
     };
 
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-id-123".to_string(),
         name: "test-staircase".to_string(),
         target: "refs/heads/main".to_string(),

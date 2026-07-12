@@ -151,7 +151,7 @@ fn test_split_duplicate_name() {
 
     // 2. Adopt as managed staircase with step s1 at c2
     let sc = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),

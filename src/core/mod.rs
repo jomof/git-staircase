@@ -14,8 +14,8 @@ pub use discovery::discover;
 pub use identity::compute_identity;
 pub use inference::infer_onto;
 pub use manipulation::{
-    DropOptions, JoinOptions, JoinRefAction, RebaseOptions, ReorderOptions, SplitOptions, delete,
-    drop, join, move_commits, rebase, reorder, restack, split, land, LandOptions,
+    DropOptions, JoinOptions, JoinRefAction, LandOptions, RebaseOptions, ReorderOptions,
+    SplitOptions, delete, drop, join, land, move_commits, rebase, reorder, restack, split,
 };
 pub use resolution::{
     find_by_name, resolve_by_id, resolve_by_name, resolve_by_ref, resolve_by_revision,

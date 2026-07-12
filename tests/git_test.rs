@@ -47,7 +47,9 @@ fn test_builder_basic_run() {
     let ctx = TestContext::new();
 
     // ACT
-    let output = ctx.repo.command()
+    let output = ctx
+        .repo
+        .command()
         .arg("rev-parse")
         .arg("--is-inside-work-tree")
         .run()
@@ -64,13 +66,17 @@ fn test_builder_trim() {
 
     // ACT & ASSERT
     // Default should be trimmed if we return String
-    let output = ctx.repo.command()
+    let output = ctx
+        .repo
+        .command()
         .args(&["rev-parse", "--is-inside-work-tree"])
         .run()
         .unwrap();
     assert_eq!(output, "true");
 
-    let output_untrimmed = ctx.repo.command()
+    let output_untrimmed = ctx
+        .repo
+        .command()
         .args(&["rev-parse", "--is-inside-work-tree"])
         .trim(false)
         .run()
@@ -84,13 +90,18 @@ fn test_builder_stdin() {
     let ctx = TestContext::new();
 
     // ACT
-    let output = ctx.repo.command()
+    let output = ctx
+        .repo
+        .command()
         .args(&["hash-object", "--stdin"])
         .stdin("hello")
         .run()
         .unwrap();
-    
-    let expected = ctx.repo.run_with_stdin(&["hash-object", "--stdin"], "hello").unwrap();
+
+    let expected = ctx
+        .repo
+        .run_with_stdin(&["hash-object", "--stdin"], "hello")
+        .unwrap();
 
     // ASSERT
     assert_eq!(output, expected);
@@ -102,10 +113,12 @@ fn test_builder_error_handling() {
     let ctx = TestContext::new();
 
     // ACT
-    let result = ctx.repo.command()
+    let result = ctx
+        .repo
+        .command()
         .args(&["rev-parse", "NON_EXISTENT"])
         .run();
-    
+
     // ASSERT
     assert!(result.is_err());
 }

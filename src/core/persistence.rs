@@ -15,7 +15,11 @@ pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<St
     repo.run(&["update-ref", &state_ref, &blob_oid])?;
 
     for step in &metadata.steps {
-        let key = if !step.id.is_empty() { &step.id } else { &step.name };
+        let key = if !step.id.is_empty() {
+            &step.id
+        } else {
+            &step.name
+        };
         let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, key);
         repo.run(&["update-ref", &step_ref, &step.cut])?;
     }
@@ -198,7 +202,7 @@ fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
     }
 
     Ok(StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id,
         name: String::new(),
         target,
@@ -223,7 +227,10 @@ pub fn record_verification(
 ) -> Result<String> {
     let ref_name = match kind {
         IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
-        IdentityKind::Revision => format!("refs/staircases/by-revision/{}/verification", key),
+        IdentityKind::Revision => format!(
+            "refs/staircases/by-revision/{}/verification",
+            key.replace(":", "/")
+        ),
         _ => {
             return Err(StaircaseError::Other(format!(
                 "Unsupported identity kind for verification: {:?}",
@@ -368,7 +375,10 @@ pub fn read_verification(
 ) -> Result<Option<Vec<VerificationResult>>> {
     let ref_name = match kind {
         IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
-        IdentityKind::Revision => format!("refs/staircases/by-revision/{}/verification", key),
+        IdentityKind::Revision => format!(
+            "refs/staircases/by-revision/{}/verification",
+            key.replace(":", "/")
+        ),
         _ => return Ok(None),
     };
 

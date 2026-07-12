@@ -28,7 +28,7 @@ fn test_managed_staircase_updates() {
     let b_oid = ctx.repo.resolve_ref("branch-b").unwrap();
 
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-managed".to_string(),
         name: "Managed".to_string(),
         target: "main".to_string(),
@@ -130,7 +130,7 @@ fn test_implicit_staircase_updates() {
     let b_oid = ctx.repo.resolve_ref("branch-b").unwrap();
 
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-implicit".to_string(),
         name: "Implicit".to_string(),
         target: "main".to_string(),

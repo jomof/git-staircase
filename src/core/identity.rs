@@ -22,7 +22,8 @@ pub fn compute_identity(
             for (i, step) in metadata.steps.iter().enumerate() {
                 data.push_str(&format!("step{}:{}\n", i, step.cut));
             }
-            repo.hash_data(&data)
+            let hash = repo.hash_data(&data)?;
+            Ok(format!("{}:{}", format, hash))
         }
         IdentityKind::Body => {
             let target_oid = repo.resolve_commit(&metadata.target)?;

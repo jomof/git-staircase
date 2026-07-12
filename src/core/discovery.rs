@@ -97,7 +97,7 @@ pub fn discover(
                 };
 
                 discoveries.push(Discovery::Linear(StaircaseMetadata {
-            landing_policy: None,
+                    landing_policy: None,
                     id: compute_implicit_id(&repo.get_object_format()?, &onto_oid, &steps),
                     verification_policy: None,
                     name,

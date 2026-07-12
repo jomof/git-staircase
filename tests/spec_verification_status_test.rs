@@ -28,7 +28,7 @@ fn test_verification_status_in_show_output() {
     let initial_oid = repo.resolve_commit("HEAD").unwrap();
 
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-id".to_string(),
         name: "test-staircase".to_string(),
         target: "main".to_string(),

@@ -81,7 +81,7 @@ fn test_reorder_data_loss_on_dirty_workdir() {
 
     let repo = GitRepo::new(dir.to_path_buf());
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),
@@ -208,7 +208,7 @@ fn test_verify_leaves_detached_head() {
     let c2 = run_git(repo_dir, &["rev-parse", "HEAD"]);
 
     let sc = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),

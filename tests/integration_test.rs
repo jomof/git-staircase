@@ -195,7 +195,7 @@ fn test_adopt_validation() {
     let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
     let s_empty = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: uuid::Uuid::new_v4().to_string(),
         name: "empty".to_string(),
         target: "main".to_string(),
@@ -408,7 +408,7 @@ fn test_slash_name_discovery() {
     // ARRANGE
     let ctx = TestContext::new();
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "feature/foo".to_string(),
         target: "main".to_string(),

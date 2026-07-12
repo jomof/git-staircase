@@ -9,7 +9,7 @@ fn test_identity_lineage_and_nominal() {
     let ctx = TestContext::new();
     let target = ctx.repo.resolve_commit("main").unwrap();
     let staircase = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "test-uuid".to_string(),
         name: "test-name".to_string(),
         target: target,
@@ -49,7 +49,7 @@ fn test_identity_revision() {
     let c1 = ctx.commit("f1.txt", "1", "c1");
 
     let s1 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target.clone(),
@@ -76,7 +76,7 @@ fn test_identity_revision() {
     // ARRANGE (Modify)
     let c2 = ctx.commit("f2.txt", "2", "c2");
     let s2 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target,
@@ -113,7 +113,7 @@ fn test_identity_body() {
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
     let s1 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target.clone(),
@@ -147,7 +147,7 @@ fn test_identity_body() {
 
     // ARRANGE (Join)
     let s2 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target,
@@ -184,7 +184,7 @@ fn test_identity_decomposition() {
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
     let s1 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target.clone(),
@@ -222,7 +222,7 @@ fn test_identity_decomposition() {
     let c2_new = ctx.commit("f2.txt", "2", "c2 rebased");
 
     let s2 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target.clone(),
@@ -259,7 +259,7 @@ fn test_identity_decomposition() {
 
     // ARRANGE (Squash)
     let s3 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target.clone(),
@@ -296,7 +296,7 @@ fn test_identity_outcome() {
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
     let s1 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target.clone(),
@@ -336,7 +336,7 @@ fn test_identity_outcome() {
     let top_new = ctx.run_git(&["rev-parse", "HEAD"]);
 
     let s2 = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
         target: target,
@@ -362,4 +362,37 @@ fn test_identity_outcome() {
 
     // ASSERT (Same final tree)
     assert_eq!(id1, id2);
+}
+
+#[test]
+fn test_revision_identity_prefix() {
+    // ARRANGE
+    let ctx = TestContext::new();
+    let target = ctx.repo.resolve_commit("main").unwrap();
+    let staircase = StaircaseMetadata {
+        landing_policy: None,
+        id: "test-uuid".to_string(),
+        name: "test-name".to_string(),
+        target: target,
+        steps: vec![],
+        verification_policy: None,
+        primary_branch_layout: None,
+        branch_layout_base: None,
+    };
+
+    // ACT
+    let revision_id = core::compute_identity(
+        &ctx.repo,
+        &ResolvedStaircase::Managed(staircase),
+        IdentityKind::Revision,
+    )
+    .unwrap();
+
+    // ASSERT
+    // The revision ID should start with "sha1:" or "sha256:"
+    assert!(
+        revision_id.starts_with("sha1:") || revision_id.starts_with("sha256:"),
+        "Revision ID '{}' must start with an algorithm prefix (e.g., 'sha1:')",
+        revision_id
+    );
 }

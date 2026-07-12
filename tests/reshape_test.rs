@@ -176,7 +176,7 @@ fn test_reorder_without_branches() {
     let c3 = commit(dir, "file3.txt", "3", "commit 3");
 
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
         target: "main".to_string(),
@@ -252,18 +252,27 @@ fn test_reorder_without_branches() {
 
     // Verify step refs are updated
     assert_eq!(
-        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/{}", metadata.id, status.metadata.steps[0].id))
-            .unwrap(),
+        repo.resolve_ref(&format!(
+            "refs/staircase-state/{}/steps/{}",
+            metadata.id, status.metadata.steps[0].id
+        ))
+        .unwrap(),
         status.metadata.steps[0].cut
     );
     assert_eq!(
-        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/{}", metadata.id, status.metadata.steps[1].id))
-            .unwrap(),
+        repo.resolve_ref(&format!(
+            "refs/staircase-state/{}/steps/{}",
+            metadata.id, status.metadata.steps[1].id
+        ))
+        .unwrap(),
         status.metadata.steps[1].cut
     );
     assert_eq!(
-        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/{}", metadata.id, status.metadata.steps[2].id))
-            .unwrap(),
+        repo.resolve_ref(&format!(
+            "refs/staircase-state/{}/steps/{}",
+            metadata.id, status.metadata.steps[2].id
+        ))
+        .unwrap(),
         status.metadata.steps[2].cut
     );
 }
@@ -281,7 +290,7 @@ fn test_restack_without_branches() {
     let c2 = commit(dir, "file2.txt", "2", "commit 2");
 
     let metadata = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
         target: "main".to_string(),

@@ -289,7 +289,7 @@ pub fn resolve_explicit_staircase(
         (None, None)
     };
     Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id,
         name: steps
             .last()

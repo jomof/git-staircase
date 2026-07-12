@@ -66,7 +66,7 @@ fn test_selector_args_resolve_id() {
     let c1 = commit(path, "feat1.txt", "1", "feat 1");
 
     let sc = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
         target: "main".to_string(),
@@ -108,7 +108,7 @@ fn test_selector_args_resolve_explicit_name() {
     let c1 = commit(path, "feat1.txt", "1", "feat 1");
 
     let sc = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
         target: "main".to_string(),
@@ -151,7 +151,7 @@ fn test_selector_args_ambiguity() {
     let c1 = commit(path, "f1.txt", "1", "c1");
 
     let sc = StaircaseMetadata {
-            landing_policy: None,
+        landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
         target: "main".to_string(),

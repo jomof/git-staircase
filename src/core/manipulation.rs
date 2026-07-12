@@ -534,11 +534,7 @@ pub struct LandOptions {
     pub policy: Option<LandingPolicy>,
 }
 
-pub fn land(
-    repo: &GitRepo,
-    staircase: &ResolvedStaircase,
-    options: LandOptions,
-) -> Result<()> {
+pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions) -> Result<()> {
     let status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
@@ -546,14 +542,24 @@ pub fn land(
     )?;
 
     if !status.is_clean {
-        return Err(StaircaseError::Other("Staircase is stale or modified. Please run restack or update metadata before landing.".to_string()));
+        return Err(StaircaseError::Other(
+            "Staircase is stale or modified. Please run restack or update metadata before landing."
+                .to_string(),
+        ));
     }
 
     let metadata = &status.metadata;
-    let policy = options.policy.or(metadata.landing_policy).unwrap_or(LandingPolicy::Stepwise);
-    
-    let top_cut = &metadata.steps.last().ok_or_else(|| StaircaseError::InvalidStructure("Empty staircase".to_string()))?.cut;
-    
+    let policy = options
+        .policy
+        .or(metadata.landing_policy)
+        .unwrap_or(LandingPolicy::Stepwise);
+
+    let top_cut = &metadata
+        .steps
+        .last()
+        .ok_or_else(|| StaircaseError::InvalidStructure("Empty staircase".to_string()))?
+        .cut;
+
     if metadata.target.starts_with("refs/") {
         match policy {
             LandingPolicy::Stepwise => {
@@ -566,8 +572,11 @@ pub fn land(
             }
         }
     } else {
-        return Err(StaircaseError::Other(format!("Target {} is not a ref, cannot land", metadata.target)));
+        return Err(StaircaseError::Other(format!(
+            "Target {} is not a ref, cannot land",
+            metadata.target
+        )));
     }
-    
+
     Ok(())
 }
