@@ -92,10 +92,12 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
     let mut server_id = None;
     let mut project = None;
     let mut dest_branch = None;
+    let mut has_strong_evidence = false;
 
     if let Some(rec) = record {
         if let Some(endpoint) = rec.discovery_fingerprint.get("review_endpoint") {
             server_id = Some(endpoint.clone());
+            has_strong_evidence = true;
         }
         if let Some(proj) = &rec.current_project_id {
             project = Some(proj.clone());
@@ -109,6 +111,7 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
         if let Ok(config_host) = repo.run(&["config", "--get", "gerrit.host"]) {
             if !config_host.trim().is_empty() {
                 server_id = Some(config_host.trim().to_string());
+                has_strong_evidence = true;
             }
         }
     }
@@ -117,6 +120,7 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
         if let Ok(config_proj) = repo.run(&["config", "--get", "gerrit.project"]) {
             if !config_proj.trim().is_empty() {
                 project = Some(config_proj.trim().to_string());
+                has_strong_evidence = true;
             }
         }
     }
@@ -129,20 +133,19 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
         }
     }
 
-    // Attempt to extract server identity from git remotes
-    if server_id.is_none() {
-        if let Ok(remotes) = repo.run(&["remote", "-v"]) {
-            for line in remotes.lines() {
-                let parts: Vec<&str> = line.split_whitespace().collect();
-                if parts.len() >= 2 {
-                    let url = parts[1];
-                    if let Some(host) = extract_host_from_git_url(url) {
-                        server_id = Some(host);
-                        break;
-                    }
+    if !has_strong_evidence {
+        if let Ok(config_push) = repo.run(&["config", "--get-regexp", r"remote\..*\.push"]) {
+            for line in config_push.lines() {
+                if line.contains("refs/for/") {
+                    has_strong_evidence = true;
+                    break;
                 }
             }
         }
+    }
+
+    if !has_strong_evidence {
+        return Ok(None);
     }
 
     if project.is_none() && record.is_some() {
@@ -151,10 +154,6 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
                 project = Some(proj_name.clone());
             }
         }
-    }
-
-    if server_id.is_none() && project.is_some() {
-        server_id = Some("gerrit".to_string());
     }
 
     if let (Some(server), Some(proj)) = (server_id, project) {
@@ -172,6 +171,7 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
     }
 }
 
+#[allow(dead_code)]
 fn extract_host_from_git_url(url: &str) -> Option<String> {
     let s = url.trim();
     if let Some(stripped) = s

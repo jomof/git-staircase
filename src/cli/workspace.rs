@@ -94,6 +94,9 @@ impl WorkspaceCmd {
                 Ok(Box::new(WorkspaceProvidersOutput(names)))
             }
             WorkspaceSubcommands::Refresh(_) => {
+                if let Ok(Some(rec)) = crate::workspace::storage::find_workspace_record_for_path(&repo.workdir) {
+                    let _ = crate::workspace::storage::forget_workspace_record(&rec.workspace_id);
+                }
                 let options = BootstrapOptions::default();
                 let res = bootstrap(repo, &options)?;
                 Ok(Box::new(WorkspaceShowOutput(res.record)))
