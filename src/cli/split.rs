@@ -13,7 +13,7 @@ pub struct Split {
     #[arg(long)]
     pub at: String,
     /// Name of the new step.
-    #[arg(long)]
+    #[arg(long, alias = "branch")]
     pub step_name: Option<String>,
     #[arg(long)]
     pub no_ref: bool,

@@ -20,8 +20,11 @@ struct Cli {
     porcelain: bool,
 
     #[arg(long, global = true)]
-    no_bootstrap: bool,
+    format: Option<String>,
 
+    #[arg(long, global = true)]
+    no_bootstrap: bool,
+    
     #[arg(long, global = true)]
     no_configure: bool,
 
@@ -140,9 +143,11 @@ fn main() -> Result<()> {
     let cli = Cli::parse();
     let repo_root = find_repo_root()?;
     let repo = GitRepo::new(repo_root);
-    let format = if cli.json {
+    let is_json = cli.json || matches!(cli.format.as_deref(), Some("json"));
+    let is_porcelain = cli.porcelain || matches!(cli.format.as_deref(), Some("porcelain"));
+    let format = if is_json {
         cli::OutputFormat::Json
-    } else if cli.porcelain {
+    } else if is_porcelain {
         cli::OutputFormat::Porcelain
     } else {
         cli::OutputFormat::Human

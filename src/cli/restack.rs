@@ -7,6 +7,8 @@ use anyhow::Result;
 pub struct Restack {
     #[command(flatten)]
     pub staircase: StaircaseSelectorArgs,
+    #[arg(long)]
+    pub from: Option<String>,
 }
 
 impl super::Command for Restack {

@@ -7,14 +7,19 @@ use anyhow::Result;
 pub struct Delete {
     #[command(flatten)]
     pub staircase: StaircaseSelectorArgs,
-    #[arg(long)]
+    #[arg(long, alias = "delete-step-refs")]
     pub delete_branches: bool,
+    #[arg(long)]
+    pub delete_step_refs: bool,
+    #[arg(long)]
+    pub keep_step_refs: bool,
 }
 
 impl super::Command for Delete {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
-        core::delete(repo, &rs.metadata().id, self.delete_branches)?;
+        let delete_refs = (self.delete_branches || self.delete_step_refs) && !self.keep_step_refs;
+        core::delete(repo, &rs.metadata().id, delete_refs)?;
         Ok(Box::new(Success::new(format!(
             "Deleted staircase '{}'.",
             rs.metadata().name

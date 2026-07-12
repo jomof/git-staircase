@@ -17,12 +17,17 @@ pub struct Reorder {
 impl super::Command for Reorder {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
-        let order = self
-            .order
-            .as_ref()
-            .ok_or_else(|| anyhow!("--order (indices) must be provided"))?;
+        let raw_order: Vec<usize> = if let Some(order) = &self.order {
+            order.clone()
+        } else if let Some(steps) = &self.staircase.steps {
+            let parsed: Result<Vec<usize>, _> = steps.iter().map(|s| s.parse::<usize>()).collect();
+            parsed.map_err(|_| anyhow!("Invalid step permutation in --steps. Expected numeric 1-based indices (e.g. --steps 1,3,2)"))?
+        } else {
+            return Err(anyhow!("Either --steps or --order (indices) must be provided"));
+        };
+
         let mut zero_based_steps = Vec::new();
-        for &s in order {
+        for &s in &raw_order {
             if s == 0 {
                 return Err(anyhow!("Step indices must be 1-based (got 0)"));
             }

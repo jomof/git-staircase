@@ -15,6 +15,8 @@ pub struct Verify {
     #[arg(long)]
     pub each_prefix: bool,
     #[arg(long)]
+    pub profile: Option<String>,
+    #[arg(long)]
     pub build_command: Option<String>,
     #[arg(long)]
     pub test_command: Option<String>,

@@ -18,6 +18,8 @@ pub struct List {
     #[arg(long)]
     pub implicit: bool,
     #[arg(long)]
+    pub stale: bool,
+    #[arg(long)]
     pub onto: Option<String>,
     #[arg(long)]
     pub strict: bool,
@@ -26,13 +28,13 @@ pub struct List {
 impl super::Command for List {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let show_implicit = self.implicit || self.discovered;
-        let show_all = !self.managed && !show_implicit && !self.families;
+        let show_all = !self.managed && !show_implicit && !self.families && !self.stale;
         let mut all_results = Vec::new();
         let mut unresolved_errors = Vec::new();
 
         let mut resolved_staircases = Vec::new();
 
-        if self.managed || show_all {
+        if self.managed || self.stale || show_all {
             let list = persistence::list_staircases(repo)?;
             for s in list {
                 resolved_staircases.push(ResolvedStaircase::Managed(s));
@@ -73,12 +75,20 @@ impl super::Command for List {
         for rs in resolved_staircases {
             match rs {
                 ResolvedStaircase::ImplicitFamily(f) => {
-                    all_results.push(ListEntry::Family(Summary(f)));
+                    if !self.stale {
+                        all_results.push(ListEntry::Family(Summary(f)));
+                    }
                 }
                 _ => {
                     let m = rs.metadata();
                     let status = core::get_status_metadata(repo, m.clone(), !rs.is_managed())?;
-                    all_results.push(ListEntry::Staircase(Summary(status)));
+                    if self.stale {
+                        if matches!(status.state(), crate::model::StaircaseState::Stale) {
+                            all_results.push(ListEntry::Staircase(Summary(status)));
+                        }
+                    } else {
+                        all_results.push(ListEntry::Staircase(Summary(status)));
+                    }
                 }
             }
         }

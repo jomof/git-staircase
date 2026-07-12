@@ -12,6 +12,8 @@ pub struct Drop {
     #[arg(long)]
     pub step: Option<usize>,
     #[arg(long)]
+    pub restack: bool,
+    #[arg(long)]
     pub no_restack: bool,
     #[arg(long)]
     pub leave_descendants_stale: bool,
