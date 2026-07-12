@@ -27,7 +27,7 @@ pub fn resolve_staircase_internal(
     };
     let onto_oid = repo.resolve_commit(&onto_final)?;
     let object_format = repo.get_object_format()?;
-    let discoveries = discover(repo, Some(&onto_final))?;
+    let discoveries = discover(repo, Some(&onto_final), None, false)?;
 
     // Interpretation 3: Implicit Name
     resolve_implicit_name(name, &discoveries, &mut resolved_staircases);
@@ -140,6 +140,7 @@ fn resolve_git_revision(
                             let mut sub_s = s.clone();
                             sub_s.steps.truncate(pos + 1);
                             let id = compute_implicit_id(object_format, onto_oid, &sub_s.steps);
+                            sub_s.id = id.clone();
                             if !resolved_staircases.contains_key(&id) {
                                 resolved_staircases.insert(id, ResolvedStaircase::Implicit(sub_s));
                             }
@@ -150,8 +151,9 @@ fn resolve_git_revision(
                         if let Some(step_name) =
                             f.steps.values().find(|s| s.cut == oid).map(|s| &s.name)
                         {
-                            if let Some(path) = extract_path_to(f, step_name) {
+                            if let Some(mut path) = extract_path_to(f, step_name) {
                                 let id = compute_implicit_id(object_format, onto_oid, &path.steps);
+                                path.id = id.clone();
                                 if !resolved_staircases.contains_key(&id) {
                                     resolved_staircases
                                         .insert(id, ResolvedStaircase::Implicit(path));
@@ -358,7 +360,7 @@ pub fn resolve_by_structural_key(
             .unwrap_or_else(|_| o.to_string()),
         None => infer_onto(repo)?,
     };
-    let discoveries = discover(repo, Some(&onto_final))?;
+    let discoveries = discover(repo, Some(&onto_final), None, false)?;
     for d in discoveries {
         match d {
             Discovery::Linear(s) => {

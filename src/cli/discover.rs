@@ -9,17 +9,31 @@ use serde::Serialize;
 pub struct Discover {
     #[arg(long)]
     pub onto: Option<String>,
+    #[arg(long)]
+    pub refs: Option<String>,
+    #[arg(long)]
+    pub families: bool,
 }
 
 impl super::Command for Discover {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let result = run_internal(repo, self.onto.clone())?;
+        let result = run_internal(repo, self.onto.clone(), self.refs.clone(), self.families)?;
         Ok(Box::new(DiscoveryList(result)))
     }
 }
 
-pub fn run_internal(repo: &GitRepo, onto: Option<String>) -> Result<Vec<Discovery>> {
-    Ok(core::discover(repo, onto.as_deref())?)
+pub fn run_internal(
+    repo: &GitRepo,
+    onto: Option<String>,
+    refs: Option<String>,
+    families: bool,
+) -> Result<Vec<Discovery>> {
+    Ok(core::discover(
+        repo,
+        onto.as_deref(),
+        refs.as_deref(),
+        families,
+    )?)
 }
 
 #[derive(Serialize)]
@@ -42,8 +56,14 @@ impl ToPorcelain for DiscoveryList {
     }
 }
 
-pub fn run(repo: &GitRepo, _format: super::OutputFormat, onto: Option<String>) -> Result<()> {
-    let result = run_internal(repo, onto)?;
-    println!("{}", result.to_human()); // This is just for backward compatibility if needed, but we should use dispatch
+pub fn run(
+    repo: &GitRepo,
+    _format: super::OutputFormat,
+    onto: Option<String>,
+    refs: Option<String>,
+    families: bool,
+) -> Result<()> {
+    let result = run_internal(repo, onto, refs, families)?;
+    println!("{}", result.to_human());
     Ok(())
 }

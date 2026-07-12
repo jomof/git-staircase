@@ -6,7 +6,7 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
     let mut inferred = None;
 
     if let Ok(Some(head)) = repo.current_branch() {
-        let branches = repo.local_branches()?;
+        let branches = repo.local_branches(None)?;
         if let Some(b) = branches.iter().find(|b| b.refname == head) {
             if let Some(ref u) = b.upstream {
                 inferred = Some(u.clone());

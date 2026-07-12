@@ -14,7 +14,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
     run_git(dir, &["checkout", "-b", "managed-auth"]);
     let _c1 = commit(dir, "m.txt", "m", "managed commit");
 
-    let discoveries = core::discover(&repo, Some("main")).unwrap();
+    let discoveries = core::discover(&repo, Some("main"), None, false).unwrap();
     let mut s = match &discoveries[0] {
         git_staircase::Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery"),

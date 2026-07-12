@@ -98,7 +98,7 @@ pub fn run_internal(
     }
 
     if show_implicit || families || show_all {
-        let list = core::discover(repo, onto.as_deref())?;
+        let list = core::discover(repo, onto.as_deref(), None, families)?;
         for d in list {
             match d {
                 Discovery::Linear(s) => {

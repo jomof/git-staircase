@@ -17,7 +17,7 @@ fn test_selector_ambiguity_with_git_revision() {
     ctx.run_git(&["checkout", "-b", "feature/staircase"]);
     ctx.commit("feat.txt", "feat", "feat commit");
 
-    let discoveries = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discoveries = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let mut s = match &discoveries[0] {
         git_staircase::Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery"),

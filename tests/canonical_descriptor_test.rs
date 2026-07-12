@@ -12,7 +12,7 @@ fn test_canonical_descriptor_format() {
     run_git(dir, &["checkout", "-b", "feat-core"]);
     commit(dir, "file1.txt", "1", "commit 1");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    let discovered = core::discover(&repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };

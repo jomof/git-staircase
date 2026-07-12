@@ -19,7 +19,7 @@ fn test_discover_linear() {
     let c3 = ctx.commit("file3.txt", "3", "commit 3");
 
     // ACT
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
 
     // ASSERT
     assert_eq!(discovered.len(), 1);
@@ -51,7 +51,7 @@ fn test_adopt_and_status() {
     ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
     let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -92,7 +92,7 @@ fn test_status_stale_and_restack() {
     ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
     let c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -137,7 +137,7 @@ fn test_split_and_join() {
     let c1_2 = ctx.commit("file1_2.txt", "1.2", "commit 1.2");
     let c1_3 = ctx.commit("file1_3.txt", "1.3", "commit 1.3");
 
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -235,7 +235,7 @@ fn test_discover_forked() {
     let _c2b = ctx.commit("file2b.txt", "2b", "commit 2b");
 
     // ACT
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, true).unwrap();
 
     // ASSERT
     assert_eq!(discovered.len(), 1);
@@ -253,7 +253,7 @@ fn test_verification_aggregate() {
     ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
     let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -293,7 +293,7 @@ fn test_verification_each_prefix() {
     ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
     let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -331,7 +331,7 @@ fn test_split_implicit_staircase() {
     let c1_2 = ctx.commit("file1_2.txt", "1.2", "commit 1.2");
     let _c1_3 = ctx.commit("file1_3.txt", "1.3", "commit 1.3");
 
-    let discoveries = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discoveries = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let s = match &discoveries[0] {
         Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery"),
@@ -354,7 +354,7 @@ fn test_split_implicit_staircase() {
     .expect("Split should succeed");
 
     // ASSERT
-    let discoveries_after = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discoveries_after = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let s_after = match &discoveries_after[0] {
         Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery after split"),
@@ -375,7 +375,7 @@ fn test_id_lineage_auto_adopt() {
     ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
     let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    let discoveries = core::discover(&ctx.repo, Some("main")).unwrap();
+    let discoveries = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
     let s = match &discoveries[0] {
         Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery"),

@@ -142,7 +142,7 @@ fn test_implicit_family_metadata_panic() {
     run_git(&["commit", "-am", "commit b"]);
 
     let repo = GitRepo::new(repo_path.to_path_buf());
-    let discoveries = discover(&repo, Some("main")).unwrap();
+    let discoveries = discover(&repo, Some("main"), None, true).unwrap();
     let family = discoveries
         .iter()
         .find_map(|d| match d {

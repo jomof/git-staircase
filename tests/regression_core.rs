@@ -28,18 +28,17 @@ fn test_implicit_sub_staircase_id_mismatch() {
             .unwrap();
         assert!(status.success());
     };
+
     run_git(&["init", "-b", "main"]);
     fs::write(repo_path.join("file"), "0").unwrap();
     run_git(&["add", "file"]);
     run_git(&["commit", "-m", "initial"]);
-    run_git(&["checkout", "-b", "feature"]);
+    run_git(&["checkout", "-b", "step-1"]);
     fs::write(repo_path.join("file"), "1").unwrap();
     run_git(&["commit", "-am", "step 1"]);
-    run_git(&["branch", "step-1"]);
+    run_git(&["checkout", "-b", "step-2"]);
     fs::write(repo_path.join("file"), "2").unwrap();
     run_git(&["commit", "-am", "step 2"]);
-    run_git(&["branch", "step-2"]);
-
     let repo = GitRepo::new(repo_path.to_path_buf());
     let step1_oid = repo.resolve_commit("step-1").unwrap();
     let rs1 = resolve_staircase(&repo, &step1_oid, Some("main"))
@@ -120,7 +119,7 @@ fn test_discovery_with_duplicate_oids() {
     } else {
         "main"
     };
-    let discoveries = discover(&repo, Some(onto)).unwrap();
+    let discoveries = discover(&repo, Some(onto), None, false).unwrap();
 
     let found = discoveries.iter().any(|d| match d {
         git_staircase::model::Discovery::Linear(m) => m
@@ -202,7 +201,7 @@ fn test_resolve_managed_by_internal_step_branch() {
     let c3 = commit(dir, "c.txt", "c", "c");
 
     // 2. Adopt it to make it managed
-    let discoveries = core::discover(&repo, Some("main")).unwrap();
+    let discoveries = core::discover(&repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(mut s) = discoveries[0].clone() else {
         panic!("Expected linear discovery");
     };

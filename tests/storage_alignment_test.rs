@@ -15,7 +15,7 @@ fn test_staircase_storage_alignment() {
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
     commit(dir, "file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    let discovered = core::discover(&repo, Some("main"), None, false).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };

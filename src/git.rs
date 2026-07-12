@@ -204,13 +204,12 @@ impl GitRepo {
         }
     }
 
-    pub fn local_branches(&self) -> Result<Vec<BranchInfo>> {
+    pub fn local_branches(&self, pattern: Option<&str>) -> Result<Vec<BranchInfo>> {
         let stdout = self.run(&[
             "for-each-ref",
             "--format=%(refname)%09%(objectname)%09%(upstream)",
-            "refs/heads/",
+            pattern.unwrap_or("refs/heads/"),
         ])?;
-
         let mut branches = Vec::new();
         for line in stdout.lines() {
             let line = line.trim();

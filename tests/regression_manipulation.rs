@@ -524,7 +524,7 @@ fn test_local_branches_with_pipe() -> anyhow::Result<()> {
     run_git(repo_path, &["checkout", "-b", "feat|pipe"]);
 
     // ACT
-    let branches = repo.local_branches()?;
+    let branches = repo.local_branches(None)?;
 
     // ASSERT
     let pipe_branch = branches.iter().find(|b| b.refname.contains("feat|pipe"));

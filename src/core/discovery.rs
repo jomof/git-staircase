@@ -29,8 +29,13 @@ pub fn compute_implicit_id(object_format: &str, target_oid: &str, steps: &[Step]
 }
 
 /// Discover potential staircases relative to `onto`.
-pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
-    let branches = repo.local_branches()?;
+pub fn discover(
+    repo: &GitRepo,
+    onto: Option<&str>,
+    refs: Option<&str>,
+    families: bool,
+) -> Result<Vec<Discovery>> {
+    let branches = repo.local_branches(refs)?;
 
     let onto_final = match onto {
         Some(o) => repo
@@ -68,24 +73,7 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
             discovered_branches.insert(branch.clone());
         }
 
-        let is_linear = family_branches
-            .iter()
-            .all(|branch| children_map.get(branch).map_or(true, |c| c.len() <= 1));
-
-        if is_linear {
-            let steps = extract_linear_staircase(&root, &children_map, &active_branches);
-            let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
-            let name =
-                common_prefix(&branch_names).unwrap_or_else(|| steps.last().unwrap().name.clone());
-
-            discoveries.push(Discovery::Linear(StaircaseMetadata {
-                id: compute_implicit_id(&repo.get_object_format()?, &onto_oid, &steps),
-                verification_policy: None,
-                name,
-                target: onto_final.to_string(),
-                steps,
-            }));
-        } else {
+        if families {
             let family = build_ambiguous_family(
                 &root,
                 &family_branches,
@@ -94,6 +82,21 @@ pub fn discover(repo: &GitRepo, onto: Option<&str>) -> Result<Vec<Discovery>> {
                 &onto_final,
             );
             discoveries.push(Discovery::Ambiguous(family));
+        } else {
+            let paths = extract_all_linear_paths(&root, &children_map, &active_branches);
+            for steps in paths {
+                let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
+                let name = common_prefix(&branch_names)
+                    .unwrap_or_else(|| steps.last().unwrap().name.clone());
+
+                discoveries.push(Discovery::Linear(StaircaseMetadata {
+                    id: compute_implicit_id(&repo.get_object_format()?, &onto_oid, &steps),
+                    verification_policy: None,
+                    name,
+                    target: onto_final.to_string(),
+                    steps,
+                }));
+            }
         }
     }
 
@@ -116,30 +119,6 @@ fn filter_active_branches(
         }
     }
     Ok(active_branches)
-}
-
-fn extract_linear_staircase(
-    root: &str,
-    children_map: &HashMap<String, Vec<String>>,
-    active_branches: &[crate::model::BranchInfo],
-) -> Vec<Step> {
-    let mut steps = Vec::new();
-    let mut current = Some(root.to_string());
-    while let Some(curr) = current {
-        let branch_info = active_branches.iter().find(|b| b.refname == curr).unwrap();
-        let short_name = curr
-            .strip_prefix("refs/heads/")
-            .unwrap_or(&curr)
-            .to_string();
-        steps.push(Step {
-            id: String::new(),
-            name: short_name.clone(),
-            cut: branch_info.oid.clone(),
-            branch: Some(short_name),
-        });
-        current = children_map.get(&curr).and_then(|c| c.first().cloned());
-    }
-    steps
 }
 
 fn build_ambiguous_family(
@@ -198,4 +177,53 @@ fn build_ambiguous_family(
         steps,
         roots: vec![root_short],
     }
+}
+
+fn extract_all_linear_paths(
+    root: &str,
+    children_map: &HashMap<String, Vec<String>>,
+    active_branches: &[crate::model::BranchInfo],
+) -> Vec<Vec<Step>> {
+    let mut paths = Vec::new();
+    let mut current_path = Vec::new();
+    find_paths_recursive(
+        root,
+        children_map,
+        active_branches,
+        &mut current_path,
+        &mut paths,
+    );
+    paths
+}
+
+fn find_paths_recursive(
+    curr: &str,
+    children_map: &HashMap<String, Vec<String>>,
+    active_branches: &[crate::model::BranchInfo],
+    current_path: &mut Vec<Step>,
+    paths: &mut Vec<Vec<Step>>,
+) {
+    let branch_info = active_branches.iter().find(|b| b.refname == curr).unwrap();
+    let short_name = curr
+        .strip_prefix("refs/heads/")
+        .unwrap_or(&curr)
+        .to_string();
+    current_path.push(Step {
+        id: String::new(),
+        name: short_name.clone(),
+        cut: branch_info.oid.clone(),
+        branch: Some(short_name),
+    });
+
+    match children_map.get(curr) {
+        Some(children) if !children.is_empty() => {
+            for child in children {
+                find_paths_recursive(child, children_map, active_branches, current_path, paths);
+            }
+        }
+        _ => {
+            paths.push(current_path.clone());
+        }
+    }
+    current_path.pop();
 }
