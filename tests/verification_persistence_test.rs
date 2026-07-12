@@ -1,7 +1,9 @@
 use git_staircase::core::persistence;
 mod common;
 use common::*;
-use git_staircase::model::{StaircaseMetadata, Step, VerificationPolicy};
+use git_staircase::model::{
+    IdentityKind, StaircaseMetadata, Step, VerificationPolicy, VerificationResult,
+};
 
 #[test]
 fn test_verification_policy_persistence() {
@@ -41,5 +43,53 @@ fn test_verification_policy_persistence() {
         read_meta.verification_policy,
         Some(policy),
         "Verification policy should be preserved"
+    );
+}
+
+#[test]
+fn test_revision_verification_results_persistence() {
+    let (_tmp, repo) = setup_repo();
+    let cut = repo.resolve_ref("HEAD").unwrap();
+
+    let results = vec![
+        VerificationResult {
+            step_name: "step1".to_string(),
+            cut: cut.clone(),
+            success: true,
+            stdout: "Build success".to_string(),
+            stderr: "".to_string(),
+        },
+        VerificationResult {
+            step_name: "step2".to_string(),
+            cut: cut.clone(),
+            success: false,
+            stdout: "Test failure".to_string(),
+            stderr: "Error: assertion failed".to_string(),
+        },
+    ];
+
+    let revision_key = "sha256:1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+
+    // ACT: Record
+    persistence::record_verification(&repo, revision_key, IdentityKind::Revision, &results)
+        .expect("Failed to record verification");
+
+    // ACT: Read
+    let read_results = persistence::read_verification(&repo, revision_key, IdentityKind::Revision)
+        .expect("Failed to read verification")
+        .expect("Verification results should exist");
+
+    // ASSERT
+    assert_eq!(read_results, results);
+
+    // Also verify the ref exists in the expected format (with slash instead of colon)
+    let expected_ref = format!(
+        "refs/staircases/by-revision/{}/verification",
+        revision_key.replace(":", "/")
+    );
+    assert!(
+        repo.resolve_ref(&expected_ref).is_ok(),
+        "Ref {} should exist",
+        expected_ref
     );
 }
