@@ -85,6 +85,37 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                 },
             );
         }
+
+        let mut updated = false;
+        if !record.capability_bindings.contains_key(&Capability::Review) && options.review_provider.is_none() {
+            if let Ok(Some(_gerrit_route)) = crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&record)) {
+                record.capability_bindings.insert(
+                    Capability::Review,
+                    CapabilityBinding {
+                        provider: "gerrit".to_string(),
+                        provenance: BindingProvenance::AutoDiscovered,
+                        evidence: Some("Gerrit review route discovered".to_string()),
+                    },
+                );
+                record.binding_provenance.insert(Capability::Review, BindingProvenance::AutoDiscovered);
+
+                record.capability_bindings.insert(
+                    Capability::Verification,
+                    CapabilityBinding {
+                        provider: "gerrit".to_string(),
+                        provenance: BindingProvenance::AutoDiscovered,
+                        evidence: Some("Gerrit verification route discovered".to_string()),
+                    },
+                );
+                record.binding_provenance.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+                updated = true;
+            }
+        }
+
+        if updated && !options.no_configure {
+            let _ = save_workspace_record(&record);
+        }
+
         return Ok(BootstrapResult {
             record,
             newly_configured: false,

@@ -136,15 +136,9 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
                 let parts: Vec<&str> = line.split_whitespace().collect();
                 if parts.len() >= 2 {
                     let url = parts[1];
-                    if url.contains("googlesource.com")
-                        || url.contains("gerrit")
-                        || url.contains("review")
-                        || url.contains("git.corp.google.com")
-                    {
-                        if let Some(host) = extract_host_from_git_url(url) {
-                            server_id = Some(host);
-                            break;
-                        }
+                    if let Some(host) = extract_host_from_git_url(url) {
+                        server_id = Some(host);
+                        break;
                     }
                 }
             }
@@ -157,6 +151,10 @@ pub fn probe_gerrit_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
                 project = Some(proj_name.clone());
             }
         }
+    }
+
+    if server_id.is_none() && project.is_some() {
+        server_id = Some("gerrit".to_string());
     }
 
     if let (Some(server), Some(proj)) = (server_id, project) {
