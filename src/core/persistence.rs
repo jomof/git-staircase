@@ -203,7 +203,9 @@ fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
         target,
         steps,
         verification_policy,
-    })
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,})
 }
 
 fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {

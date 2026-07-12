@@ -234,4 +234,13 @@ impl GitRepo {
         }
         Ok(branches)
     }
+
+    pub fn update_refs_transaction(&self, commands: &[String]) -> Result<()> {
+        if commands.is_empty() {
+            return Ok(());
+        }
+        let input = commands.join("\n") + "\n";
+        self.run_with_stdin(&["update-ref", "--stdin"], &input)?;
+        Ok(())
+    }
 }

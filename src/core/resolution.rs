@@ -7,6 +7,7 @@ use crate::model::{Discovery, StaircaseMetadata, Step};
 use std::collections::HashMap;
 
 use super::inference::{extract_path_to, infer_onto};
+use super::utils::check_sequential_layout;
 
 pub fn resolve_staircase_internal(
     repo: &GitRepo,
@@ -174,16 +175,11 @@ fn resolve_git_revision(
 }
 
 fn deduplicate_resolved(resolved_staircases: &mut HashMap<String, ResolvedStaircase>) {
-    let managed_step_signatures: Vec<Vec<(String, String)>> = resolved_staircases
+    let managed_oids: Vec<Vec<String>> = resolved_staircases
         .values()
         .filter_map(|rs| {
             if let ResolvedStaircase::Managed(m) = rs {
-                Some(
-                    m.steps
-                        .iter()
-                        .map(|step| (step.name.clone(), step.cut.clone()))
-                        .collect(),
-                )
+                Some(m.steps.iter().map(|step| step.cut.clone()).collect())
             } else {
                 None
             }
@@ -192,12 +188,8 @@ fn deduplicate_resolved(resolved_staircases: &mut HashMap<String, ResolvedStairc
 
     resolved_staircases.retain(|_, rs| {
         if let ResolvedStaircase::Implicit(s) = rs {
-            let sig: Vec<(String, String)> = s
-                .steps
-                .iter()
-                .map(|step| (step.name.clone(), step.cut.clone()))
-                .collect();
-            !managed_step_signatures.contains(&sig)
+            let oids: Vec<String> = s.steps.iter().map(|step| step.cut.clone()).collect();
+            !managed_oids.contains(&oids)
         } else {
             true
         }
@@ -285,6 +277,12 @@ pub fn resolve_explicit_staircase(
         });
     }
     let id = compute_implicit_id(&object_format, &onto_oid, &staircase_steps);
+    let base = check_sequential_layout(&staircase_steps);
+    let (layout, layout_base) = if let Some(b) = base {
+        (Some("sequential-v1".to_string()), Some(b))
+    } else {
+        (None, None)
+    };
     Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
         id,
         name: steps
@@ -294,6 +292,8 @@ pub fn resolve_explicit_staircase(
         target: onto_final,
         steps: staircase_steps,
         verification_policy: None,
+        primary_branch_layout: layout,
+        branch_layout_base: layout_base,
     }))
 }
 

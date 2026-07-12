@@ -86,7 +86,9 @@ pub fn run_internal(
         target,
         steps,
         verification_policy,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
 
     Ok(core::adopt(repo, &staircase)?)
 }

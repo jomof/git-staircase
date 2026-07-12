@@ -46,7 +46,9 @@ fn test_managed_staircase_updates() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     core::adopt(&ctx.repo, &metadata).unwrap();
 
     let rs = ResolvedStaircase::Managed(metadata);
@@ -141,7 +143,9 @@ fn test_implicit_staircase_updates() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
 
     let rs = ResolvedStaircase::Implicit(metadata);
 

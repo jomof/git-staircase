@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::inference::infer_onto;
-use super::utils::common_prefix;
+use super::utils::{common_prefix, check_sequential_layout};
 
 pub fn compute_implicit_id(object_format: &str, target_oid: &str, steps: &[Step]) -> String {
     use sha2::{Digest, Sha256};
@@ -89,12 +89,21 @@ pub fn discover(
                 let name = common_prefix(&branch_names)
                     .unwrap_or_else(|| steps.last().unwrap().name.clone());
 
+                let base = check_sequential_layout(&steps);
+                let (layout, layout_base) = if let Some(b) = base {
+                    (Some("sequential-v1".to_string()), Some(b))
+                } else {
+                    (None, None)
+                };
+
                 discoveries.push(Discovery::Linear(StaircaseMetadata {
                     id: compute_implicit_id(&repo.get_object_format()?, &onto_oid, &steps),
                     verification_policy: None,
                     name,
                     target: onto_final.to_string(),
                     steps,
+                    primary_branch_layout: layout,
+                    branch_layout_base: layout_base,
                 }));
             }
         }

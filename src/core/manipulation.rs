@@ -93,7 +93,7 @@ pub fn split(
         },
     };
 
-    staircase.add_step(repo, step_index, new_step)?;
+    staircase.add_step(repo, step_index, new_step, options.no_ref)?;
     Ok(())
 }
 

@@ -266,7 +266,9 @@ fn test_restack_propagation() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
 
     // 4. Modify s1 by rebasing it onto a new commit on main
@@ -331,7 +333,9 @@ fn test_restack_conflict_handling() {
             branch: Some("s1".to_string()),
         }],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
 
     // 3. Modify main to conflict with s1
@@ -392,7 +396,9 @@ fn test_restack_inconsistency_on_failure() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
 
     // 3. Update main with a commit that conflicts with s2 but NOT s1
@@ -453,7 +459,9 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
 
     let rs = ResolvedStaircase::Managed(metadata);
 
@@ -490,7 +498,9 @@ fn test_move_commit_creates_empty_step_violating_invariant() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     let rs = ResolvedStaircase::Managed(meta.clone());
     persistence::write_metadata(&ctx.repo, &meta).unwrap();
 

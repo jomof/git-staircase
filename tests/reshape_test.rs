@@ -200,7 +200,9 @@ fn test_reorder_without_branches() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
 
     core::adopt(&repo, &metadata).expect("Adoption failed");
 
@@ -295,7 +297,9 @@ fn test_restack_without_branches() {
             },
         ],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
 
     core::adopt(&repo, &metadata).expect("Adoption failed");
 

@@ -25,7 +25,9 @@ fn test_verification_policy_persistence() {
             branch: None,
         }],
         verification_policy: Some(policy.clone()),
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
 
     // ACT: Write and then read the metadata
     persistence::write_metadata(&repo, &metadata).expect("Failed to write metadata");

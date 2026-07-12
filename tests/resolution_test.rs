@@ -76,7 +76,9 @@ fn test_selector_args_resolve_id() {
             branch: Some("feat-1".to_string()),
         }],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     core::adopt(&repo, &sc).unwrap();
 
     let args = StaircaseSelectorArgs {
@@ -114,7 +116,9 @@ fn test_selector_args_resolve_explicit_name() {
             branch: Some("feat-1".to_string()),
         }],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     core::adopt(&repo, &sc).unwrap();
 
     let args = StaircaseSelectorArgs {
@@ -153,7 +157,9 @@ fn test_selector_args_ambiguity() {
             branch: Some("conflict".to_string()),
         }],
         verification_policy: None,
-    };
+    
+        primary_branch_layout: None,
+        branch_layout_base: None,};
     core::adopt(&repo, &sc).unwrap();
 
     run_git(path, &["checkout", "main"]);

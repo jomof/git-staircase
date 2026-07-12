@@ -25,6 +25,8 @@ pub struct StaircaseMetadata {
     pub target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
     pub steps: Vec<Step>,
     pub verification_policy: Option<VerificationPolicy>,
+    pub primary_branch_layout: Option<String>,
+    pub branch_layout_base: Option<String>,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
