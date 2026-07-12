@@ -675,7 +675,7 @@ impl ToPresentation for LogOutput {
 }
 impl_formatting!(LogOutput);
 
-impl ToHuman for Vec<StaircaseStatus> {
+impl<T: ToHuman> ToHuman for Vec<T> {
     fn to_human(&self) -> String {
         self.iter()
             .map(|x| x.to_human())
@@ -684,61 +684,7 @@ impl ToHuman for Vec<StaircaseStatus> {
     }
 }
 
-impl ToPorcelain for Vec<StaircaseStatus> {
-    fn to_porcelain(&self) -> String {
-        self.iter()
-            .map(|x| x.to_porcelain())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-impl ToHuman for Vec<Discovery> {
-    fn to_human(&self) -> String {
-        self.iter()
-            .map(|x| x.to_human())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-impl ToPorcelain for Vec<Discovery> {
-    fn to_porcelain(&self) -> String {
-        self.iter()
-            .map(|x| x.to_porcelain())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-impl ToHuman for Vec<ResolvedStaircase> {
-    fn to_human(&self) -> String {
-        self.iter()
-            .map(|x| x.to_human())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-impl ToPorcelain for Vec<ResolvedStaircase> {
-    fn to_porcelain(&self) -> String {
-        self.iter()
-            .map(|x| x.to_porcelain())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-impl ToHuman for Vec<VerificationResult> {
-    fn to_human(&self) -> String {
-        self.iter()
-            .map(|x| x.to_human())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
-
-impl ToPorcelain for Vec<VerificationResult> {
+impl<T: ToPorcelain> ToPorcelain for Vec<T> {
     fn to_porcelain(&self) -> String {
         self.iter()
             .map(|x| x.to_porcelain())
