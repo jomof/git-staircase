@@ -41,6 +41,7 @@ pub fn extract_path_to(
     loop {
         let step = family.steps.get(&current)?;
         path_steps.push(Step {
+            id: String::new(),
             name: step.name.clone(),
             cut: step.cut.clone(),
             branch: step.branch.clone(),

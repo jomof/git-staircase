@@ -33,11 +33,13 @@ fn test_managed_staircase_updates() {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "A".to_string(),
                 cut: a2_oid.clone(),
                 branch: Some("branch-a".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "B".to_string(),
                 cut: b_oid.clone(),
                 branch: Some("branch-b".to_string()),
@@ -59,11 +61,12 @@ fn test_managed_staircase_updates() {
     assert_eq!(rs.metadata().steps.len(), 3);
     assert_eq!(rs.metadata().steps[0].name, "A-part1");
     assert!(
-        ctx.repo.resolve_ref(&format!(
-            "refs/staircase-state/{}/steps/A-part1",
-            rs.metadata().id
-        ))
-        .is_ok()
+        ctx.repo
+            .resolve_ref(&format!(
+                "refs/staircase-state/{}/steps/A-part1",
+                rs.metadata().id
+            ))
+            .is_ok()
     );
 
     // ACT (Join Step A-part1 and A)
@@ -75,11 +78,12 @@ fn test_managed_staircase_updates() {
         .unwrap();
     assert_eq!(rs.metadata().steps.len(), 2);
     assert!(
-        ctx.repo.resolve_ref(&format!(
-            "refs/staircase-state/{}/steps/A-part1",
-            rs.metadata().id
-        ))
-        .is_err()
+        ctx.repo
+            .resolve_ref(&format!(
+                "refs/staircase-state/{}/steps/A-part1",
+                rs.metadata().id
+            ))
+            .is_err()
     );
 
     // ACT (Restack)
@@ -100,11 +104,13 @@ fn test_implicit_staircase_updates() {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "A".to_string(),
                 cut: a2_oid.clone(),
                 branch: Some("branch-a".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "B".to_string(),
                 cut: b_oid.clone(),
                 branch: Some("branch-b".to_string()),

@@ -15,6 +15,8 @@ fn test_run_with_stdin_deadlock() {
 
     // ACT & ASSERT
     // This should deadlock and timeout if the pipe buffer fills up
-    let result = ctx.repo.run_with_stdin(&["cat-file", "--batch-check"], &large_input);
+    let result = ctx
+        .repo
+        .run_with_stdin(&["cat-file", "--batch-check"], &large_input);
     assert!(result.is_ok());
 }

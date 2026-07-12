@@ -19,6 +19,7 @@ fn test_verification_policy_persistence() {
         name: "test-staircase".to_string(),
         target: "refs/heads/main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "step1".to_string(),
             cut: repo.resolve_ref("HEAD").unwrap(),
             branch: None,

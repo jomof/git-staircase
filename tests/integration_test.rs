@@ -177,11 +177,13 @@ fn test_adopt_validation() {
         verification_policy: None,
         steps: vec![
             Step {
+                id: String::new(),
                 name: "step1".to_string(),
                 cut: c1.clone(),
                 branch: Some("feature/auth-core".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "step2".to_string(),
                 cut: c1.clone(),
                 branch: Some("feature/auth-core".to_string()),
@@ -375,6 +377,7 @@ fn test_slash_name_discovery() {
         name: "feature/foo".to_string(),
         target: "main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "s1".to_string(),
             cut: ctx.repo.resolve_commit("HEAD").unwrap(),
             branch: None,

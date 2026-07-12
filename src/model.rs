@@ -5,6 +5,7 @@ use std::fmt;
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct Step {
+    pub id: String,
     pub name: String,
     pub cut: String,            // Commit OID
     pub branch: Option<String>, // Optional local branch name (ref name without refs/heads/)

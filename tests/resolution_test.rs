@@ -70,6 +70,7 @@ fn test_selector_args_resolve_id() {
         name: "my-sc".to_string(),
         target: "main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "feat-1".to_string(),
             cut: c1,
             branch: Some("feat-1".to_string()),
@@ -107,6 +108,7 @@ fn test_selector_args_resolve_explicit_name() {
         name: "my-sc".to_string(),
         target: "main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "feat-1".to_string(),
             cut: c1,
             branch: Some("feat-1".to_string()),
@@ -145,6 +147,7 @@ fn test_selector_args_ambiguity() {
         name: "my-sc".to_string(),
         target: "main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "conflict".to_string(),
             cut: c1,
             branch: Some("conflict".to_string()),

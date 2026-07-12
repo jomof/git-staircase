@@ -166,16 +166,19 @@ fn test_reorder_without_branches() {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "step1".to_string(),
                 cut: c1.clone(),
                 branch: Some("step1".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "step2".to_string(),
                 cut: c2.clone(),
                 branch: Some("step2".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "step3".to_string(),
                 cut: c3.clone(),
                 branch: Some("step3".to_string()),
@@ -258,11 +261,13 @@ fn test_restack_without_branches() {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "step1".to_string(),
                 cut: c1.clone(),
                 branch: Some("step1".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "step2".to_string(),
                 cut: c2.clone(),
                 branch: Some("step2".to_string()),

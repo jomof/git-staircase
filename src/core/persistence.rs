@@ -50,6 +50,7 @@ pub fn serialize_descriptor(repo: &GitRepo, metadata: &StaircaseMetadata) -> Res
     for step in &metadata.steps {
         out.push_str("\n");
         out.push_str(&format!("step {}\n", step.name));
+        out.push_str(&format!("step-id {}\n", step.id));
         out.push_str(&format!("cut {}\n", step.cut));
         if let Some(ref branch) = step.branch {
             let full_ref = if branch.starts_with("refs/") {
@@ -135,6 +136,11 @@ fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
         }
 
         match parts[0] {
+            "step-id" => {
+                if let Some(ref mut step) = current_step {
+                    step.id = parts[1].to_string();
+                }
+            }
             "lineage" => id = parts[1].to_string(),
             "target-ref" => target = parts[1].to_string(),
             "build-command" => {
@@ -166,6 +172,7 @@ fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
                     steps.push(step);
                 }
                 current_step = Some(Step {
+                    id: String::new(),
                     name: parts[1].to_string(),
                     cut: String::new(),
                     branch: None,

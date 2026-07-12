@@ -32,6 +32,7 @@ fn test_verification_status_in_show_output() {
         name: "test-staircase".to_string(),
         target: "main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "step1".to_string(),
             cut: initial_oid.clone(),
             branch: None,

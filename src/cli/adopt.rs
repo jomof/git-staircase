@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use super::{OutputFormat, print_output};
 use crate::GitRepo;
 use crate::core;
@@ -29,6 +30,7 @@ pub fn run(
             .with_context(|| format!("Failed to resolve branch '{}'", b))?;
         let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
         steps.push(Step {
+            id: String::new(),
             name: short_name.clone(),
             cut: oid,
             branch: Some(short_name),
@@ -50,14 +52,14 @@ pub fn run(
         None => core::infer_onto(repo)?,
     };
     let staircase = StaircaseMetadata {
-        id: uuid::Uuid::new_v4().to_string(),
+        id: Uuid::new_v4().to_string(),
         name: name.clone(),
         target,
         steps,
         verification_policy,
     };
 
-    core::adopt(repo, &staircase)?;
+    let staircase = core::adopt(repo, &staircase)?;
 
     if matches!(format, OutputFormat::Human) {
         println!("Adopted staircase '{}' (ID: {}).", name, staircase.id);

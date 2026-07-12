@@ -16,11 +16,13 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: target_oid.clone(),
                 branch: None,
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: target_oid.clone(),
                 branch: None,

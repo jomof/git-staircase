@@ -4,6 +4,7 @@ use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::Step;
 use std::collections::{HashMap, HashSet};
+use uuid::Uuid;
 
 pub fn split(
     repo: &GitRepo,
@@ -51,6 +52,7 @@ pub fn split(
     };
 
     let new_step = Step {
+        id: Uuid::new_v4().to_string(),
         name: name.clone(),
         cut: at_oid.clone(),
         branch: if staircase.is_managed() {

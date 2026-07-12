@@ -71,4 +71,3 @@ pub fn compute_identity(
         IdentityKind::Review => Ok("".to_string()),
     }
 }
-

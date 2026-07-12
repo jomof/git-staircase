@@ -12,7 +12,10 @@ fn test_git_cmd_setup() {
 
     // ASSERT
     assert_eq!(cmd.get_program(), "git");
-    let output = ctx.repo.run(&["rev-parse", "--is-inside-work-tree"]).unwrap();
+    let output = ctx
+        .repo
+        .run(&["rev-parse", "--is-inside-work-tree"])
+        .unwrap();
     assert_eq!(output.trim(), "true");
 }
 

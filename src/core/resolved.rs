@@ -1,3 +1,4 @@
+use uuid::Uuid;
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -168,7 +169,12 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     let target_oid = repo.resolve_commit(&staircase.target)?;
     let mut staircase = staircase.clone();
     if staircase.id.starts_with("implicit@") {
-        staircase.id = uuid::Uuid::new_v4().to_string();
+        staircase.id = Uuid::new_v4().to_string();
+    }
+    for step in &mut staircase.steps {
+        if step.id.is_empty() {
+            step.id = Uuid::new_v4().to_string();
+        }
     }
     let mut last_cut = target_oid;
     for step in &staircase.steps {

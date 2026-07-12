@@ -26,16 +26,19 @@ fn test_restack_propagation() {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: Some("s1".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: Some("s2".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "s3".to_string(),
                 cut: c3.clone(),
                 branch: Some("s3".to_string()),

@@ -16,13 +16,12 @@ fn test_restack_conflict_handling() {
         id: "test-sc".to_string(),
         name: "test".to_string(),
         target: "main".to_string(),
-        steps: vec![
-            Step {
-                name: "s1".to_string(),
-                cut: c1.clone(),
-                branch: Some("s1".to_string()),
-            },
-        ],
+        steps: vec![Step {
+            id: String::new(),
+            name: "s1".to_string(),
+            cut: c1.clone(),
+            branch: Some("s1".to_string()),
+        }],
         verification_policy: None,
     };
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
@@ -32,11 +31,16 @@ fn test_restack_conflict_handling() {
     ctx.commit("conflict.txt", "main", "main update");
 
     // 4. Resolve and try to restack
-    let rs = git_staircase::core::resolve_staircase(&ctx.repo, "test", None).unwrap().unwrap();
-    
+    let rs = git_staircase::core::resolve_staircase(&ctx.repo, "test", None)
+        .unwrap()
+        .unwrap();
+
     // ACT
     let result = git_staircase::core::restack(&ctx.repo, &rs);
 
     // ASSERT
-    assert!(result.is_err(), "Restack should fail when there is a conflict");
+    assert!(
+        result.is_err(),
+        "Restack should fail when there is a conflict"
+    );
 }

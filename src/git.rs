@@ -224,4 +224,3 @@ impl GitRepo {
         Ok(branches)
     }
 }
-

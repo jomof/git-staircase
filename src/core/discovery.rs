@@ -130,6 +130,7 @@ fn extract_linear_staircase(
             .unwrap_or(&curr)
             .to_string();
         steps.push(Step {
+            id: String::new(),
             name: short_name.clone(),
             cut: branch_info.oid.clone(),
             branch: Some(short_name),

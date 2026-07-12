@@ -26,11 +26,13 @@ fn test_verify_leaves_detached_head() {
         target: "main".to_string(),
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: Some("s1".to_string()),
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: Some("s2".to_string()),

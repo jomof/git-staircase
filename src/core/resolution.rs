@@ -272,6 +272,7 @@ pub fn resolve_explicit_staircase(
         let oid = repo.resolve_commit(s)?;
         let short_name = s.strip_prefix("refs/heads/").unwrap_or(s).to_string();
         staircase_steps.push(Step {
+            id: String::new(),
             name: short_name.clone(),
             cut: oid,
             branch: Some(short_name),

@@ -50,6 +50,7 @@ fn test_identity_revision() {
         target: target.clone(),
         verification_policy: None,
         steps: vec![Step {
+            id: String::new(),
             name: "s1".to_string(),
             cut: c1.clone(),
             branch: None,
@@ -72,6 +73,7 @@ fn test_identity_revision() {
         target: target,
         verification_policy: None,
         steps: vec![Step {
+            id: String::new(),
             name: "s1".to_string(),
             cut: c2.clone(),
             branch: None,
@@ -105,11 +107,13 @@ fn test_identity_body() {
         verification_policy: None,
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: None,
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: None,
@@ -132,6 +136,7 @@ fn test_identity_body() {
         target: target,
         verification_policy: None,
         steps: vec![Step {
+            id: String::new(),
             name: "s1+2".to_string(),
             cut: c2.clone(),
             branch: None,
@@ -165,11 +170,13 @@ fn test_identity_decomposition() {
         verification_policy: None,
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: None,
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: None,
@@ -197,11 +204,13 @@ fn test_identity_decomposition() {
         verification_policy: None,
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: c1_new.clone(),
                 branch: None,
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: c2_new.clone(),
                 branch: None,
@@ -227,6 +236,7 @@ fn test_identity_decomposition() {
         target: target.clone(),
         verification_policy: None,
         steps: vec![Step {
+            id: String::new(),
             name: "s1+2".to_string(),
             cut: c2_new.clone(),
             branch: None,
@@ -260,11 +270,13 @@ fn test_identity_outcome() {
         verification_policy: None,
         steps: vec![
             Step {
+                id: String::new(),
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: None,
             },
             Step {
+                id: String::new(),
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: None,
@@ -293,6 +305,7 @@ fn test_identity_outcome() {
         target: target,
         verification_policy: None,
         steps: vec![Step {
+            id: String::new(),
             name: "reordered".to_string(),
             cut: top_new,
             branch: None,

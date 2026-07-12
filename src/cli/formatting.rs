@@ -103,6 +103,7 @@ impl ToHuman for StaircaseMetadata {
         out.push_str("  Steps:\n");
         for (i, step) in self.steps.iter().enumerate() {
             out.push_str(&format!("    Step {}:\n", i + 1));
+            out.push_str(&format!("      ID: {}\n", step.id));
             out.push_str(&format!("      Name: {}\n", step.name));
             out.push_str(&format!("      Cut: {}\n", step.cut));
             if let Some(ref b) = step.branch {
@@ -351,7 +352,7 @@ impl ToPorcelain for StepsList {
         self.0
             .iter()
             .enumerate()
-            .map(|(i, step)| format!("{}\t{}\t{}", i + 1, step.name, step.cut))
+            .map(|(i, step)| format!("{}\t{}\t{}\t{}", i + 1, step.id, step.name, step.cut))
             .collect::<Vec<_>>()
             .join("\n")
     }

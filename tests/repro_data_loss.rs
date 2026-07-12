@@ -43,6 +43,7 @@ fn test_reorder_data_loss_on_dirty_workdir() {
         name: "test".to_string(),
         target: "main".to_string(),
         steps: vec![Step {
+            id: String::new(),
             name: "s1".to_string(),
             cut: s1_oid.clone(),
             branch: None,
