@@ -72,11 +72,13 @@ fn test_managed_staircase_updates() {
         .unwrap();
     assert_eq!(rs.metadata().steps.len(), 3);
     assert_eq!(rs.metadata().steps[0].name, "A-part1");
+    let step0_id = rs.metadata().steps[0].id.clone();
     assert!(
         ctx.repo
             .resolve_ref(&format!(
-                "refs/staircase-state/{}/steps/A-part1",
-                rs.metadata().id
+                "refs/staircase-state/{}/steps/{}",
+                rs.metadata().id,
+                step0_id
             ))
             .is_ok()
     );
@@ -101,8 +103,9 @@ fn test_managed_staircase_updates() {
     assert!(
         ctx.repo
             .resolve_ref(&format!(
-                "refs/staircase-state/{}/steps/A-part1",
-                rs.metadata().id
+                "refs/staircase-state/{}/steps/{}",
+                rs.metadata().id,
+                step0_id
             ))
             .is_err()
     );

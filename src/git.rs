@@ -235,14 +235,14 @@ impl GitRepo {
         Ok(())
     }
 
-    pub fn update_step_ref(&self, id: &str, step_name: &str, cut: &str) -> Result<()> {
-        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_name);
+    pub fn update_step_ref(&self, id: &str, step_id: &str, cut: &str) -> Result<()> {
+        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_id);
         self.command().args(&["update-ref", &ref_name, cut]).run()?;
         Ok(())
     }
 
-    pub fn delete_step_ref(&self, id: &str, step_name: &str) -> Result<()> {
-        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_name);
+    pub fn delete_step_ref(&self, id: &str, step_id: &str) -> Result<()> {
+        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_id);
         self.command()
             .args(&["update-ref", "-d", &ref_name])
             .run()?;

@@ -452,13 +452,13 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
         target: "main".to_string(),
         steps: vec![
             Step {
-                id: String::new(),
+                id: "s1-id".to_string(),
                 name: "s1".to_string(),
                 cut: target_oid.clone(),
                 branch: None,
             },
             Step {
-                id: String::new(),
+                id: "s2-id".to_string(),
                 name: "s2".to_string(),
                 cut: target_oid.clone(),
                 branch: None,
@@ -493,13 +493,13 @@ fn test_move_commit_creates_empty_step_violating_invariant() {
         target: target,
         steps: vec![
             Step {
-                id: String::new(),
+                id: "s1-id".to_string(),
                 name: "s1".to_string(),
                 cut: c1.clone(),
                 branch: Some("s1".to_string()),
             },
             Step {
-                id: String::new(),
+                id: "s2-id".to_string(),
                 name: "s2".to_string(),
                 cut: c2.clone(),
                 branch: Some("s2".to_string()),

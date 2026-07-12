@@ -68,7 +68,7 @@ impl ResolvedStaircase {
 
         if self.is_managed() {
             persistence::write_metadata(repo, &metadata)?;
-            repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
+            repo.update_step_ref(&metadata.id, &step.id, &step.cut)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
             let has_branch = metadata.steps[index].branch.is_some();
@@ -97,7 +97,7 @@ impl ResolvedStaircase {
 
         if self.is_managed() {
             persistence::write_metadata(repo, &metadata)?;
-            repo.delete_step_ref(&metadata.id, &removed.name)?;
+            repo.delete_step_ref(&metadata.id, &removed.id)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
             // If all remaining steps have branches, it can stay implicit.
@@ -122,7 +122,7 @@ impl ResolvedStaircase {
         metadata.steps[index].cut = new_oid.clone();
 
         if self.is_managed() {
-            repo.update_step_ref(&metadata.id, &metadata.steps[index].name, &new_oid)?;
+            repo.update_step_ref(&metadata.id, &metadata.steps[index].id, &new_oid)?;
             persistence::write_metadata(repo, &metadata)?;
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
@@ -154,7 +154,7 @@ impl ResolvedStaircase {
         if self.is_managed() {
             persistence::write_metadata(repo, &metadata)?;
             for step in &metadata.steps {
-                repo.update_step_ref(&metadata.id, &step.name, &step.cut)?;
+                repo.update_step_ref(&metadata.id, &step.id, &step.cut)?;
             }
             Ok(ResolvedStaircase::Managed(metadata))
         } else {
@@ -228,7 +228,7 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
 
     persistence::write_metadata(repo, &staircase)?;
     for step in &staircase.steps {
-        repo.update_step_ref(&staircase.id, &step.name, &step.cut)?;
+        repo.update_step_ref(&staircase.id, &step.id, &step.cut)?;
     }
     Ok(staircase)
 }

@@ -14,9 +14,9 @@ pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<St
     let state_ref = format!("refs/staircase-state/{}/descriptor", metadata.id);
     repo.run(&["update-ref", &state_ref, &blob_oid])?;
 
-    // Also update step refs for reachability
     for step in &metadata.steps {
-        let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, step.name);
+        let key = if !step.id.is_empty() { &step.id } else { &step.name };
+        let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, key);
         repo.run(&["update-ref", &step_ref, &step.cut])?;
     }
 

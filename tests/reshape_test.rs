@@ -252,17 +252,17 @@ fn test_reorder_without_branches() {
 
     // Verify step refs are updated
     assert_eq!(
-        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/step1", metadata.id))
+        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/{}", metadata.id, status.metadata.steps[0].id))
             .unwrap(),
         status.metadata.steps[0].cut
     );
     assert_eq!(
-        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/step3", metadata.id))
+        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/{}", metadata.id, status.metadata.steps[1].id))
             .unwrap(),
         status.metadata.steps[1].cut
     );
     assert_eq!(
-        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/step2", metadata.id))
+        repo.resolve_ref(&format!("refs/staircase-state/{}/steps/{}", metadata.id, status.metadata.steps[2].id))
             .unwrap(),
         status.metadata.steps[2].cut
     );
