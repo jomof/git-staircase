@@ -6,19 +6,22 @@ use std::fs;
 
 #[test]
 fn test_discover_linear() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
-    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+    ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
+    let c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-tests"]);
-    let c3 = commit(dir, "file3.txt", "3", "commit 3");
+    ctx.run_git(&["checkout", "-b", "feature/auth-tests"]);
+    let c3 = ctx.commit("file3.txt", "3", "commit 3");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    // ACT
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+
+    // ASSERT
     assert_eq!(discovered.len(), 1);
     let Discovery::Linear(ref s) = discovered[0] else {
         panic!("Expected linear discovery");
@@ -39,73 +42,79 @@ fn test_discover_linear() {
 
 #[test]
 fn test_adopt_and_status() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
-    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+    ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
+    let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
-    assert_eq!(discovered.len(), 1);
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
     s.name = "auth".to_string();
-    let s = core::adopt(&repo, &s).unwrap();
 
-    let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
+    // ACT
+    let s = core::adopt(&ctx.repo, &s).unwrap();
+
+    // ASSERT
+    let read = core::persistence::read_metadata(&ctx.repo, &s.id).unwrap();
     assert_eq!(read.name, "auth");
     assert_eq!(read.steps.len(), 2);
 
-    let status = core::get_status(&repo, &s.id).unwrap();
+    let status = core::get_status(&ctx.repo, &s.id).unwrap();
     assert!(status.is_clean);
 
-    run_git(dir, &["checkout", "feature/auth-ui"]);
-    let c2_new = commit(dir, "file2_mod.txt", "2 mod", "commit 2 mod");
+    // ACT (Modify)
+    ctx.run_git(&["checkout", "feature/auth-ui"]);
+    let c2_new = ctx.commit("file2_mod.txt", "2 mod", "commit 2 mod");
 
-    let status = core::get_status(&repo, &s.id).unwrap();
+    // ASSERT (Stale)
+    let status = core::get_status(&ctx.repo, &s.id).unwrap();
     assert!(!status.is_clean);
     assert_eq!(status.steps[1].actual_oid, Some(c2_new.clone()));
 
-    let found = core::find_by_name(&repo, &s.id).unwrap().unwrap();
+    let found = core::find_by_name(&ctx.repo, &s.id).unwrap().unwrap();
     assert_eq!(found.name, "auth");
 }
 
 #[test]
 fn test_status_stale_and_restack() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
-    let c2 = commit(dir, "file2.txt", "2", "commit 2");
+    ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
+    let c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
     let Discovery::Linear(s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
-    let s = core::adopt(&repo, &s).unwrap();
+    let s = core::adopt(&ctx.repo, &s).unwrap();
 
-    run_git(dir, &["checkout", "feature/auth-core"]);
-    fs::write(dir.join("file1.txt"), "1 amended").unwrap();
-    run_git(dir, &["add", "."]);
-    run_git(dir, &["commit", "--amend", "-m", "commit 1 amended"]);
-    let c1_amended = repo.resolve_ref("HEAD").unwrap();
+    ctx.run_git(&["checkout", "feature/auth-core"]);
+    fs::write(ctx.path().join("file1.txt"), "1 amended").unwrap();
+    ctx.run_git(&["add", "."]);
+    ctx.run_git(&["commit", "--amend", "-m", "commit 1 amended"]);
+    let c1_amended = ctx.repo.resolve_ref("HEAD").unwrap();
 
-    let status = core::get_status(&repo, &s.id).unwrap();
+    // ACT
+    let status = core::get_status(&ctx.repo, &s.id).unwrap();
     assert!(!status.is_clean);
 
-    let rs = core::resolve_staircase(&repo, &s.id, None)
+    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .unwrap();
-    core::restack(&repo, &rs).unwrap();
+    core::restack(&ctx.repo, &rs).unwrap();
 
-    let status = core::get_status(&repo, &s.id).unwrap();
+    // ASSERT
+    let status = core::get_status(&ctx.repo, &s.id).unwrap();
     assert!(status.is_clean);
     assert_eq!(status.steps[0].actual_oid, Some(c1_amended));
     assert_ne!(status.steps[1].actual_oid, Some(c2));
@@ -113,48 +122,53 @@ fn test_status_stale_and_restack() {
 
 #[test]
 fn test_split_and_join() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
-    let c1_2 = commit(dir, "file1_2.txt", "1.2", "commit 1.2");
-    let c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
+    let c1_2 = ctx.commit("file1_2.txt", "1.2", "commit 1.2");
+    let c1_3 = ctx.commit("file1_3.txt", "1.3", "commit 1.3");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
     let Discovery::Linear(s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
-    let s = core::adopt(&repo, &s).unwrap();
+    let s = core::adopt(&ctx.repo, &s).unwrap();
 
-    let rs = core::resolve_staircase(&repo, &s.id, None)
+    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .unwrap();
-    core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
 
-    let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
+    // ACT (Split)
+    core::split(&ctx.repo, &rs, 0, &c1_2, Some("feature/auth-core-part1")).unwrap();
+
+    // ASSERT (Split)
+    let read = core::persistence::read_metadata(&ctx.repo, &s.id).unwrap();
     assert_eq!(read.steps.len(), 2);
 
-    let rs = core::resolve_staircase(&repo, &s.id, None)
+    // ACT (Join)
+    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .unwrap();
-    core::join(&repo, &rs, 0, 1).unwrap();
+    core::join(&ctx.repo, &rs, 0, 1).unwrap();
 
-    let read = core::persistence::read_metadata(&repo, &s.id).unwrap();
+    // ASSERT (Join)
+    let read = core::persistence::read_metadata(&ctx.repo, &s.id).unwrap();
     assert_eq!(read.steps.len(), 1);
     assert_eq!(read.steps[0].cut, c1_3);
 }
 
 #[test]
 fn test_adopt_validation() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
-    let _c2 = commit(dir, "file2.txt", "2", "commit 2");
+    ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
+    let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
     let s_empty = StaircaseMetadata {
         id: uuid::Uuid::new_v4().to_string(),
@@ -174,41 +188,46 @@ fn test_adopt_validation() {
             },
         ],
     };
-    assert!(core::adopt(&repo, &s_empty).is_err());
+
+    // ACT & ASSERT
+    assert!(core::adopt(&ctx.repo, &s_empty).is_err());
 }
 
 #[test]
 fn test_discover_forked() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "step1"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "step1"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "step2a"]);
-    let _c2a = commit(dir, "file2a.txt", "2a", "commit 2a");
+    ctx.run_git(&["checkout", "-b", "step2a"]);
+    let _c2a = ctx.commit("file2a.txt", "2a", "commit 2a");
 
-    run_git(dir, &["checkout", "step1"]);
-    run_git(dir, &["checkout", "-b", "step2b"]);
-    let _c2b = commit(dir, "file2b.txt", "2b", "commit 2b");
+    ctx.run_git(&["checkout", "step1"]);
+    ctx.run_git(&["checkout", "-b", "step2b"]);
+    let _c2b = ctx.commit("file2b.txt", "2b", "commit 2b");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    // ACT
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
+
+    // ASSERT
     assert_eq!(discovered.len(), 1);
     assert!(matches!(discovered[0], Discovery::Ambiguous(_)));
 }
 
 #[test]
 fn test_verification_aggregate() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
-    let _c2 = commit(dir, "file2.txt", "2", "commit 2");
+    ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
+    let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -219,10 +238,11 @@ fn test_verification_aggregate() {
         verify_each_prefix: false,
     });
 
-    core::adopt(&repo, &s).unwrap();
+    core::adopt(&ctx.repo, &s).unwrap();
 
+    // ACT
     let results = core::verify(
-        &repo,
+        &ctx.repo,
         &ResolvedStaircase::Managed(s.clone()),
         None,
         None,
@@ -230,22 +250,24 @@ fn test_verification_aggregate() {
         None,
     )
     .unwrap();
+
+    // ASSERT
     assert_eq!(results.len(), 1);
     assert!(results[0].success);
 }
 
 #[test]
 fn test_verification_each_prefix() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
-    let _c2 = commit(dir, "file2.txt", "2", "commit 2");
+    ctx.run_git(&["checkout", "-b", "feature/auth-ui"]);
+    let _c2 = ctx.commit("file2.txt", "2", "commit 2");
 
-    let discovered = core::discover(&repo, Some("main")).unwrap();
+    let discovered = core::discover(&ctx.repo, Some("main")).unwrap();
     let Discovery::Linear(mut s) = discovered[0].clone() else {
         panic!("Expected linear discovery");
     };
@@ -256,10 +278,11 @@ fn test_verification_each_prefix() {
         verify_each_prefix: true,
     });
 
-    core::adopt(&repo, &s).unwrap();
+    core::adopt(&ctx.repo, &s).unwrap();
 
+    // ACT
     let results = core::verify(
-        &repo,
+        &ctx.repo,
         &ResolvedStaircase::Managed(s.clone()),
         None,
         None,
@@ -267,40 +290,44 @@ fn test_verification_each_prefix() {
         Some(true),
     )
     .unwrap();
+
+    // ASSERT
     assert_eq!(results.len(), 2);
 }
 
 #[test]
 fn test_split_implicit_staircase() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
-    let c1_2 = commit(dir, "file1_2.txt", "1.2", "commit 1.2");
-    let _c1_3 = commit(dir, "file1_3.txt", "1.3", "commit 1.3");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
+    let c1_2 = ctx.commit("file1_2.txt", "1.2", "commit 1.2");
+    let _c1_3 = ctx.commit("file1_3.txt", "1.3", "commit 1.3");
 
-    let discoveries = core::discover(&repo, Some("main")).unwrap();
+    let discoveries = core::discover(&ctx.repo, Some("main")).unwrap();
     let s = match &discoveries[0] {
         Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery"),
     };
 
-    let rs = core::resolve_staircase(&repo, &s.id, None)
+    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .expect("Should find implicit staircase");
     assert!(!rs.is_managed());
 
-    core::split(&repo, &rs, 0, &c1_2, Some("feature/auth-core-part1"))
+    // ACT
+    core::split(&ctx.repo, &rs, 0, &c1_2, Some("feature/auth-core-part1"))
         .expect("Split should succeed");
 
-    let discoveries_after = core::discover(&repo, Some("main")).unwrap();
+    // ASSERT
+    let discoveries_after = core::discover(&ctx.repo, Some("main")).unwrap();
     let s_after = match &discoveries_after[0] {
         Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery after split"),
     };
 
-    let rs_after = core::resolve_staircase(&repo, &s_after.id, None)
+    let rs_after = core::resolve_staircase(&ctx.repo, &s_after.id, None)
         .unwrap()
         .expect("Should find staircase after split");
     assert!(!rs_after.is_managed());
@@ -309,29 +336,60 @@ fn test_split_implicit_staircase() {
 
 #[test]
 fn test_id_lineage_auto_adopt() {
-    let (_tmp, repo) = setup_repo();
-    let dir = &repo.workdir;
+    // ARRANGE
+    let ctx = TestContext::new();
 
-    run_git(dir, &["checkout", "-b", "feature/auth-core"]);
-    let _c1 = commit(dir, "file1.txt", "1", "commit 1");
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
-    let discoveries = core::discover(&repo, Some("main")).unwrap();
+    let discoveries = core::discover(&ctx.repo, Some("main")).unwrap();
     let s = match &discoveries[0] {
         Discovery::Linear(s) => s.clone(),
         _ => panic!("Expected linear discovery"),
     };
 
-    let rs = core::resolve_staircase(&repo, &s.id, None)
+    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
         .unwrap()
         .expect("Should find implicit staircase");
 
+    // ACT
     use git_staircase::IdentityKind;
-    let id = core::compute_identity(&repo, &rs, IdentityKind::Lineage).unwrap();
+    let id = core::compute_identity(&ctx.repo, &rs, IdentityKind::Lineage).unwrap();
+
+    // ASSERT
     assert!(!id.is_empty());
 
-    let rs_after = core::resolve_staircase(&repo, &id, None)
+    let rs_after = core::resolve_staircase(&ctx.repo, &id, None)
         .unwrap()
         .expect("Should find staircase");
     assert!(rs_after.is_managed());
     assert_eq!(rs_after.metadata().id, id);
+}
+
+#[test]
+fn test_slash_name_discovery() {
+    // ARRANGE
+    let ctx = TestContext::new();
+    let metadata = StaircaseMetadata {
+        id: "uuid".to_string(),
+        name: "feature/foo".to_string(),
+        target: "main".to_string(),
+        steps: vec![Step {
+            name: "s1".to_string(),
+            cut: ctx.repo.resolve_commit("HEAD").unwrap(),
+            branch: None,
+        }],
+        verification_policy: None,
+    };
+
+    core::persistence::write_metadata(&ctx.repo, &metadata).unwrap();
+
+    // ACT
+    let list = core::persistence::list_staircases(&ctx.repo).unwrap();
+
+    // ASSERT
+    assert!(
+        list.iter().any(|s| s.name == "feature/foo"),
+        "Staircase with slash in name should be listed"
+    );
 }

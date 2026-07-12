@@ -4,6 +4,39 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
+pub struct TestContext {
+    pub tmp: TempDir,
+    pub repo: GitRepo,
+}
+
+impl TestContext {
+    #[allow(dead_code)]
+    pub fn new() -> Self {
+        let (tmp, repo) = setup_repo();
+        TestContext { tmp, repo }
+    }
+
+    #[allow(dead_code)]
+    pub fn path(&self) -> &Path {
+        self.tmp.path()
+    }
+
+    #[allow(dead_code)]
+    pub fn run_git(&self, args: &[&str]) -> String {
+        run_git(self.path(), args)
+    }
+
+    #[allow(dead_code)]
+    pub fn commit(&self, file: &str, contents: &str, msg: &str) -> String {
+        commit(self.path(), file, contents, msg)
+    }
+
+    #[allow(dead_code)]
+    pub fn run_staircase(&self, args: &[&str]) -> (bool, String, String) {
+        run_staircase(self.path(), args)
+    }
+}
+
 #[allow(dead_code)]
 pub fn run_git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
@@ -30,7 +63,7 @@ pub fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
     let path = dir.join(file);
     fs::write(path, contents).unwrap();
     run_git(dir, &["add", "."]);
-    run_git(dir, &["commit", "-m", msg]);
+    run_git(dir, &["commit", "--allow-empty", "-m", msg]);
     run_git(dir, &["rev-parse", "HEAD"])
 }
 

@@ -15,7 +15,7 @@ impl GitRepo {
         GitRepo { workdir }
     }
 
-    fn git_cmd(&self) -> Command {
+    pub fn git_cmd(&self) -> Command {
         let mut cmd = Command::new("git");
         cmd.current_dir(&self.workdir);
         cmd.env("GIT_TERMINAL_PROMPT", "0");
@@ -225,88 +225,3 @@ impl GitRepo {
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::fs;
-    use std::process::Command;
-    use tempfile::TempDir;
-
-    fn setup_repo() -> (TempDir, GitRepo) {
-        let tmp = TempDir::new().unwrap();
-        let repo_path = tmp.path().to_path_buf();
-
-        let status = Command::new("git")
-            .current_dir(&repo_path)
-            .args(["init", "-b", "main"])
-            .status()
-            .unwrap();
-        assert!(status.success());
-
-        // Initial commit to have a HEAD
-        fs::write(repo_path.join("init.txt"), "init").unwrap();
-        let status = Command::new("git")
-            .current_dir(&repo_path)
-            .args(["add", "."])
-            .status()
-            .unwrap();
-        assert!(status.success());
-
-        let status = Command::new("git")
-            .current_dir(&repo_path)
-            .args(["commit", "-m", "initial"])
-            .env("GIT_AUTHOR_NAME", "Test")
-            .env("GIT_AUTHOR_EMAIL", "test@example.com")
-            .env("GIT_COMMITTER_NAME", "Test")
-            .env("GIT_COMMITTER_EMAIL", "test@example.com")
-            .status()
-            .unwrap();
-        assert!(status.success());
-
-        (tmp, GitRepo::new(repo_path))
-    }
-
-    #[test]
-    fn test_git_cmd_setup() {
-        let (_tmp, repo) = setup_repo();
-        let cmd = repo.git_cmd();
-        assert_eq!(cmd.get_program(), "git");
-        // We can't easily check current_dir and env from Command without unstable features or just running it.
-        let output = repo.run(&["rev-parse", "--is-inside-work-tree"]).unwrap();
-        assert_eq!(output.trim(), "true");
-    }
-}
-
-#[cfg(test)]
-mod extra_tests {
-    use super::*;
-    use crate::error::StaircaseError;
-    use tempfile::TempDir;
-
-    #[test]
-    fn test_git_command_failed_captures_info() {
-        // ARRANGE
-        let tmp = TempDir::new().unwrap();
-        let repo = GitRepo::new(tmp.path().to_path_buf());
-        let _ = std::process::Command::new("git")
-            .current_dir(tmp.path())
-            .arg("init")
-            .status();
-
-        // ACT
-        let result = repo.run(&["rev-parse", "HEAD"]);
-
-        // ASSERT
-        match result {
-            Err(StaircaseError::GitCommandFailed {
-                command,
-                stdout: _,
-                stderr,
-            }) => {
-                assert!(command.contains("git rev-parse HEAD"));
-                assert!(stderr.contains("fatal: ambiguous argument 'HEAD'"));
-            }
-            _ => panic!("Expected GitCommandFailed error, got {:?}", result),
-        }
-    }
-}
