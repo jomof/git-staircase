@@ -38,9 +38,10 @@ fn test_verification_status_in_show_output() {
             branch: None,
         }],
         verification_policy: None,
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
     persistence::write_metadata(&repo, &metadata).unwrap();
 
     let results = vec![VerificationResult {

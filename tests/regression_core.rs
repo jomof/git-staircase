@@ -161,9 +161,10 @@ fn test_split_duplicate_name() {
             branch: Some("s1".to_string()),
         }],
         verification_policy: None,
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
     git_staircase::core::adopt(&ctx.repo, &sc).unwrap();
     let rs = ResolvedStaircase::Managed(sc);
 

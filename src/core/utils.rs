@@ -47,7 +47,7 @@ pub fn check_sequential_layout(steps: &[Step]) -> Option<String> {
 
 #[cfg(test)]
 mod tests {
-    use super::{common_prefix, check_sequential_layout};
+    use super::{check_sequential_layout, common_prefix};
     use crate::model::Step;
 
     #[test]
@@ -84,10 +84,8 @@ mod tests {
         );
 
         assert_eq!(
-            check_sequential_layout(&[
-                step("s1", Some("feat-1")),
-                step("s2", Some("feat")),
-            ]).as_deref(),
+            check_sequential_layout(&[step("s1", Some("feat-1")), step("s2", Some("feat")),])
+                .as_deref(),
             Some("feat")
         );
 
@@ -96,7 +94,8 @@ mod tests {
                 step("s1", Some("feat-1")),
                 step("s2", Some("feat-2")),
                 step("s3", Some("feat")),
-            ]).as_deref(),
+            ])
+            .as_deref(),
             Some("feat")
         );
 
@@ -110,18 +109,12 @@ mod tests {
         );
 
         assert_eq!(
-            check_sequential_layout(&[
-                step("s1", Some("feat-1")),
-                step("s2", Some("feat-2")),
-            ]),
+            check_sequential_layout(&[step("s1", Some("feat-1")), step("s2", Some("feat-2")),]),
             None
         );
 
         assert_eq!(
-            check_sequential_layout(&[
-                step("s1", Some("feat-1")),
-                step("s2", None),
-            ]),
+            check_sequential_layout(&[step("s1", Some("feat-1")), step("s2", None),]),
             None
         );
     }

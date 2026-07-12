@@ -213,9 +213,10 @@ fn test_adopt_validation() {
                 branch: Some("feature/auth-core".to_string()),
             },
         ],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT & ASSERT
     assert!(core::adopt(&ctx.repo, &s_empty).is_err());
@@ -416,9 +417,10 @@ fn test_slash_name_discovery() {
             branch: None,
         }],
         verification_policy: None,
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     core::persistence::write_metadata(&ctx.repo, &metadata).unwrap();
 

@@ -67,7 +67,8 @@ pub fn extract_path_to(
         target: family.target.clone(),
         steps: path_steps,
         verification_policy: family.verification_policy.clone(),
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,})
+        branch_layout_base: None,
+    })
 }

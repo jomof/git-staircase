@@ -17,7 +17,7 @@ fn test_implicit_sequential_discovery() {
 
     let discoveries = core::discover(&ctx.repo, None, None, false).unwrap();
     assert_eq!(discoveries.len(), 1);
-    
+
     if let Discovery::Linear(meta) = &discoveries[0] {
         assert_eq!(meta.primary_branch_layout.as_deref(), Some("sequential-v1"));
         assert_eq!(meta.branch_layout_base.as_deref(), Some("feat"));
@@ -42,12 +42,26 @@ fn test_split_renumbers_implicit() {
     ctx.run_git(&["checkout", "-b", "feat"]);
     let c3 = ctx.commit("3.txt", "3", "c3");
 
-    let rs = core::resolve_staircase(&ctx.repo, "feat", None).unwrap().unwrap().staircase;
+    let rs = core::resolve_staircase(&ctx.repo, "feat", None)
+        .unwrap()
+        .unwrap()
+        .staircase;
     assert!(matches!(rs, core::ResolvedStaircase::Implicit(_)));
-    
-    core::split(&ctx.repo, &rs, 1, &c2_mid, Some("feat-2-split"), core::SplitOptions { no_ref: false }).unwrap();
 
-    let rs_after = core::resolve_staircase(&ctx.repo, "feat", None).unwrap().unwrap().staircase;
+    core::split(
+        &ctx.repo,
+        &rs,
+        1,
+        &c2_mid,
+        Some("feat-2-split"),
+        core::SplitOptions { no_ref: false },
+    )
+    .unwrap();
+
+    let rs_after = core::resolve_staircase(&ctx.repo, "feat", None)
+        .unwrap()
+        .unwrap()
+        .staircase;
     assert!(matches!(rs_after, core::ResolvedStaircase::Implicit(_)));
 
     let meta = rs_after.metadata();
@@ -74,13 +88,25 @@ fn test_reorder_renumbers_managed() {
     ctx.run_git(&["checkout", "-b", "feat"]);
     let _c3 = ctx.commit("3.txt", "3", "c3");
 
-    let rs = core::resolve_staircase(&ctx.repo, "feat", None).unwrap().unwrap().staircase;
+    let rs = core::resolve_staircase(&ctx.repo, "feat", None)
+        .unwrap()
+        .unwrap()
+        .staircase;
     let adopted = core::adopt(&ctx.repo, rs.metadata()).unwrap();
     let rs_managed = core::ResolvedStaircase::Managed(adopted);
 
-    core::reorder(&ctx.repo, &rs_managed, &[1, 0, 2], core::ReorderOptions { no_restack: false }).unwrap();
+    core::reorder(
+        &ctx.repo,
+        &rs_managed,
+        &[1, 0, 2],
+        core::ReorderOptions { no_restack: false },
+    )
+    .unwrap();
 
-    let rs_after = core::resolve_staircase(&ctx.repo, "feat", None).unwrap().unwrap().staircase;
+    let rs_after = core::resolve_staircase(&ctx.repo, "feat", None)
+        .unwrap()
+        .unwrap()
+        .staircase;
     assert!(matches!(rs_after, core::ResolvedStaircase::Managed(_)));
 
     let meta = rs_after.metadata();
@@ -97,7 +123,7 @@ fn test_reorder_renumbers_managed() {
     assert!(ctx.repo.is_ancestor(&target_oid, &feat_1_oid).unwrap());
     assert!(ctx.repo.is_ancestor(&feat_1_oid, &feat_2_oid).unwrap());
     assert!(ctx.repo.is_ancestor(&feat_2_oid, &feat_oid).unwrap());
-    
+
     assert_eq!(meta.steps[0].name, "feat-2");
     assert_eq!(meta.steps[1].name, "feat-1");
     assert_eq!(meta.steps[2].name, "feat");
@@ -114,13 +140,28 @@ fn test_drop_renumbers_managed() {
     ctx.run_git(&["checkout", "-b", "feat"]);
     let _c3 = ctx.commit("3.txt", "3", "c3");
 
-    let rs = core::resolve_staircase(&ctx.repo, "feat", None).unwrap().unwrap().staircase;
+    let rs = core::resolve_staircase(&ctx.repo, "feat", None)
+        .unwrap()
+        .unwrap()
+        .staircase;
     let adopted = core::adopt(&ctx.repo, rs.metadata()).unwrap();
     let rs_managed = core::ResolvedStaircase::Managed(adopted);
 
-    core::drop(&ctx.repo, &rs_managed, 1, core::DropOptions { restack: true, leave_descendants_stale: false }).unwrap();
+    core::drop(
+        &ctx.repo,
+        &rs_managed,
+        1,
+        core::DropOptions {
+            restack: true,
+            leave_descendants_stale: false,
+        },
+    )
+    .unwrap();
 
-    let rs_after = core::resolve_staircase(&ctx.repo, "feat", None).unwrap().unwrap().staircase;
+    let rs_after = core::resolve_staircase(&ctx.repo, "feat", None)
+        .unwrap()
+        .unwrap()
+        .staircase;
     let meta = rs_after.metadata();
     assert_eq!(meta.steps.len(), 2);
     assert_eq!(meta.steps[0].branch.as_deref(), Some("feat-1"));

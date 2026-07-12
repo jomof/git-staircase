@@ -6,7 +6,7 @@ use std::collections::HashMap;
 use uuid::Uuid;
 
 use super::inference::infer_onto;
-use super::utils::{common_prefix, check_sequential_layout};
+use super::utils::{check_sequential_layout, common_prefix};
 
 pub fn compute_implicit_id(object_format: &str, target_oid: &str, steps: &[Step]) -> String {
     use sha2::{Digest, Sha256};

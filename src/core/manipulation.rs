@@ -137,9 +137,6 @@ pub fn join(
             }
             JoinRefAction::Keep => {
                 // Do nothing to the ref.
-                // This will trigger adoption in remove_step because it will detect a stale/untracked ref?
-                // Actually, ResolvedStaircase::remove_step just removes from metadata.
-                // If it remains in Git, discovery will see it.
             }
         }
     }
@@ -234,6 +231,48 @@ impl<'a> StaircaseRebaser<'a> {
     }
 }
 
+fn perform_restack(
+    repo: &GitRepo,
+    rebaser: &StaircaseRebaser,
+    steps: &mut [Step],
+    base_oid: &str,
+    old_parent_oids: &[String],
+    options: &RebaseOptions,
+) -> Result<Option<usize>> {
+    let mut current_base = base_oid.to_string();
+    for i in 0..steps.len() {
+        let step = &steps[i];
+        let actual_oid = repo.resolve_commit(&step.cut)?;
+        let old_parent_oid = &old_parent_oids[i];
+
+        let should_rebase = &current_base != old_parent_oid || !repo.is_ancestor(&current_base, &actual_oid)?;
+
+        if should_rebase {
+            match rebaser.rebase_step(step, &actual_oid, old_parent_oid, &current_base) {
+                Ok(new_oid) => {
+                    steps[i].cut = new_oid.clone();
+                    current_base = new_oid;
+                    if options.leave_upper_steps_stale {
+                        return Ok(Some(i));
+                    }
+                }
+                Err(e) => {
+                    return Err(StaircaseError::Other(format!(
+                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
+                        step.name, e
+                    )));
+                }
+            }
+        } else {
+            current_base = actual_oid.clone();
+            if steps[i].cut != actual_oid {
+                steps[i].cut = actual_oid;
+            }
+        }
+    }
+    Ok(None)
+}
+
 pub fn reorder(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
@@ -259,38 +298,38 @@ pub fn reorder(
 
     if !options.no_restack {
         let rebaser = StaircaseRebaser::new(repo, &old_steps)?;
-
         let target_oid = repo.resolve_commit(&metadata.target)?;
-        let mut current_base = target_oid;
 
+        let mut old_parent_oids = Vec::new();
         for i in 0..new_steps.len() {
-            let step = &new_steps[i];
-            let actual_oid = repo.resolve_commit(&step.cut)?;
-
             let old_idx = new_order[i];
+            let actual_oid = repo.resolve_commit(&new_steps[i].cut)?;
             let old_parent_oid = if old_idx == 0 {
-                repo.merge_base(&actual_oid, &repo.resolve_commit(&metadata.target)?)?
+                repo.merge_base(&actual_oid, &target_oid)?
             } else {
                 old_steps[old_idx - 1].cut.clone()
             };
-
-            if current_base != old_parent_oid {
-                match rebaser.rebase_step(step, &step.cut, &old_parent_oid, &current_base) {
-                    Ok(new_oid) => {
-                        new_steps[i].cut = new_oid.clone();
-                        current_base = new_oid;
-                    }
-                    Err(e) => {
-                        rebaser.rollback();
-                        return Err(StaircaseError::Other(format!("Reorder failed: {}", e)));
-                    }
-                }
-            } else {
-                current_base = actual_oid;
-            }
+            old_parent_oids.push(old_parent_oid);
         }
 
-        rebaser.finalize()?;
+        match perform_restack(
+            repo,
+            &rebaser,
+            &mut new_steps,
+            &target_oid,
+            &old_parent_oids,
+            &RebaseOptions {
+                leave_upper_steps_stale: false,
+            },
+        ) {
+            Ok(_) => {
+                rebaser.finalize()?;
+            }
+            Err(e) => {
+                rebaser.rollback();
+                return Err(e);
+            }
+        }
     }
 
     metadata.steps = new_steps;
@@ -392,7 +431,7 @@ pub fn restack(
     staircase: &ResolvedStaircase,
     options: RebaseOptions,
 ) -> Result<()> {
-    let mut status = crate::core::status::get_status_metadata(
+    let status = crate::core::status::get_status_metadata(
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
@@ -402,13 +441,11 @@ pub fn restack(
         return Ok(());
     }
 
-    let rebaser = StaircaseRebaser::new(repo, &status.metadata.steps)?;
+    let mut metadata = status.metadata.clone();
+    let rebaser = StaircaseRebaser::new(repo, &metadata.steps)?;
+    let target_oid = repo.resolve_commit(&metadata.target)?;
 
-    let target_oid = repo.resolve_commit(&status.metadata.target)?;
-    let mut current_base = target_oid;
-    let mut metadata_changed = false;
-    let mut current_rs = staircase.clone();
-
+    let mut old_parent_oids = Vec::new();
     let original_cuts: Vec<String> = status
         .metadata
         .steps
@@ -416,70 +453,41 @@ pub fn restack(
         .map(|s| s.cut.clone())
         .collect();
 
-    let run_loop = || -> Result<()> {
-        for i in 0..status.steps.len() {
-            let step_status = &status.steps[i];
-            let step_name = status.metadata.steps[i].name.clone();
+    for i in 0..metadata.steps.len() {
+        let step_status = &status.steps[i];
+        let actual_oid = match &step_status.actual_oid {
+            Some(oid) => oid.clone(),
+            None => metadata.steps[i].cut.clone(),
+        };
+        // Update metadata.steps[i].cut to actual_oid so perform_restack uses it.
+        metadata.steps[i].cut = actual_oid.clone();
 
-            let actual_oid = match &step_status.actual_oid {
-                Some(oid) => oid.clone(),
-                None => status.metadata.steps[i].cut.clone(),
-            };
+        let old_parent_oid = if i == 0 {
+            repo.merge_base(&actual_oid, &target_oid)?
+        } else {
+            original_cuts[i - 1].clone()
+        };
+        old_parent_oids.push(old_parent_oid);
+    }
 
-            let is_stale = !repo.is_ancestor(&current_base, &actual_oid)?;
-            if is_stale {
-                let old_parent_cut = if i == 0 {
-                    repo.merge_base(&actual_oid, &current_base)?
-                } else {
-                    original_cuts[i - 1].clone()
-                };
-
-                match rebaser.rebase_step(
-                    &status.metadata.steps[i],
-                    &actual_oid,
-                    &old_parent_cut,
-                    &current_base,
-                ) {
-                    Ok(new_oid) => {
-                        current_rs = current_rs.update_step_oid(repo, i, new_oid.clone())?;
-                        status.metadata.steps[i].cut = new_oid.clone();
-                        metadata_changed = true;
-                        current_base = new_oid;
-
-                        if options.leave_upper_steps_stale {
-                            // Stop here.
-                            return Ok(());
-                        }
-                    }
-                    Err(e) => {
-                        if metadata_changed {
-                            let _ = current_rs.commit_metadata(repo, status.metadata.clone());
-                        }
-                        return Err(StaircaseError::Other(format!(
-                            "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
-                            step_name, e
-                        )));
-                    }
-                }
-            } else {
-                current_base = actual_oid.clone();
-                if status.metadata.steps[i].cut != actual_oid {
-                    current_rs = current_rs.update_step_oid(repo, i, actual_oid.clone())?;
-                    status.metadata.steps[i].cut = actual_oid;
-                    metadata_changed = true;
+    match perform_restack(
+        repo,
+        &rebaser,
+        &mut metadata.steps,
+        &target_oid,
+        &old_parent_oids,
+        &options,
+    ) {
+        Ok(stop_index) => {
+            rebaser.finalize()?;
+            
+            if let Some(idx) = stop_index {
+                for i in (idx + 1)..metadata.steps.len() {
+                    metadata.steps[i].cut = original_cuts[i].clone();
                 }
             }
-        }
-
-        if metadata_changed {
-            current_rs.commit_metadata(repo, status.metadata)?;
-        }
-        Ok(())
-    };
-
-    match run_loop() {
-        Ok(_) => {
-            rebaser.finalize()?;
+            
+            staircase.commit_metadata(repo, metadata)?;
             Ok(())
         }
         Err(e) => {

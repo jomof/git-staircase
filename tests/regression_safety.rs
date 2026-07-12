@@ -91,9 +91,10 @@ fn test_reorder_data_loss_on_dirty_workdir() {
             branch: None,
         }],
         verification_policy: None,
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
     let rs = ResolvedStaircase::Implicit(metadata);
 
     // ACT
@@ -228,9 +229,10 @@ fn test_verify_leaves_detached_head() {
             test_command: None,
             verify_each_prefix: true,
         }),
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
     git_staircase::core::adopt(&repo, &sc).unwrap();
 
     run_git(repo_dir, &["checkout", "main"]);

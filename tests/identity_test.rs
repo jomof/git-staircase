@@ -14,9 +14,10 @@ fn test_identity_lineage_and_nominal() {
         target: target,
         steps: vec![],
         verification_policy: None,
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT & ASSERT
     assert_eq!(
@@ -57,9 +58,10 @@ fn test_identity_revision() {
             cut: c1.clone(),
             branch: None,
         }],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT
     let id1 = core::compute_identity(
@@ -82,9 +84,10 @@ fn test_identity_revision() {
             cut: c2.clone(),
             branch: None,
         }],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT (New identity)
     let id2 = core::compute_identity(
@@ -125,9 +128,10 @@ fn test_identity_body() {
                 branch: None,
             },
         ],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT
     let id1 = core::compute_identity(
@@ -149,9 +153,10 @@ fn test_identity_body() {
             cut: c2.clone(),
             branch: None,
         }],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT (New identity)
     let id2 = core::compute_identity(
@@ -192,9 +197,10 @@ fn test_identity_decomposition() {
                 branch: None,
             },
         ],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT
     let id1 = core::compute_identity(
@@ -228,9 +234,10 @@ fn test_identity_decomposition() {
                 branch: None,
             },
         ],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT (New identity)
     let id2 = core::compute_identity(
@@ -255,9 +262,10 @@ fn test_identity_decomposition() {
             cut: c2_new.clone(),
             branch: None,
         }],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT (New identity)
     let id3 = core::compute_identity(
@@ -298,9 +306,10 @@ fn test_identity_outcome() {
                 branch: None,
             },
         ],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT
     let id1 = core::compute_identity(
@@ -328,9 +337,10 @@ fn test_identity_outcome() {
             cut: top_new,
             branch: None,
         }],
-    
+
         primary_branch_layout: None,
-        branch_layout_base: None,};
+        branch_layout_base: None,
+    };
 
     // ACT (New identity)
     let id2 = core::compute_identity(

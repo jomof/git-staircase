@@ -255,7 +255,7 @@ fn plan_renumbering(
     }
 
     let mut commands = Vec::new();
-    
+
     // Helper to get match key for a step
     let step_key = |s: &Step| {
         if !s.id.is_empty() {
@@ -282,9 +282,9 @@ fn plan_renumbering(
     for old_step in &old_metadata.steps {
         let key = step_key(old_step);
         if !new_metadata.steps.iter().any(|s| step_key(s) == key) {
-             if let Some(ref old_branch) = old_step.branch {
-                 old_branch_current_oid.insert(old_branch.clone(), old_step.cut.clone());
-             }
+            if let Some(ref old_branch) = old_step.branch {
+                old_branch_current_oid.insert(old_branch.clone(), old_step.cut.clone());
+            }
         }
     }
 
@@ -311,7 +311,7 @@ fn plan_renumbering(
                     if !new_refs.contains(&ref_name) {
                         commands.push(format!("delete {} {}", ref_name, new_oid));
                     }
-                    
+
                     let current_oid_of_new = old_branch_current_oid.get(expected_name);
                     if let Some(curr_oid) = current_oid_of_new {
                         commands.push(format!("update {} {} {}", new_ref, new_oid, curr_oid));
@@ -354,4 +354,3 @@ fn sequential_branch_name(index: usize, total: usize, base: &str) -> String {
         format!("{}-{}", base, index + 1)
     }
 }
-
