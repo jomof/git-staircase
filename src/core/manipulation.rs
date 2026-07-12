@@ -539,7 +539,17 @@ pub fn land(
     staircase: &ResolvedStaircase,
     options: LandOptions,
 ) -> Result<()> {
-    let metadata = staircase.metadata();
+    let status = crate::core::status::get_status_metadata(
+        repo,
+        staircase.metadata().clone(),
+        !staircase.is_managed(),
+    )?;
+
+    if !status.is_clean {
+        return Err(StaircaseError::Other("Staircase is stale or modified. Please run restack or update metadata before landing.".to_string()));
+    }
+
+    let metadata = &status.metadata;
     let policy = options.policy.or(metadata.landing_policy).unwrap_or(LandingPolicy::Stepwise);
     
     let top_cut = &metadata.steps.last().ok_or_else(|| StaircaseError::InvalidStructure("Empty staircase".to_string()))?.cut;
@@ -556,7 +566,6 @@ pub fn land(
             }
         }
     } else {
-        // If it was an OID, we can't really "update" it.
         return Err(StaircaseError::Other(format!("Target {} is not a ref, cannot land", metadata.target)));
     }
     
