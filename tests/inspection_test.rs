@@ -59,6 +59,13 @@ fn test_inspection_commands_on_implicit_staircase() {
     assert!(stdout.contains("commit 1"));
     assert!(stdout.contains("commit 2"));
     assert!(stdout.contains("commit 3"));
+
+    // ACT & ASSERT: show --steps
+    let (success, stdout, stderr) = run_staircase(dir, &["show", name, "--steps"]);
+    assert!(success, "show --steps command failed: {}", stderr);
+    assert!(stdout.contains("feature/auth-core"));
+    assert!(stdout.contains("feature/auth-ui"));
+    assert!(stdout.contains("feature/auth-tests"));
 }
 
 #[test]

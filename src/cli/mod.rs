@@ -45,7 +45,7 @@ pub struct StaircaseSelectorArgs {
     /// Name of the staircase to operate on. Can also be a branch name within a staircase.
     pub name: Option<String>,
     /// Explicit list of branch names (root to tip) for an unmanaged staircase.
-    #[arg(long, value_delimiter = ',')]
+    #[arg(long, value_delimiter = ',', num_args = 0..)]
     pub steps: Option<Vec<String>>,
     /// The target branch the staircase is based on (e.g., 'main').
     #[arg(long)]
@@ -101,18 +101,19 @@ impl StaircaseSelectorArgs {
         }
 
         if let Some(s) = &self.steps {
-            Ok(ResolvedSelector {
-                staircase: core::resolve_explicit_staircase(repo, s, self.onto.as_deref())?,
-                step_index: None,
-            })
-        } else {
-            let name = self
-                .name
-                .as_ref()
-                .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --revision, --structural-key) must be provided"))?;
-            core::resolve_staircase(repo, name, self.onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
+            if !s.is_empty() {
+                return Ok(ResolvedSelector {
+                    staircase: core::resolve_explicit_staircase(repo, s, self.onto.as_deref())?,
+                    step_index: None,
+                });
+            }
         }
+        let name = self
+            .name
+            .as_ref()
+            .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --revision, --structural-key) must be provided"))?;
+        core::resolve_staircase(repo, name, self.onto.as_deref())?
+            .ok_or_else(|| anyhow!("Staircase '{}' not found", name))
     }
 }
 
