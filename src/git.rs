@@ -358,7 +358,9 @@ impl GitRepo {
 
             for other_oid in &all_target_oids {
                 let is_anc = reachable.contains(other_oid);
-                self.memoizer.set_ancestry(other_oid, start_oid, is_anc);
+                if is_anc || exclude_oids.is_empty() {
+                    self.memoizer.set_ancestry(other_oid, start_oid, is_anc);
+                }
             }
         }
 
@@ -455,14 +457,15 @@ impl GitRepo {
     }
 
     pub fn get_tree_id(&self, rev: &str) -> Result<String> {
-        if let Some(tree) = self.memoizer.get_tree_id(rev) {
+        let commit_oid = self.resolve_commit(rev)?;
+        if let Some(tree) = self.memoizer.get_tree_id(&commit_oid) {
             return Ok(tree);
         }
         let tree = self
             .command()
-            .args(&["rev-parse", &format!("{}^{{tree}}", rev)])
+            .args(&["rev-parse", &format!("{}^{{tree}}", commit_oid)])
             .run()?;
-        self.memoizer.set_tree_id(rev, &tree);
+        self.memoizer.set_tree_id(&commit_oid, &tree);
         Ok(tree)
     }
 
