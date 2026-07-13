@@ -1,7 +1,7 @@
-use anyhow::Result;
 use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
 use crate::core::{self, ArchiveOptions, ArchiveResult};
 use crate::git::GitRepo;
+use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::Serialize;
 
@@ -79,7 +79,9 @@ impl ToPorcelain for ArchiveOutput {
     fn to_porcelain(&self) -> String {
         format!(
             "archived\t{}\t{}\t{}",
-            self.result.canonical_name, self.result.archived_staircase_id, self.result.archive_event_id
+            self.result.canonical_name,
+            self.result.archived_staircase_id,
+            self.result.archive_event_id
         )
     }
 }
@@ -91,7 +93,10 @@ pub struct ReleaseNameOutput {
 
 impl ToHuman for ReleaseNameOutput {
     fn to_human(&self) -> String {
-        format!("Released canonical name reservation (record OID: {})", self.record_oid)
+        format!(
+            "Released canonical name reservation (record OID: {})",
+            self.record_oid
+        )
     }
 }
 

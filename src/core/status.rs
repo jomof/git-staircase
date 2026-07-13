@@ -114,7 +114,9 @@ pub fn get_status_metadata_ext(
                 }
             }
         }
-    } else if let Ok(discoveries) = super::discovery::discover(repo, Some(&metadata.target), None, false) {
+    } else if let Ok(discoveries) =
+        super::discovery::discover(repo, Some(&metadata.target), None, false)
+    {
         for d in discoveries {
             if let Discovery::Linear(m) = d {
                 if m.name == metadata.name && m.id != metadata.id {
@@ -142,7 +144,9 @@ pub fn get_status_metadata_ext(
 
     let worktree_draft = match cached_draft {
         Some(draft_opt) => draft_opt.filter(filter_draft),
-        None => super::draft::get_worktree_draft(repo).ok().filter(filter_draft),
+        None => super::draft::get_worktree_draft(repo)
+            .ok()
+            .filter(filter_draft),
     };
 
     Ok(StaircaseStatus {

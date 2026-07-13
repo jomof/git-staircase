@@ -1,7 +1,5 @@
 use git_staircase::GitRepo;
-use git_staircase::workspace::{
-    bootstrap, probe_repo_workspace, BootstrapOptions, Capability,
-};
+use git_staircase::workspace::{BootstrapOptions, Capability, bootstrap, probe_repo_workspace};
 use std::fs;
 use std::path::PathBuf;
 use std::sync::Mutex;
@@ -43,7 +41,8 @@ fn setup_repo_workspace() -> (
     let repo = GitRepo::new(proj_dir.clone());
     repo.run(&["init"]).unwrap();
     repo.run(&["config", "user.name", "Test User"]).unwrap();
-    repo.run(&["config", "user.email", "test@example.com"]).unwrap();
+    repo.run(&["config", "user.email", "test@example.com"])
+        .unwrap();
 
     let file_path = proj_dir.join("file.txt");
     fs::write(&file_path, "hello").unwrap();
@@ -62,10 +61,7 @@ fn test_repo_provider_discovery_and_bootstrap() {
     let cand = cand.unwrap();
 
     assert_eq!(cand.provider, "repo");
-    assert_eq!(
-        cand.workspace_root,
-        client_root.canonicalize().unwrap()
-    );
+    assert_eq!(cand.workspace_root, client_root.canonicalize().unwrap());
     assert_eq!(cand.claim, "authoritative");
     assert_eq!(cand.confidence, "high");
 

@@ -1,6 +1,6 @@
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::workspace::bootstrap::{bootstrap, BootstrapOptions};
+use crate::workspace::bootstrap::{BootstrapOptions, bootstrap};
 use crate::workspace::model::Capability;
 use crate::workspace::provider::discover_installed_providers;
 use serde::Serialize;
@@ -51,7 +51,10 @@ pub fn doctor(repo: &GitRepo, options: &BootstrapOptions) -> Result<WorkspaceDoc
     let mut diagnostics = Vec::new();
 
     if rec.capability_bindings.get(&Capability::Review).is_none() {
-        diagnostics.push("Review provider is unbound. Commands requiring code review integration will fail.".to_string());
+        diagnostics.push(
+            "Review provider is unbound. Commands requiring code review integration will fail."
+                .to_string(),
+        );
     }
 
     if rec

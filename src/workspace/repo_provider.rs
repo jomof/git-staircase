@@ -57,7 +57,8 @@ pub fn probe_repo_workspace(repo: &GitRepo) -> Result<Option<WorkspaceCandidate>
         return Ok(None);
     }
 
-    let manifest_info = match parse_repo_manifest_for_project(&repo_client_root, &canonical_workdir) {
+    let manifest_info = match parse_repo_manifest_for_project(&repo_client_root, &canonical_workdir)
+    {
         Ok(Some(info)) => info,
         _ => return Ok(None),
     };
@@ -74,8 +75,14 @@ pub fn probe_repo_workspace(repo: &GitRepo) -> Result<Option<WorkspaceCandidate>
         "workspace_root".to_string(),
         repo_client_root.display().to_string(),
     );
-    fingerprint.insert("project_name".to_string(), manifest_info.project_name.clone());
-    fingerprint.insert("project_path".to_string(), project_rel_path.display().to_string());
+    fingerprint.insert(
+        "project_name".to_string(),
+        manifest_info.project_name.clone(),
+    );
+    fingerprint.insert(
+        "project_path".to_string(),
+        project_rel_path.display().to_string(),
+    );
     fingerprint.insert("revision".to_string(), manifest_info.revision.clone());
     if let Some(ref u) = manifest_info.upstream {
         fingerprint.insert("upstream".to_string(), u.clone());
@@ -136,7 +143,13 @@ fn parse_repo_manifest_for_project(
     let mut default_config = RepoDefault::default();
     let mut projects: Vec<RepoProject> = Vec::new();
 
-    parse_manifest_xml_file(&manifest_file, &dot_repo, &mut remotes, &mut default_config, &mut projects)?;
+    parse_manifest_xml_file(
+        &manifest_file,
+        &dot_repo,
+        &mut remotes,
+        &mut default_config,
+        &mut projects,
+    )?;
 
     // Check local_manifests if present
     let local_manifests_dir = dot_repo.join("local_manifests");
@@ -145,19 +158,35 @@ fn parse_repo_manifest_for_project(
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.extension().and_then(|s| s.to_str()) == Some("xml") {
-                    let _ = parse_manifest_xml_file(&p, &dot_repo, &mut remotes, &mut default_config, &mut projects);
+                    let _ = parse_manifest_xml_file(
+                        &p,
+                        &dot_repo,
+                        &mut remotes,
+                        &mut default_config,
+                        &mut projects,
+                    );
                 }
             }
         }
     }
     let local_manifest_file = dot_repo.join("local_manifest.xml");
     if local_manifest_file.is_file() {
-        let _ = parse_manifest_xml_file(&local_manifest_file, &dot_repo, &mut remotes, &mut default_config, &mut projects);
+        let _ = parse_manifest_xml_file(
+            &local_manifest_file,
+            &dot_repo,
+            &mut remotes,
+            &mut default_config,
+            &mut projects,
+        );
     }
 
     // Find project matching workdir
     for proj in projects {
-        let proj_path = client_root.join(if proj.path.is_empty() { &proj.name } else { &proj.path });
+        let proj_path = client_root.join(if proj.path.is_empty() {
+            &proj.name
+        } else {
+            &proj.path
+        });
         let canonical_proj_path = proj_path.canonicalize().unwrap_or(proj_path.clone());
 
         if workdir == canonical_proj_path || workdir.starts_with(&canonical_proj_path) {
@@ -166,7 +195,9 @@ fn parse_repo_manifest_for_project(
                 .or_else(|| default_config.revision.clone())
                 .unwrap_or_else(|| "main".to_string());
             let remote_name = proj.remote.or_else(|| default_config.remote.clone());
-            let dest_branch = proj.dest_branch.or_else(|| default_config.dest_branch.clone());
+            let dest_branch = proj
+                .dest_branch
+                .or_else(|| default_config.dest_branch.clone());
             let review_endpoint = remote_name
                 .as_ref()
                 .and_then(|r| remotes.get(r))
@@ -241,7 +272,13 @@ fn parse_manifest_xml_file(
             if let Some(inc_name) = parse_attr(line, "name") {
                 let inc_path = dot_repo.join("manifests").join(&inc_name);
                 if inc_path.exists() {
-                    let _ = parse_manifest_xml_file(&inc_path, dot_repo, remotes, default_config, projects);
+                    let _ = parse_manifest_xml_file(
+                        &inc_path,
+                        dot_repo,
+                        remotes,
+                        default_config,
+                        projects,
+                    );
                 }
             }
         }
@@ -272,7 +309,11 @@ fn parse_remote_tag(tag: &str) -> Option<RepoRemote> {
     let name = parse_attr(tag, "name")?;
     let fetch = parse_attr(tag, "fetch");
     let review = parse_attr(tag, "review");
-    Some(RepoRemote { name, fetch, review })
+    Some(RepoRemote {
+        name,
+        fetch,
+        review,
+    })
 }
 
 fn parse_default_tag(tag: &str, default_config: &mut RepoDefault) {

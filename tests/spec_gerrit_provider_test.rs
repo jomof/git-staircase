@@ -1,7 +1,7 @@
 use git_staircase::GitRepo;
 use git_staircase::workspace::gerrit_provider::{
-    create_gerrit_upload_plan, get_gerrit_verification, parse_change_ids, probe_gerrit_route,
-    ChangeIdParseResult,
+    ChangeIdParseResult, create_gerrit_upload_plan, get_gerrit_verification, parse_change_ids,
+    probe_gerrit_route,
 };
 use std::fs;
 use std::sync::Mutex;
@@ -9,7 +9,12 @@ use tempfile::TempDir;
 
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-fn setup_gerrit_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo, TempDir) {
+fn setup_gerrit_repo() -> (
+    std::sync::MutexGuard<'static, ()>,
+    TempDir,
+    GitRepo,
+    TempDir,
+) {
     let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
@@ -21,15 +26,23 @@ fn setup_gerrit_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo,
     let repo = GitRepo::new(repo_dir.path().to_path_buf());
     repo.run(&["init"]).unwrap();
     repo.run(&["config", "user.name", "Test User"]).unwrap();
-    repo.run(&["config", "user.email", "test@example.com"]).unwrap();
-    repo.run(&["config", "gerrit.host", "review.example.com"]).unwrap();
-    repo.run(&["config", "gerrit.project", "tools/example"]).unwrap();
+    repo.run(&["config", "user.email", "test@example.com"])
+        .unwrap();
+    repo.run(&["config", "gerrit.host", "review.example.com"])
+        .unwrap();
+    repo.run(&["config", "gerrit.project", "tools/example"])
+        .unwrap();
     repo.run(&["config", "gerrit.dest-branch", "main"]).unwrap();
 
     let file_path = repo_dir.path().join("file.txt");
     fs::write(&file_path, "initial").unwrap();
     repo.run(&["add", "file.txt"]).unwrap();
-    repo.run(&["commit", "-m", "initial commit\n\nChange-Id: I1234567890123456789012345678901234567890"]).unwrap();
+    repo.run(&[
+        "commit",
+        "-m",
+        "initial commit\n\nChange-Id: I1234567890123456789012345678901234567890",
+    ])
+    .unwrap();
 
     (guard, repo_dir, repo, storage_dir)
 }
@@ -75,7 +88,8 @@ fn test_gerrit_upload_plan_and_verification() {
     let head_oid = repo.resolve_commit("HEAD").unwrap();
     let route = probe_gerrit_route(&repo, None).unwrap().unwrap();
 
-    let plan = create_gerrit_upload_plan(&repo, &route, &[head_oid.clone()], Some("per-commit")).unwrap();
+    let plan =
+        create_gerrit_upload_plan(&repo, &route, &[head_oid.clone()], Some("per-commit")).unwrap();
 
     assert_eq!(plan.commits.len(), 1);
     assert_eq!(plan.commits[0].oid, head_oid);

@@ -30,8 +30,9 @@ pub fn save_workspace_record(record: &WorkspaceRecord) -> Result<()> {
     let target_path = dir.join(&filename);
     let temp_path = dir.join(format!(".tmp_{}.json", record.workspace_id));
 
-    let json_data = serde_json::to_string_pretty(record)
-        .map_err(|e| StaircaseError::Other(format!("Failed to serialize workspace record: {}", e)))?;
+    let json_data = serde_json::to_string_pretty(record).map_err(|e| {
+        StaircaseError::Other(format!("Failed to serialize workspace record: {}", e))
+    })?;
 
     fs::write(&temp_path, json_data)?;
     fs::rename(&temp_path, &target_path)?;

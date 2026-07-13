@@ -1,8 +1,6 @@
 mod common;
 use common::*;
-use git_staircase::core::{
-    self, ArchiveOptions, UnarchiveBranchesMode, UnarchiveOptions,
-};
+use git_staircase::core::{self, ArchiveOptions, UnarchiveBranchesMode, UnarchiveOptions};
 use git_staircase::model::{LifecycleState, StaircaseLink, StepMetadata};
 
 #[test]
@@ -26,20 +24,37 @@ fn test_user_metadata_lifecycle() {
 
     // Set Title & Description
     let record = core::set_title(&repo, &selector, "My Feature Staircase").unwrap();
-    assert_eq!(record.user_metadata.title.as_deref(), Some("My Feature Staircase"));
+    assert_eq!(
+        record.user_metadata.title.as_deref(),
+        Some("My Feature Staircase")
+    );
 
-    let record = core::set_description(&repo, &selector, "Detailed description of feature").unwrap();
-    assert_eq!(record.user_metadata.description.as_deref(), Some("Detailed description of feature"));
+    let record =
+        core::set_description(&repo, &selector, "Detailed description of feature").unwrap();
+    assert_eq!(
+        record.user_metadata.description.as_deref(),
+        Some("Detailed description of feature")
+    );
 
     // Add & Remove Labels
     let record = core::add_label(&repo, &selector, "frontend").unwrap();
-    assert!(record.user_metadata.labels.contains(&"frontend".to_string()));
+    assert!(
+        record
+            .user_metadata
+            .labels
+            .contains(&"frontend".to_string())
+    );
 
     let record = core::add_label(&repo, &selector, "urgent").unwrap();
     assert_eq!(record.user_metadata.labels.len(), 2);
 
     let record = core::remove_label(&repo, &selector, "frontend").unwrap();
-    assert!(!record.user_metadata.labels.contains(&"frontend".to_string()));
+    assert!(
+        !record
+            .user_metadata
+            .labels
+            .contains(&"frontend".to_string())
+    );
 
     // Add Link
     let link = StaircaseLink {
@@ -61,7 +76,10 @@ fn test_user_metadata_lifecycle() {
     };
     let _record = core::update_step_metadata(&repo, &selector, "feature-a", step_meta).unwrap();
     let fetched_step_meta = core::get_step_metadata(&repo, &selector, "feature-a").unwrap();
-    assert_eq!(fetched_step_meta.description.as_deref(), Some("Initial database migration"));
+    assert_eq!(
+        fetched_step_meta.description.as_deref(),
+        Some("Initial database migration")
+    );
 }
 
 #[test]
@@ -84,7 +102,11 @@ fn test_archive_and_mutation_guard() {
     let selector = resolved_selector_from(&sc);
 
     // Add branch config
-    let _ = repo.run(&["config", "branch.step-1.description", "Step 1 branch description"]);
+    let _ = repo.run(&[
+        "config",
+        "branch.step-1.description",
+        "Step 1 branch description",
+    ]);
 
     // Archive staircase
     let archive_opts = ArchiveOptions {
@@ -108,7 +130,10 @@ fn test_archive_and_mutation_guard() {
     assert!(repo.resolve_ref("refs/heads/step-2").is_err());
 
     // Check branch config removed
-    assert!(repo.run(&["config", "--get", "branch.step-1.description"]).is_err());
+    assert!(
+        repo.run(&["config", "--get", "branch.step-1.description"])
+            .is_err()
+    );
 
     // Check archived record ref exists
     let archive_record_ref = format!("refs/staircase-archive/{}/record", sc.id);
@@ -126,11 +151,29 @@ fn test_archive_and_mutation_guard() {
         core::SplitOptions { no_ref: false },
     );
     assert!(split_res.is_err());
-    assert!(split_res.unwrap_err().to_string().contains("staircase is archived"));
+    assert!(
+        split_res
+            .unwrap_err()
+            .to_string()
+            .contains("staircase is archived")
+    );
 
-    let join_res = core::join(&repo, &archived_sel.staircase, 0, 1, core::JoinOptions { ref_action: core::JoinRefAction::Keep });
+    let join_res = core::join(
+        &repo,
+        &archived_sel.staircase,
+        0,
+        1,
+        core::JoinOptions {
+            ref_action: core::JoinRefAction::Keep,
+        },
+    );
     assert!(join_res.is_err());
-    assert!(join_res.unwrap_err().to_string().contains("staircase is archived"));
+    assert!(
+        join_res
+            .unwrap_err()
+            .to_string()
+            .contains("staircase is archived")
+    );
 }
 
 #[test]
@@ -183,15 +226,23 @@ fn test_unarchive_lifecycle() {
     assert!(repo.resolve_ref("refs/heads/b2").is_ok());
 
     // Check branch config restored
-    let cfg = repo.run(&["config", "--get", "branch.b1.description"]).unwrap();
+    let cfg = repo
+        .run(&["config", "--get", "branch.b1.description"])
+        .unwrap();
     assert_eq!(cfg.trim(), "Branch 1 description");
 
     // Check active record ref restored
-    let active_record = core::persistence::read_record(&repo, &format!("refs/staircases/{}", sc.name)).unwrap();
+    let active_record =
+        core::persistence::read_record(&repo, &format!("refs/staircases/{}", sc.name)).unwrap();
     assert_eq!(active_record.lifecycle.state, LifecycleState::Active);
 
     // Check archive refs removed
-    let archive_refs = repo.run(&["for-each-ref", &format!("refs/staircase-archive/{}/", sc.id)]).unwrap();
+    let archive_refs = repo
+        .run(&[
+            "for-each-ref",
+            &format!("refs/staircase-archive/{}/", sc.id),
+        ])
+        .unwrap();
     assert!(archive_refs.trim().is_empty());
 }
 

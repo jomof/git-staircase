@@ -40,6 +40,7 @@ pub use resolution::{
 pub use resolved::adopt;
 pub use resolved::{ResolvedSelector, ResolvedStaircase};
 pub use status::{get_status, get_status_metadata};
-pub use unarchive::{UnarchiveBranchesMode, UnarchiveOptions, UnarchiveResult, unarchive_staircase};
+pub use unarchive::{
+    UnarchiveBranchesMode, UnarchiveOptions, UnarchiveResult, unarchive_staircase,
+};
 pub use verification::verify;
-

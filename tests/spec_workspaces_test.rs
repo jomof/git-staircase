@@ -1,7 +1,7 @@
 use git_staircase::GitRepo;
 use git_staircase::workspace::{
-    bootstrap, doctor, forget_workspace_record, list_workspace_records, BootstrapOptions,
-    Capability,
+    BootstrapOptions, Capability, bootstrap, doctor, forget_workspace_record,
+    list_workspace_records,
 };
 use std::fs;
 use std::sync::Mutex;
@@ -9,7 +9,12 @@ use tempfile::TempDir;
 
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-fn setup_test_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo, TempDir) {
+fn setup_test_repo() -> (
+    std::sync::MutexGuard<'static, ()>,
+    TempDir,
+    GitRepo,
+    TempDir,
+) {
     let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
@@ -21,7 +26,8 @@ fn setup_test_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo, T
     let repo = GitRepo::new(repo_dir.path().to_path_buf());
     repo.run(&["init"]).unwrap();
     repo.run(&["config", "user.name", "Test User"]).unwrap();
-    repo.run(&["config", "user.email", "test@example.com"]).unwrap();
+    repo.run(&["config", "user.email", "test@example.com"])
+        .unwrap();
 
     // Create initial commit
     let file_path = repo_dir.path().join("file.txt");
@@ -115,9 +121,18 @@ fn test_provider_profile_expansion() {
     let res = bootstrap(&repo, &options).unwrap();
 
     let bindings = res.record.capability_bindings;
-    assert_eq!(bindings.get(&Capability::Workspace).unwrap().provider, "repo");
-    assert_eq!(bindings.get(&Capability::Review).unwrap().provider, "gerrit");
-    assert_eq!(bindings.get(&Capability::Verification).unwrap().provider, "gerrit");
+    assert_eq!(
+        bindings.get(&Capability::Workspace).unwrap().provider,
+        "repo"
+    );
+    assert_eq!(
+        bindings.get(&Capability::Review).unwrap().provider,
+        "gerrit"
+    );
+    assert_eq!(
+        bindings.get(&Capability::Verification).unwrap().provider,
+        "gerrit"
+    );
 }
 
 #[test]

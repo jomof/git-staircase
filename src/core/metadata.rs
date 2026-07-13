@@ -1,12 +1,13 @@
-use crate::error::Result;
-use crate::git::GitRepo;
-use crate::model::{
-    StaircaseLink, StaircaseRecord, StaircaseUserMetadata, StepMetadata,
-};
 use crate::core::persistence;
 use crate::core::resolved::ResolvedSelector;
+use crate::error::Result;
+use crate::git::GitRepo;
+use crate::model::{StaircaseLink, StaircaseRecord, StaircaseUserMetadata, StepMetadata};
 
-pub fn get_user_metadata(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseUserMetadata> {
+pub fn get_user_metadata(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+) -> Result<StaircaseUserMetadata> {
     let meta = selector.staircase.metadata();
     let record_ref = format!("refs/staircase-state/{}/record", meta.id);
     let archive_ref = format!("refs/staircase-archive/{}/record", meta.id);
@@ -47,7 +48,11 @@ pub fn update_user_metadata(
     Ok(updated_record)
 }
 
-pub fn set_title(repo: &GitRepo, selector: &ResolvedSelector, title: &str) -> Result<StaircaseRecord> {
+pub fn set_title(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    title: &str,
+) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     if user_meta.created_at.is_none() {
         user_meta.created_at = Some(crate::core::utils::current_timestamp());
@@ -56,7 +61,11 @@ pub fn set_title(repo: &GitRepo, selector: &ResolvedSelector, title: &str) -> Re
     update_user_metadata(repo, selector, user_meta)
 }
 
-pub fn set_description(repo: &GitRepo, selector: &ResolvedSelector, description: &str) -> Result<StaircaseRecord> {
+pub fn set_description(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    description: &str,
+) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     if user_meta.created_at.is_none() {
         user_meta.created_at = Some(crate::core::utils::current_timestamp());
@@ -65,7 +74,11 @@ pub fn set_description(repo: &GitRepo, selector: &ResolvedSelector, description:
     update_user_metadata(repo, selector, user_meta)
 }
 
-pub fn add_label(repo: &GitRepo, selector: &ResolvedSelector, label: &str) -> Result<StaircaseRecord> {
+pub fn add_label(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    label: &str,
+) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     if !user_meta.labels.contains(&label.to_string()) {
         user_meta.labels.push(label.to_string());
@@ -73,13 +86,21 @@ pub fn add_label(repo: &GitRepo, selector: &ResolvedSelector, label: &str) -> Re
     update_user_metadata(repo, selector, user_meta)
 }
 
-pub fn remove_label(repo: &GitRepo, selector: &ResolvedSelector, label: &str) -> Result<StaircaseRecord> {
+pub fn remove_label(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    label: &str,
+) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     user_meta.labels.retain(|l| l != label);
     update_user_metadata(repo, selector, user_meta)
 }
 
-pub fn add_link(repo: &GitRepo, selector: &ResolvedSelector, link: StaircaseLink) -> Result<StaircaseRecord> {
+pub fn add_link(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    link: StaircaseLink,
+) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     user_meta.links.retain(|l| l.id != link.id);
     user_meta.links.push(link);
@@ -95,7 +116,11 @@ pub fn get_step_metadata(
     let meta = selector.staircase.metadata();
 
     let key = resolve_step_key(meta, step_key)?;
-    Ok(user_meta.step_metadata.get(&key).cloned().unwrap_or_default())
+    Ok(user_meta
+        .step_metadata
+        .get(&key)
+        .cloned()
+        .unwrap_or_default())
 }
 
 pub fn update_step_metadata(

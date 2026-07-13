@@ -30,7 +30,9 @@ fn test_staircase_storage_alignment() {
         .expect("refs/staircases/auth should exist");
 
     // ASSERT: Verify it points to a tree record object (Spec Addendum I)
-    let content = repo.run(&["cat-file", "-p", &format!("{}:structure", ref_name)]).unwrap();
+    let content = repo
+        .run(&["cat-file", "-p", &format!("{}:structure", ref_name)])
+        .unwrap();
     assert!(
         content.starts_with("git-staircase-descriptor 1\n"),
         "Descriptor should have canonical header"
@@ -62,7 +64,9 @@ fn test_staircase_storage_alignment() {
 
     // ASSERT: Verify the ID matches the new record OID
     assert_ne!(oid, new_oid, "Revision ID should change after update");
-    let new_content = repo.run(&["cat-file", "-p", &format!("{}:structure", ref_name)]).unwrap();
+    let new_content = repo
+        .run(&["cat-file", "-p", &format!("{}:structure", ref_name)])
+        .unwrap();
     assert!(
         new_content.contains(&c2_new),
         "New descriptor should contain new cut OID"

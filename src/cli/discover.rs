@@ -17,7 +17,12 @@ pub struct Discover {
 
 impl super::Command for Discover {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let results = core::discover(repo, self.onto.as_deref(), self.refs.as_deref(), self.families)?;
+        let results = core::discover(
+            repo,
+            self.onto.as_deref(),
+            self.refs.as_deref(),
+            self.families,
+        )?;
         Ok(Box::new(results))
     }
 }

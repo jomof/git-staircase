@@ -1,10 +1,10 @@
+use crate::core::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
     DraftAttachment, DraftClassification, DraftIntent, DraftSnapshot, RewriteMode, Step,
     WorktreeDraft,
 };
-use crate::core::persistence;
 use std::fs;
 use std::path::PathBuf;
 use std::time::SystemTime;
@@ -254,8 +254,9 @@ pub fn attach_draft(
     step_name: Option<&str>,
     intent: Option<DraftIntent>,
 ) -> Result<DraftAttachment> {
-    let rs = crate::core::resolve_staircase(repo, staircase_name, None)?
-        .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", staircase_name)))?;
+    let rs = crate::core::resolve_staircase(repo, staircase_name, None)?.ok_or_else(|| {
+        StaircaseError::Other(format!("Staircase '{}' not found", staircase_name))
+    })?;
 
     let meta = if rs.is_managed() {
         rs.metadata().clone()
@@ -376,7 +377,12 @@ pub fn materialize_draft(
     }
 
     let target_name = staircase_target
-        .or_else(|| draft.attachment.as_ref().and_then(|a| a.staircase_name.as_deref()))
+        .or_else(|| {
+            draft
+                .attachment
+                .as_ref()
+                .and_then(|a| a.staircase_name.as_deref())
+        })
         .or_else(|| draft.head_branch.as_deref());
 
     let target_name = target_name.ok_or_else(|| {
@@ -400,7 +406,11 @@ pub fn materialize_draft(
 
     let (step_idx, target_step) = if let Some(att) = &draft.attachment {
         if let Some(sid) = &att.step_id {
-            if let Some(pos) = meta.steps.iter().position(|s| &s.id == sid || &s.name == sid) {
+            if let Some(pos) = meta
+                .steps
+                .iter()
+                .position(|s| &s.id == sid || &s.name == sid)
+            {
                 (pos, meta.steps[pos].clone())
             } else {
                 let pos = meta.steps.len() - 1;
@@ -423,7 +433,14 @@ pub fn materialize_draft(
         .unwrap_or_else(|| format!("Materialize draft for step '{}'", target_step.name));
 
     let commit_oid = repo
-        .run(&["commit-tree", &staged_tree, "-p", &basis_oid, "-m", &commit_msg])?
+        .run(&[
+            "commit-tree",
+            &staged_tree,
+            "-p",
+            &basis_oid,
+            "-m",
+            &commit_msg,
+        ])?
         .trim()
         .to_string();
 
@@ -464,7 +481,10 @@ pub fn materialize_draft(
             }
 
             if let Some(ref b) = draft.head_branch {
-                let current_target = meta.steps.iter().find(|s| s.branch.as_deref() == Some(b.as_str()));
+                let current_target = meta
+                    .steps
+                    .iter()
+                    .find(|s| s.branch.as_deref() == Some(b.as_str()));
                 if let Some(target_step) = current_target {
                     let target_oid = &target_step.cut;
                     repo.run(&["reset", "--soft", target_oid])?;
@@ -516,26 +536,24 @@ pub fn materialize_draft(
 
             repo.run(&["reset", "--soft", &commit_oid])?;
         }
-        DraftIntent::RewriteStep(mode) => {
-            match mode {
-                RewriteMode::Amend => {
-                    meta.steps[step_idx].cut = commit_oid.clone();
-                    if let Some(ref branch) = meta.steps[step_idx].branch {
-                        repo.update_branch(branch, &commit_oid)?;
-                    }
-                    repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
-                    repo.run(&["reset", "--soft", &commit_oid])?;
+        DraftIntent::RewriteStep(mode) => match mode {
+            RewriteMode::Amend => {
+                meta.steps[step_idx].cut = commit_oid.clone();
+                if let Some(ref branch) = meta.steps[step_idx].branch {
+                    repo.update_branch(branch, &commit_oid)?;
                 }
-                RewriteMode::Fixup | RewriteMode::FoldInto(_) => {
-                    meta.steps[step_idx].cut = commit_oid.clone();
-                    if let Some(ref branch) = meta.steps[step_idx].branch {
-                        repo.update_branch(branch, &commit_oid)?;
-                    }
-                    repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
-                    repo.run(&["reset", "--soft", &commit_oid])?;
-                }
+                repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
+                repo.run(&["reset", "--soft", &commit_oid])?;
             }
-        }
+            RewriteMode::Fixup | RewriteMode::FoldInto(_) => {
+                meta.steps[step_idx].cut = commit_oid.clone();
+                if let Some(ref branch) = meta.steps[step_idx].branch {
+                    repo.update_branch(branch, &commit_oid)?;
+                }
+                repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
+                repo.run(&["reset", "--soft", &commit_oid])?;
+            }
+        },
     }
 
     persistence::write_metadata(repo, &meta)?;

@@ -87,8 +87,12 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         }
 
         let mut updated = false;
-        if !record.capability_bindings.contains_key(&Capability::Review) && options.review_provider.is_none() {
-            if let Ok(Some(_gerrit_route)) = crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&record)) {
+        if !record.capability_bindings.contains_key(&Capability::Review)
+            && options.review_provider.is_none()
+        {
+            if let Ok(Some(_gerrit_route)) =
+                crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&record))
+            {
                 record.capability_bindings.insert(
                     Capability::Review,
                     CapabilityBinding {
@@ -97,7 +101,9 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                         evidence: Some("Gerrit review route discovered".to_string()),
                     },
                 );
-                record.binding_provenance.insert(Capability::Review, BindingProvenance::AutoDiscovered);
+                record
+                    .binding_provenance
+                    .insert(Capability::Review, BindingProvenance::AutoDiscovered);
 
                 record.capability_bindings.insert(
                     Capability::Verification,
@@ -107,9 +113,13 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                         evidence: Some("Gerrit verification route discovered".to_string()),
                     },
                 );
-                record.binding_provenance.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+                record
+                    .binding_provenance
+                    .insert(Capability::Verification, BindingProvenance::AutoDiscovered);
                 updated = true;
-            } else if let Ok(Some(_gh_route)) = crate::workspace::github_provider::probe_github_route(repo, Some(&record)) {
+            } else if let Ok(Some(_gh_route)) =
+                crate::workspace::github_provider::probe_github_route(repo, Some(&record))
+            {
                 record.capability_bindings.insert(
                     Capability::Review,
                     CapabilityBinding {
@@ -118,7 +128,9 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                         evidence: Some("GitHub review route discovered".to_string()),
                     },
                 );
-                record.binding_provenance.insert(Capability::Review, BindingProvenance::AutoDiscovered);
+                record
+                    .binding_provenance
+                    .insert(Capability::Review, BindingProvenance::AutoDiscovered);
 
                 record.capability_bindings.insert(
                     Capability::Verification,
@@ -128,7 +140,9 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                         evidence: Some("GitHub verification route discovered".to_string()),
                     },
                 );
-                record.binding_provenance.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+                record
+                    .binding_provenance
+                    .insert(Capability::Verification, BindingProvenance::AutoDiscovered);
                 updated = true;
             }
         }
@@ -274,7 +288,9 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
     };
 
     if !bindings.contains_key(&Capability::Review) {
-        if let Ok(Some(_gerrit_route)) = crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&temp_record)) {
+        if let Ok(Some(_gerrit_route)) =
+            crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&temp_record))
+        {
             bindings.insert(
                 Capability::Review,
                 CapabilityBinding {
@@ -294,7 +310,9 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                 },
             );
             provenances.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
-        } else if let Ok(Some(_gh_route)) = crate::workspace::github_provider::probe_github_route(repo, Some(&temp_record)) {
+        } else if let Ok(Some(_gh_route)) =
+            crate::workspace::github_provider::probe_github_route(repo, Some(&temp_record))
+        {
             bindings.insert(
                 Capability::Review,
                 CapabilityBinding {
@@ -392,7 +410,9 @@ fn select_workspace_candidate<'a>(
 
     let high_conf_non_core: Vec<&WorkspaceCandidate> = candidates
         .iter()
-        .filter(|c| c.provider != "core.git" && (c.confidence == "high" || c.claim == "authoritative"))
+        .filter(|c| {
+            c.provider != "core.git" && (c.confidence == "high" || c.claim == "authoritative")
+        })
         .collect();
 
     if high_conf_non_core.len() == 1 {
@@ -464,8 +484,6 @@ fn make_default_core_git_record(workdir: &PathBuf) -> WorkspaceRecord {
         binding_provenance: provenances,
         discovery_fingerprint: HashMap::from([("provider".to_string(), "core.git".to_string())]),
         last_successful_validation: current_timestamp(),
-        current_project_id: workdir
-            .file_name()
-            .map(|s| s.to_string_lossy().to_string()),
+        current_project_id: workdir.file_name().map(|s| s.to_string_lossy().to_string()),
     }
 }

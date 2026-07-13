@@ -4,7 +4,7 @@ use git_staircase::GitRepo;
 use std::path::PathBuf;
 
 use git_staircase::cli::{self, Command};
-use git_staircase::workspace::{bootstrap, BootstrapOptions};
+use git_staircase::workspace::{BootstrapOptions, bootstrap};
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -24,7 +24,7 @@ struct Cli {
 
     #[arg(long, global = true)]
     no_bootstrap: bool,
-    
+
     #[arg(long, global = true)]
     no_configure: bool,
 

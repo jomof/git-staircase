@@ -5,7 +5,6 @@ use crate::model::{
     StaircaseRecord, StaircaseUserMetadata, Step, VerificationPolicy, VerificationResult,
 };
 
-
 pub fn write_record(
     repo: &GitRepo,
     metadata: &StaircaseMetadata,
@@ -149,7 +148,10 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
         }
 
         let struct_oid = structure_oid.ok_or_else(|| {
-            StaircaseError::Other(format!("Record tree {} missing 'structure' entry", target_oid))
+            StaircaseError::Other(format!(
+                "Record tree {} missing 'structure' entry",
+                target_oid
+            ))
         })?;
 
         let struct_content = repo.run(&["cat-file", "-p", &struct_oid])?;

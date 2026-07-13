@@ -32,7 +32,8 @@ pub struct List {
 impl super::Command for List {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let show_implicit = self.implicit || self.discovered;
-        let show_all = !self.managed && !show_implicit && !self.families && !self.stale && !self.archived;
+        let show_all =
+            !self.managed && !show_implicit && !self.families && !self.stale && !self.archived;
         let mut all_results = Vec::new();
         let mut unresolved_errors = Vec::new();
 
@@ -65,12 +66,14 @@ impl super::Command for List {
                         match d {
                             Discovery::Linear(s) => {
                                 if show_implicit || show_all {
-                                    resolved_staircases.push(ResolvedStaircase::Implicit(s.clone()));
+                                    resolved_staircases
+                                        .push(ResolvedStaircase::Implicit(s.clone()));
                                 }
                             }
                             Discovery::Ambiguous(f) => {
                                 if self.families || show_all {
-                                    resolved_staircases.push(ResolvedStaircase::ImplicitFamily(f.clone()));
+                                    resolved_staircases
+                                        .push(ResolvedStaircase::ImplicitFamily(f.clone()));
                                 }
                             }
                         }

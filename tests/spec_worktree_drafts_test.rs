@@ -11,7 +11,8 @@ fn test_draft_status_and_classification() {
     commit(dir, "base.txt", "base", "base commit");
 
     // Adopt staircase
-    let (success, _, stderr) = run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
+    let (success, _, stderr) =
+        run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
     assert!(success, "adopt failed: {}", stderr);
 
     // Clean draft status
@@ -53,11 +54,13 @@ fn test_draft_attach_and_detach() {
     run_git(dir, &["checkout", "-b", "feature/auth-1"]);
     commit(dir, "base.txt", "base", "base commit");
 
-    let (success, _, stderr) = run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
+    let (success, _, stderr) =
+        run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
     assert!(success, "adopt failed: {}", stderr);
 
     // Attach draft to auth step 1 with mode new-step
-    let (success, stdout, stderr) = run_staircase(dir, &["draft", "attach", "auth", "--mode", "new-step"]);
+    let (success, stdout, stderr) =
+        run_staircase(dir, &["draft", "attach", "auth", "--mode", "new-step"]);
     assert!(success, "draft attach failed: {}", stderr);
     assert!(stdout.contains("Attached to auth feature/auth-1"));
 
@@ -100,7 +103,8 @@ fn test_draft_materialize_extend_step() {
     run_git(dir, &["checkout", "-b", "feature/auth-1"]);
     commit(dir, "base.txt", "base", "base commit");
 
-    let (success, _, stderr) = run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
+    let (success, _, stderr) =
+        run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
     assert!(success, "adopt failed: {}", stderr);
 
     // Staged parser change
@@ -138,7 +142,8 @@ fn test_draft_materialize_new_step() {
     run_git(dir, &["checkout", "-b", "feature/auth-1"]);
     commit(dir, "base.txt", "base", "base commit");
 
-    let (success, _, stderr) = run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
+    let (success, _, stderr) =
+        run_staircase(dir, &["adopt", "auth", "--onto", "main", "feature/auth-1"]);
     assert!(success, "adopt failed: {}", stderr);
 
     fs::write(dir.join("new_feature.txt"), "new feature").unwrap();
@@ -146,7 +151,14 @@ fn test_draft_materialize_new_step() {
 
     let (success, stdout, stderr) = run_staircase(
         dir,
-        &["draft", "materialize", "auth", "--new-step", "-m", "add new step"],
+        &[
+            "draft",
+            "materialize",
+            "auth",
+            "--new-step",
+            "-m",
+            "add new step",
+        ],
     );
     assert!(success, "materialize --new-step failed: {}", stderr);
     assert!(stdout.contains("Materialized draft"));

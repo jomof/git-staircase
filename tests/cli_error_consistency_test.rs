@@ -20,7 +20,11 @@ fn test_error_output_consistency() {
 
     fn filter_bootstrap_msg(s: &str) -> String {
         s.lines()
-            .filter(|line| !line.starts_with("Configured Staircase workspace:") && !line.starts_with("  workspace:") && !line.starts_with("  root:"))
+            .filter(|line| {
+                !line.starts_with("Configured Staircase workspace:")
+                    && !line.starts_with("  workspace:")
+                    && !line.starts_with("  root:")
+            })
             .collect::<Vec<_>>()
             .join("\n")
     }

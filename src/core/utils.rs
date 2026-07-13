@@ -28,7 +28,9 @@ pub fn common_prefix(names: &[&str]) -> Option<String> {
 
 pub fn current_timestamp() -> String {
     let now = std::time::SystemTime::now();
-    let since_epoch = now.duration_since(std::time::UNIX_EPOCH).unwrap_or_default();
+    let since_epoch = now
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default();
     let secs = since_epoch.as_secs();
     let days = secs / 86400;
     let time_secs = secs % 86400;

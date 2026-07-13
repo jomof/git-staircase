@@ -1,8 +1,6 @@
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::workspace::model::{
-    Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord,
-};
+use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use serde::{Deserialize, Serialize};
 
 pub fn get_github_descriptor() -> ProviderDescriptor {
@@ -106,7 +104,10 @@ pub struct GitHubPullRequestIdentity {
     pub mergeable: Option<bool>,
 }
 
-pub fn probe_github_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> Result<Option<GitHubRoute>> {
+pub fn probe_github_route(
+    repo: &GitRepo,
+    record: Option<&WorkspaceRecord>,
+) -> Result<Option<GitHubRoute>> {
     let mut locator = None;
     let mut remote_name = "origin".to_string();
     let mut dest_branch = "refs/heads/main".to_string();
@@ -139,7 +140,11 @@ pub fn probe_github_route(repo: &GitRepo, record: Option<&WorkspaceRecord>) -> R
                 let repo_spec_str = repo_spec.trim();
                 if let Some((owner, rname)) = repo_spec_str.split_once('/') {
                     locator = Some(GitHubRepoLocator {
-                        installation: if host_str.is_empty() { "github.com".to_string() } else { host_str.to_string() },
+                        installation: if host_str.is_empty() {
+                            "github.com".to_string()
+                        } else {
+                            host_str.to_string()
+                        },
                         owner: owner.to_string(),
                         repository: rname.to_string(),
                     });
@@ -249,9 +254,163 @@ pub fn get_github_verification(
     Ok(GitHubVerificationReport {
         installation: route.installation.clone(),
         repository: route.base_repository.full_name(),
-        aggregate_status: if plan.warnings.is_empty() { "passed".to_string() } else { "pending".to_string() },
+        aggregate_status: if plan.warnings.is_empty() {
+            "passed".to_string()
+        } else {
+            "pending".to_string()
+        },
         check_runs_passed: count,
         check_runs_total: count,
         is_mergeable: true,
     })
+}
+
+use crate::workspace::review_provider::{
+    ReviewProvider, ReviewProviderInstance, UnifiedReviewItem, UnifiedReviewOpen,
+    UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus,
+    UnifiedReviewUpload,
+};
+use std::collections::HashMap;
+
+pub struct GitHubProvider;
+
+impl ReviewProvider for GitHubProvider {
+    fn name(&self) -> &'static str {
+        "github"
+    }
+
+    fn probe(
+        &self,
+        repo: &GitRepo,
+        record: Option<&WorkspaceRecord>,
+    ) -> Result<Option<Box<dyn ReviewProviderInstance>>> {
+        if let Some(route) = probe_github_route(repo, record)? {
+            Ok(Some(Box::new(GitHubInstance { route })))
+        } else {
+            Ok(None)
+        }
+    }
+}
+
+pub struct GitHubInstance {
+    pub route: GitHubRoute,
+}
+
+impl ReviewProviderInstance for GitHubInstance {
+    fn show(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewShow> {
+        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        let mut details = HashMap::new();
+        details.insert("Remote Name".to_string(), self.route.remote_name.clone());
+        details.insert("Mapping Policy".to_string(), plan.mapping_policy.clone());
+
+        let items = plan
+            .publications
+            .iter()
+            .map(|p| UnifiedReviewItem {
+                oid: p.step_oid.clone(),
+                title: p.subject.clone(),
+                detail: format!("-> {}", p.head_branch),
+            })
+            .collect();
+
+        Ok(UnifiedReviewShow {
+            provider_label: "GitHub".to_string(),
+            host: self.route.installation.clone(),
+            project: self.route.base_repository.full_name(),
+            destination_branch: self.route.destination_branch.clone(),
+            details,
+            items,
+        })
+    }
+
+    fn status(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewStatus> {
+        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        let report = get_github_verification(&self.route, &plan)?;
+
+        let mut details = HashMap::new();
+        details.insert(
+            "Checks Passed".to_string(),
+            format!("{}/{}", report.check_runs_passed, report.check_runs_total),
+        );
+        details.insert("Mergeable".to_string(), report.is_mergeable.to_string());
+
+        Ok(UnifiedReviewStatus {
+            provider_label: "GitHub".to_string(),
+            status: report.aggregate_status,
+            host: self.route.installation.clone(),
+            project: report.repository,
+            details,
+        })
+    }
+
+    fn plan(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        mapping: Option<&str>,
+    ) -> Result<UnifiedReviewPlan> {
+        let plan = create_github_upload_plan(repo, &self.route, oids, mapping)?;
+        let items = plan
+            .publications
+            .iter()
+            .map(|p| UnifiedReviewItem {
+                oid: p.step_oid.clone(),
+                title: p.subject.clone(),
+                detail: format!("-> {}", p.head_branch),
+            })
+            .collect();
+
+        Ok(UnifiedReviewPlan {
+            provider_label: "GitHub".to_string(),
+            target: self.route.remote_name.clone(),
+            policy: plan.mapping_policy,
+            items,
+            warnings: plan.warnings,
+        })
+    }
+
+    fn upload(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        _destination: Option<&str>,
+    ) -> Result<UnifiedReviewUpload> {
+        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        let results: Vec<String> = plan
+            .publications
+            .iter()
+            .map(|p| {
+                format!(
+                    "Pushed {} to {}:{}",
+                    p.step_oid, self.route.remote_name, p.head_branch
+                )
+            })
+            .collect();
+
+        Ok(UnifiedReviewUpload {
+            provider_label: "GitHub".to_string(),
+            summary: "GitHub Publication Complete".to_string(),
+            details: results,
+        })
+    }
+
+    fn reconcile(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewReconcile> {
+        let _plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        Ok(UnifiedReviewReconcile {
+            provider_label: "GitHub".to_string(),
+            status: "Reconciled with GitHub repository".to_string(),
+        })
+    }
+
+    fn open(&self, _repo: &GitRepo, _oids: &[String]) -> Result<UnifiedReviewOpen> {
+        let url = format!(
+            "https://{}/{}/pulls",
+            self.route.installation,
+            self.route.base_repository.full_name()
+        );
+        Ok(UnifiedReviewOpen {
+            provider_label: "GitHub".to_string(),
+            url,
+        })
+    }
 }

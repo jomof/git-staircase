@@ -1,9 +1,7 @@
-use super::formatting::PlainOutput;
 use super::PresentationOutput;
+use super::formatting::PlainOutput;
 use crate::GitRepo;
-use crate::core::draft::{
-    self, DraftDiffMode, MaterializeOptions,
-};
+use crate::core::draft::{self, DraftDiffMode, MaterializeOptions};
 use crate::model::{DraftIntent, RewriteMode};
 use anyhow::Result;
 use clap::{Args, Subcommand, ValueEnum};
@@ -74,7 +72,9 @@ impl super::Command for DraftCmd {
             }
             DraftSubcommand::Detach(_) => {
                 draft::detach_draft(repo)?;
-                Ok(Box::new(PlainOutput("Detached draft attachment.".to_string())))
+                Ok(Box::new(PlainOutput(
+                    "Detached draft attachment.".to_string(),
+                )))
             }
             DraftSubcommand::Snapshot(args) => {
                 let snap = draft::create_snapshot(repo, args.name.as_deref())?;
@@ -94,7 +94,9 @@ impl super::Command for DraftCmd {
                 } else if args.fixup {
                     Some(DraftIntent::RewriteStep(RewriteMode::Fixup))
                 } else if let Some(ref step) = args.fold_into {
-                    Some(DraftIntent::RewriteStep(RewriteMode::FoldInto(step.clone())))
+                    Some(DraftIntent::RewriteStep(RewriteMode::FoldInto(
+                        step.clone(),
+                    )))
                 } else {
                     None
                 };
@@ -109,12 +111,7 @@ impl super::Command for DraftCmd {
                     preserve_draft: args.preserve_draft,
                 };
 
-                let res = draft::materialize_draft(
-                    repo,
-                    args.staircase.as_deref(),
-                    intent,
-                    &opts,
-                )?;
+                let res = draft::materialize_draft(repo, args.staircase.as_deref(), intent, &opts)?;
                 Ok(Box::new(res))
             }
         }

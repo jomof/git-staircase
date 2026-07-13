@@ -27,11 +27,7 @@ impl super::Command for Land {
         } else {
             self.policy
         };
-        core::land(
-            repo,
-            &rs,
-            core::LandOptions { policy },
-        )?;
+        core::land(repo, &rs, core::LandOptions { policy })?;
         Ok(Box::new(Success::new(format!(
             "Landed staircase '{}'",
             rs.metadata().name

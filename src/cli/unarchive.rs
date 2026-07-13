@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow};
 use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
 use crate::core::{self, UnarchiveBranchesMode, UnarchiveOptions, UnarchiveResult};
 use crate::git::GitRepo;
+use anyhow::{Result, anyhow};
 use clap::Args;
 use serde::Serialize;
 

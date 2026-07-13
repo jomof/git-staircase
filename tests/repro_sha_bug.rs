@@ -11,7 +11,10 @@ fn test_resolve_commit_non_existent_oid() {
     let res = ctx.repo.resolve_commit(&fake_oid);
 
     // ASSERT
-    assert!(res.is_err(), "Should have failed for non-existent OID but got Ok");
+    assert!(
+        res.is_err(),
+        "Should have failed for non-existent OID but got Ok"
+    );
 }
 
 #[test]

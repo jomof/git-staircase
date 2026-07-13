@@ -30,7 +30,12 @@ impl super::Command for Show {
             };
             return cmd.run(repo);
         }
-        if self.staircase.steps.as_ref().map_or(false, |s| s.is_empty()) {
+        if self
+            .staircase
+            .steps
+            .as_ref()
+            .map_or(false, |s| s.is_empty())
+        {
             let cmd = super::steps::Steps {
                 staircase: self.staircase.clone(),
             };

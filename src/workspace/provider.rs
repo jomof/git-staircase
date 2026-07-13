@@ -144,7 +144,11 @@ pub fn query_provider_descriptor(exe: &Path) -> Result<ProviderDescriptor> {
     }
 
     let descriptor: ProviderDescriptor = serde_json::from_slice(&output.stdout).map_err(|e| {
-        StaircaseError::Other(format!("Invalid provider descriptor from {}: {}", exe.display(), e))
+        StaircaseError::Other(format!(
+            "Invalid provider descriptor from {}: {}",
+            exe.display(),
+            e
+        ))
     })?;
 
     Ok(descriptor)

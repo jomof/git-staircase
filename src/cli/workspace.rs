@@ -1,10 +1,9 @@
-use super::formatting::{ToHuman, ToPorcelain};
 use super::PresentationOutput;
+use super::formatting::{ToHuman, ToPorcelain};
 use crate::GitRepo;
 use crate::workspace::{
-    bootstrap, discover_installed_providers, doctor,
-    forget_workspace_record, BootstrapOptions,
-    WorkspaceDoctorReport, WorkspaceRecord,
+    BootstrapOptions, WorkspaceDoctorReport, WorkspaceRecord, bootstrap,
+    discover_installed_providers, doctor, forget_workspace_record,
 };
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -89,12 +88,19 @@ impl WorkspaceCmd {
                 let names: Vec<String> = installed
                     .into_iter()
                     .map(|p| p.descriptor.name)
-                    .chain(vec!["github".to_string(), "gerrit".to_string(), "repo".to_string(), "core.git".to_string()])
+                    .chain(vec![
+                        "github".to_string(),
+                        "gerrit".to_string(),
+                        "repo".to_string(),
+                        "core.git".to_string(),
+                    ])
                     .collect();
                 Ok(Box::new(WorkspaceProvidersOutput(names)))
             }
             WorkspaceSubcommands::Refresh(_) => {
-                if let Ok(Some(rec)) = crate::workspace::storage::find_workspace_record_for_path(&repo.workdir) {
+                if let Ok(Some(rec)) =
+                    crate::workspace::storage::find_workspace_record_for_path(&repo.workdir)
+                {
                     let _ = crate::workspace::storage::forget_workspace_record(&rec.workspace_id);
                 }
                 let options = BootstrapOptions::default();
@@ -146,10 +152,7 @@ impl ToHuman for WorkspaceShowOutput {
         }
         lines.push("Capability Bindings:".to_string());
         for (cap, b) in &self.0.capability_bindings {
-            lines.push(format!(
-                "  {}: {} ({})",
-                cap, b.provider, b.provenance
-            ));
+            lines.push(format!("  {}: {} ({})", cap, b.provider, b.provenance));
         }
         lines.join("\n")
     }
@@ -161,7 +164,10 @@ impl ToPorcelain for WorkspaceShowOutput {
         lines.push(format!("id\t{}", self.0.workspace_id));
         lines.push(format!("root\t{}", self.0.canonical_root.display()));
         for (cap, b) in &self.0.capability_bindings {
-            lines.push(format!("binding\t{}\t{}\t{}", cap, b.provider, b.provenance));
+            lines.push(format!(
+                "binding\t{}\t{}\t{}",
+                cap, b.provider, b.provenance
+            ));
         }
         lines.join("\n")
     }

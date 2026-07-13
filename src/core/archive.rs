@@ -1,11 +1,11 @@
+use crate::core::persistence;
+use crate::core::resolved::ResolvedSelector;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
     ArchiveManifest, ArchivedOwnedRef, BranchConfigEntry, BranchConfigSnapshot, LifecycleEvent,
     LifecycleState,
 };
-use crate::core::persistence;
-use crate::core::resolved::ResolvedSelector;
 use std::collections::HashMap;
 
 #[derive(Debug, Clone, Default)]
@@ -87,7 +87,11 @@ pub fn archive_staircase(
     for full_ref in &owned_branches {
         let branch_name = full_ref.strip_prefix("refs/heads/").unwrap_or(full_ref);
         let mut entries = Vec::new();
-        if let Ok(stdout) = repo.run(&["config", "--get-regexp", &format!("^branch\\.{}\\.", branch_name)]) {
+        if let Ok(stdout) = repo.run(&[
+            "config",
+            "--get-regexp",
+            &format!("^branch\\.{}\\.", branch_name),
+        ]) {
             for line in stdout.lines() {
                 let parts: Vec<&str> = line.splitn(2, ' ').collect();
                 if parts.len() == 2 {
@@ -112,17 +116,33 @@ pub fn archive_staircase(
             } else if line.starts_with("branch ") {
                 let b = line.strip_prefix("branch ").unwrap().trim();
                 if owned_branches.contains(&b.to_string()) {
-                    let is_clean = repo.run(&["status", "--porcelain"]).map(|s| s.trim().is_empty()).unwrap_or(true);
-                    if !is_clean && !options.detach_dirty_worktrees && !options.snapshot_drafts && !options.leave_worktrees {
+                    let is_clean = repo
+                        .run(&["status", "--porcelain"])
+                        .map(|s| s.trim().is_empty())
+                        .unwrap_or(true);
+                    if !is_clean
+                        && !options.detach_dirty_worktrees
+                        && !options.snapshot_drafts
+                        && !options.leave_worktrees
+                    {
                         return Err(StaircaseError::Other(format!(
                             "worktree at {:?} attached to branch '{}' is dirty; use --detach-dirty-worktrees or --snapshot-drafts",
                             wt_path, b
                         )));
                     }
                     if !options.dry_run {
-                        let step_cut = meta.steps.iter().find(|s| {
-                            s.branch.as_deref() == Some(b) || s.branch.as_deref() == Some(b.strip_prefix("refs/heads/").unwrap_or(b))
-                        }).map(|s| s.cut.clone()).unwrap_or_else(|| meta.steps.last().map(|s| s.cut.clone()).unwrap_or_default());
+                        let step_cut = meta
+                            .steps
+                            .iter()
+                            .find(|s| {
+                                s.branch.as_deref() == Some(b)
+                                    || s.branch.as_deref()
+                                        == Some(b.strip_prefix("refs/heads/").unwrap_or(b))
+                            })
+                            .map(|s| s.cut.clone())
+                            .unwrap_or_else(|| {
+                                meta.steps.last().map(|s| s.cut.clone()).unwrap_or_default()
+                            });
                         if !step_cut.is_empty() {
                             let _ = repo.run(&["checkout", "--detach", &step_cut]);
                         }
@@ -155,7 +175,11 @@ pub fn archive_staircase(
     let mut archive_retention_refs = HashMap::new();
 
     for step in &meta.steps {
-        let step_key = if !step.id.is_empty() { &step.id } else { &step.name };
+        let step_key = if !step.id.is_empty() {
+            &step.id
+        } else {
+            &step.name
+        };
         expected_source_oids.insert(step_key.to_string(), step.cut.clone());
         archive_retention_refs.insert(
             step_key.to_string(),
@@ -202,13 +226,19 @@ pub fn archive_staircase(
     let mut unowned_warnings = Vec::new();
     let cut_oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
 
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname) %(objectname)", "refs/heads/"]) {
+    if let Ok(stdout) = repo.run(&[
+        "for-each-ref",
+        "--format=%(refname) %(objectname)",
+        "refs/heads/",
+    ]) {
         for line in stdout.lines() {
             let parts: Vec<&str> = line.split_whitespace().collect();
             if parts.len() == 2 {
                 let refname = parts[0];
                 let oid = parts[1];
-                if !owned_branches.contains(&refname.to_string()) && cut_oids.contains(&oid.to_string()) {
+                if !owned_branches.contains(&refname.to_string())
+                    && cut_oids.contains(&oid.to_string())
+                {
                     unowned_warnings.push(format!(
                         "warning: unowned branch {} still points to archived cut {}",
                         refname, oid

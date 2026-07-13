@@ -1,7 +1,7 @@
-use anyhow::{Result, anyhow};
 use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
 use crate::core;
 use crate::git::GitRepo;
+use anyhow::{Result, anyhow};
 use clap::Args;
 use serde::Serialize;
 use std::env;
@@ -69,7 +69,10 @@ impl Command for Describe {
             );
 
             let temp_dir = env::temp_dir();
-            let temp_file = temp_dir.join(format!("STAIRCASE_DESC_{}.txt", uuid::Uuid::new_v4().simple()));
+            let temp_file = temp_dir.join(format!(
+                "STAIRCASE_DESC_{}.txt",
+                uuid::Uuid::new_v4().simple()
+            ));
             fs::write(&temp_file, &init_content)?;
 
             let editor = env::var("GIT_EDITOR")

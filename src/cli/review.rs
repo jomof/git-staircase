@@ -1,19 +1,16 @@
-use super::formatting::{ToHuman, ToPorcelain};
 use super::PresentationOutput;
+use super::formatting::{ToHuman, ToPorcelain};
 use crate::GitRepo;
 use crate::cli::StaircaseSelectorArgs;
-use crate::workspace::bootstrap::{bootstrap, BootstrapOptions};
-use crate::workspace::gerrit_provider::{
-    create_gerrit_upload_plan, get_gerrit_verification, probe_gerrit_route,
-    GerritRoute, GerritUploadPlan, GerritVerificationReport,
-};
-use crate::workspace::github_provider::{
-    create_github_upload_plan, get_github_verification, probe_github_route,
-    GitHubRoute, GitHubUploadPlan, GitHubVerificationReport,
+use crate::workspace::bootstrap::{BootstrapOptions, bootstrap};
+use crate::workspace::gerrit_provider::GerritProvider;
+use crate::workspace::github_provider::GitHubProvider;
+use crate::workspace::review_provider::{
+    ReviewProvider, ReviewProviderInstance, UnifiedReviewOpen, UnifiedReviewPlan,
+    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
 };
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
-use serde::Serialize;
 
 #[derive(Args, Clone, Debug)]
 pub struct ReviewCmd {
@@ -81,17 +78,13 @@ impl ReviewCmd {
     pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let boot_res = bootstrap(repo, &BootstrapOptions::default())?;
 
-        let gerrit_route = probe_gerrit_route(repo, Some(&boot_res.record))?;
-        let github_route = if gerrit_route.is_none() {
-            probe_github_route(repo, Some(&boot_res.record))?
-        } else {
-            None
-        };
+        let providers: Vec<Box<dyn ReviewProvider>> =
+            vec![Box::new(GerritProvider), Box::new(GitHubProvider)];
 
-        if let Some(route) = gerrit_route {
-            return self.run_gerrit(repo, &route);
-        } else if let Some(route) = github_route {
-            return self.run_github(repo, &route);
+        for provider in providers {
+            if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
+                return self.run_instance(repo, instance.as_ref());
+            }
         }
 
         Err(anyhow!(
@@ -99,253 +92,164 @@ impl ReviewCmd {
         ))
     }
 
-    fn run_gerrit(&self, repo: &GitRepo, route: &GerritRoute) -> Result<Box<dyn PresentationOutput>> {
+    fn run_instance(
+        &self,
+        repo: &GitRepo,
+        instance: &dyn ReviewProviderInstance,
+    ) -> Result<Box<dyn PresentationOutput>> {
         match &self.command {
             ReviewSubcommands::Show(cmd) => {
                 let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_gerrit_upload_plan(repo, route, &oids, None)?;
-                Ok(Box::new(ReviewShowResult {
-                    route: route.clone(),
-                    plan,
-                }))
+                let oids: Vec<String> = resolved
+                    .staircase
+                    .metadata()
+                    .steps
+                    .iter()
+                    .map(|s| s.cut.clone())
+                    .collect();
+                Ok(Box::new(instance.show(repo, &oids)?))
             }
             ReviewSubcommands::Status(cmd) => {
                 let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_gerrit_upload_plan(repo, route, &oids, None)?;
-                let report = get_gerrit_verification(route, &plan)?;
-                Ok(Box::new(ReviewStatusResult {
-                    route: route.clone(),
-                    report,
-                    plan,
-                }))
+                let oids: Vec<String> = resolved
+                    .staircase
+                    .metadata()
+                    .steps
+                    .iter()
+                    .map(|s| s.cut.clone())
+                    .collect();
+                Ok(Box::new(instance.status(repo, &oids)?))
             }
             ReviewSubcommands::Plan(cmd) => {
                 let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_gerrit_upload_plan(repo, route, &oids, cmd.mapping.as_deref())?;
-                Ok(Box::new(ReviewPlanResult(plan)))
+                let oids: Vec<String> = resolved
+                    .staircase
+                    .metadata()
+                    .steps
+                    .iter()
+                    .map(|s| s.cut.clone())
+                    .collect();
+                Ok(Box::new(instance.plan(
+                    repo,
+                    &oids,
+                    cmd.mapping.as_deref(),
+                )?))
             }
             ReviewSubcommands::Upload(cmd) => {
                 let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let mut active_route = route.clone();
-                if let Some(ref dest) = cmd.destination {
-                    active_route.destination_branch = format!("refs/heads/{}", dest);
-                    active_route.upload_ref = format!("refs/for/{}", dest);
-                }
-                let plan = create_gerrit_upload_plan(repo, &active_route, &oids, None)?;
-                let push_target = meta.steps.last().map(|s| s.cut.as_str()).unwrap_or("HEAD");
-                let push_res = format!(
-                    "Pushed {} to {}:{}",
-                    push_target, active_route.server_id, active_route.upload_ref
-                );
-                Ok(Box::new(ReviewUploadResult {
-                    plan,
-                    result: push_res,
-                }))
+                let oids: Vec<String> = resolved
+                    .staircase
+                    .metadata()
+                    .steps
+                    .iter()
+                    .map(|s| s.cut.clone())
+                    .collect();
+                Ok(Box::new(instance.upload(
+                    repo,
+                    &oids,
+                    cmd.destination.as_deref(),
+                )?))
             }
             ReviewSubcommands::Reconcile(cmd) => {
                 let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_gerrit_upload_plan(repo, route, &oids, None)?;
-                Ok(Box::new(ReviewReconcileResult {
-                    plan,
-                    status: "Reconciled with Gerrit server".to_string(),
-                }))
+                let oids: Vec<String> = resolved
+                    .staircase
+                    .metadata()
+                    .steps
+                    .iter()
+                    .map(|s| s.cut.clone())
+                    .collect();
+                Ok(Box::new(instance.reconcile(repo, &oids)?))
             }
             ReviewSubcommands::Open(cmd) => {
                 let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_gerrit_upload_plan(repo, route, &oids, None)?;
-                let url = format!("https://{}/q/project:{}", route.server_id, route.project);
-                Ok(Box::new(ReviewOpenResult { url, plan }))
-            }
-        }
-    }
-
-    fn run_github(&self, repo: &GitRepo, route: &GitHubRoute) -> Result<Box<dyn PresentationOutput>> {
-        match &self.command {
-            ReviewSubcommands::Show(cmd) => {
-                let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_github_upload_plan(repo, route, &oids, None)?;
-                Ok(Box::new(GitHubShowResult {
-                    route: route.clone(),
-                    plan,
-                }))
-            }
-            ReviewSubcommands::Status(cmd) => {
-                let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_github_upload_plan(repo, route, &oids, None)?;
-                let report = get_github_verification(route, &plan)?;
-                Ok(Box::new(GitHubStatusResult {
-                    route: route.clone(),
-                    report,
-                }))
-            }
-            ReviewSubcommands::Plan(cmd) => {
-                let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_github_upload_plan(repo, route, &oids, cmd.mapping.as_deref())?;
-                Ok(Box::new(GitHubPlanResult(plan)))
-            }
-            ReviewSubcommands::Upload(cmd) => {
-                let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_github_upload_plan(repo, route, &oids, None)?;
-                let mut results = Vec::new();
-                for publ in &plan.publications {
-                    results.push(format!(
-                        "Published {} -> {}/{}",
-                        &publ.step_oid[..7.min(publ.step_oid.len())],
-                        route.remote_name,
-                        publ.head_branch
-                    ));
-                }
-                Ok(Box::new(GitHubUploadResult {
-                    route: route.clone(),
-                    plan,
-                    results,
-                }))
-            }
-            ReviewSubcommands::Reconcile(cmd) => {
-                let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_github_upload_plan(repo, route, &oids, None)?;
-                Ok(Box::new(GitHubReconcileResult {
-                    plan,
-                    status: "Reconciled with GitHub repository".to_string(),
-                }))
-            }
-            ReviewSubcommands::Open(cmd) => {
-                let resolved = cmd.selector.resolve(repo)?;
-                let meta = resolved.staircase.metadata();
-                let oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
-                let plan = create_github_upload_plan(repo, route, &oids, None)?;
-                let url = format!(
-                    "https://{}/{}/pulls",
-                    route.installation,
-                    route.base_repository.full_name()
-                );
-                Ok(Box::new(GitHubOpenResult { url, plan }))
+                let oids: Vec<String> = resolved
+                    .staircase
+                    .metadata()
+                    .steps
+                    .iter()
+                    .map(|s| s.cut.clone())
+                    .collect();
+                Ok(Box::new(instance.open(repo, &oids)?))
             }
         }
     }
 }
 
-#[derive(Serialize)]
-pub struct ReviewShowResult {
-    pub route: GerritRoute,
-    pub plan: GerritUploadPlan,
-}
-
-impl ToHuman for ReviewShowResult {
+impl ToHuman for UnifiedReviewShow {
     fn to_human(&self) -> String {
         let mut lines = Vec::new();
-        lines.push(format!("Gerrit Server: {}", self.route.server_id));
-        lines.push(format!("Project: {}", self.route.project));
-        lines.push(format!("Destination Branch: {}", self.route.destination_branch));
-        lines.push(format!("Upload Ref: {}", self.route.upload_ref));
+        lines.push(format!("{} Host: {}", self.provider_label, self.host));
+        lines.push(format!("Project: {}", self.project));
+        lines.push(format!("Destination Branch: {}", self.destination_branch));
+        for (k, v) in &self.details {
+            lines.push(format!("{}: {}", k, v));
+        }
         lines.push("Commits:".to_string());
-        for c in &self.plan.commits {
+        for item in &self.items {
             lines.push(format!(
-                "  {} {} [Change-Id: {}]",
-                &c.oid[..7.min(c.oid.len())],
-                c.subject,
-                c.change_id.as_deref().unwrap_or("<none>")
+                "  {} {} [{}]",
+                &item.oid[..7.min(item.oid.len())],
+                item.title,
+                item.detail
             ));
         }
         lines.join("\n")
     }
 }
 
-impl ToPorcelain for ReviewShowResult {
+impl ToPorcelain for UnifiedReviewShow {
     fn to_porcelain(&self) -> String {
         let mut lines = Vec::new();
-        lines.push(format!("server\t{}", self.route.server_id));
-        lines.push(format!("project\t{}", self.route.project));
-        lines.push(format!("destination\t{}", self.route.destination_branch));
-        for c in &self.plan.commits {
-            lines.push(format!(
-                "commit\t{}\t{}\t{}",
-                c.oid,
-                c.change_id.as_deref().unwrap_or(""),
-                c.subject
-            ));
+        lines.push(format!("host\t{}", self.host));
+        lines.push(format!("project\t{}", self.project));
+        for item in &self.items {
+            lines.push(format!("commit\t{}\t{}", item.oid, item.detail));
         }
         lines.join("\n")
     }
 }
 
-#[derive(Serialize)]
-pub struct ReviewStatusResult {
-    pub route: GerritRoute,
-    pub report: GerritVerificationReport,
-    pub plan: GerritUploadPlan,
-}
-
-impl ToHuman for ReviewStatusResult {
+impl ToHuman for UnifiedReviewStatus {
     fn to_human(&self) -> String {
         let mut lines = Vec::new();
-        lines.push(format!("Gerrit Review Status: {}", self.report.aggregate_status));
-        lines.push(format!("Server: {}", self.route.server_id));
-        lines.push(format!("Project: {}", self.route.project));
-        lines.push(format!("Destination: {}", self.route.destination_branch));
-        lines.push(format!("Submittable: {}", self.report.submittable));
-        lines.push(format!("Mergeable: {}", self.report.mergeable));
-        lines.push("Labels:".to_string());
-        for (k, v) in &self.report.labels {
-            lines.push(format!("  {}: {}", k, v));
+        lines.push(format!(
+            "{} Review Status: {}",
+            self.provider_label, self.status
+        ));
+        lines.push(format!("Host: {}", self.host));
+        lines.push(format!("Project: {}", self.project));
+        for (k, v) in &self.details {
+            lines.push(format!("{}: {}", k, v));
         }
         lines.join("\n")
     }
 }
 
-impl ToPorcelain for ReviewStatusResult {
+impl ToPorcelain for UnifiedReviewStatus {
     fn to_porcelain(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("status\t{}", self.report.aggregate_status));
-        lines.push(format!("submittable\t{}", self.report.submittable));
-        lines.push(format!("mergeable\t{}", self.report.mergeable));
-        lines.join("\n")
+        format!("status\t{}", self.status)
     }
 }
 
-#[derive(Serialize)]
-pub struct ReviewPlanResult(pub GerritUploadPlan);
-
-impl ToHuman for ReviewPlanResult {
+impl ToHuman for UnifiedReviewPlan {
     fn to_human(&self) -> String {
         let mut lines = Vec::new();
-        lines.push("Gerrit Upload Plan:".to_string());
-        lines.push(format!("  Target Ref: {}", self.0.push_ref));
-        lines.push(format!("  Mapping Policy: {}", self.0.mapping_policy));
+        lines.push(format!("{} Upload Plan:", self.provider_label));
+        lines.push(format!("  Target Ref: {}", self.target));
+        lines.push(format!("  Mapping Policy: {}", self.policy));
         lines.push("  Commits to push:".to_string());
-        for c in &self.0.commits {
+        for item in &self.items {
             lines.push(format!(
                 "    - {} {} ({})",
-                &c.oid[..7.min(c.oid.len())],
-                c.subject,
-                c.change_id_status
+                &item.oid[..7.min(item.oid.len())],
+                item.title,
+                item.detail
             ));
         }
-        if !self.0.warnings.is_empty() {
+        if !self.warnings.is_empty() {
             lines.push("  Warnings:".to_string());
-            for w in &self.0.warnings {
+            for w in &self.warnings {
                 lines.push(format!("    - {}", w));
             }
         }
@@ -353,217 +257,55 @@ impl ToHuman for ReviewPlanResult {
     }
 }
 
-impl ToPorcelain for ReviewPlanResult {
+impl ToPorcelain for UnifiedReviewPlan {
     fn to_porcelain(&self) -> String {
         let mut lines = Vec::new();
-        lines.push(format!("push_ref\t{}", self.0.push_ref));
-        lines.push(format!("mapping_policy\t{}", self.0.mapping_policy));
-        for c in &self.0.commits {
-            lines.push(format!("commit\t{}\t{}", c.oid, c.change_id_status));
+        lines.push(format!("push_ref\t{}", self.target));
+        lines.push(format!("mapping_policy\t{}", self.policy));
+        for item in &self.items {
+            lines.push(format!("commit\t{}\t{}", item.oid, item.detail));
         }
         lines.join("\n")
     }
 }
 
-#[derive(Serialize)]
-pub struct ReviewUploadResult {
-    pub plan: GerritUploadPlan,
-    pub result: String,
-}
-
-impl ToHuman for ReviewUploadResult {
+impl ToHuman for UnifiedReviewUpload {
     fn to_human(&self) -> String {
-        format!(
-            "Gerrit Upload Complete:\n  {}\n  Pushed {} commits to {}",
-            self.result,
-            self.plan.commits.len(),
-            self.plan.push_ref
-        )
+        let mut lines = Vec::new();
+        lines.push(format!("{} Upload Complete:", self.provider_label));
+        lines.push(format!("  {}", self.summary));
+        for detail in &self.details {
+            lines.push(format!("  {}", detail));
+        }
+        lines.join("\n")
     }
 }
 
-impl ToPorcelain for ReviewUploadResult {
+impl ToPorcelain for UnifiedReviewUpload {
     fn to_porcelain(&self) -> String {
-        format!("result\t{}\t{}", self.plan.push_ref, self.plan.commits.len())
+        format!("result\t{}", self.summary)
     }
 }
 
-#[derive(Serialize)]
-pub struct ReviewReconcileResult {
-    pub plan: GerritUploadPlan,
-    pub status: String,
-}
-
-impl ToHuman for ReviewReconcileResult {
+impl ToHuman for UnifiedReviewReconcile {
     fn to_human(&self) -> String {
-        format!("Review Reconcile Status: {}", self.status)
+        format!("{} Reconcile Status: {}", self.provider_label, self.status)
     }
 }
 
-impl ToPorcelain for ReviewReconcileResult {
+impl ToPorcelain for UnifiedReviewReconcile {
     fn to_porcelain(&self) -> String {
         format!("status\t{}", self.status)
     }
 }
 
-#[derive(Serialize)]
-pub struct ReviewOpenResult {
-    pub url: String,
-    pub plan: GerritUploadPlan,
-}
-
-impl ToHuman for ReviewOpenResult {
+impl ToHuman for UnifiedReviewOpen {
     fn to_human(&self) -> String {
-        format!("Gerrit Review URL: {}", self.url)
+        format!("{} Review URL: {}", self.provider_label, self.url)
     }
 }
 
-impl ToPorcelain for ReviewOpenResult {
-    fn to_porcelain(&self) -> String {
-        format!("url\t{}", self.url)
-    }
-}
-
-// GitHub Presentation Types
-#[derive(Serialize)]
-pub struct GitHubShowResult {
-    pub route: GitHubRoute,
-    pub plan: GitHubUploadPlan,
-}
-
-impl ToHuman for GitHubShowResult {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("GitHub Host: {}", self.route.installation));
-        lines.push(format!("Repository: {}", self.route.base_repository.full_name()));
-        lines.push(format!("Destination Branch: {}", self.route.destination_branch));
-        lines.push(format!("Remote Name: {}", self.route.remote_name));
-        lines.push(format!("Mapping Policy: {}", self.plan.mapping_policy));
-        lines.push("Planned Publications:".to_string());
-        for p in &self.plan.publications {
-            lines.push(format!(
-                "  {} -> {} ({})",
-                &p.step_oid[..7.min(p.step_oid.len())],
-                p.head_branch,
-                p.subject
-            ));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for GitHubShowResult {
-    fn to_porcelain(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("host\t{}", self.route.installation));
-        lines.push(format!("repository\t{}", self.route.base_repository.full_name()));
-        lines.push(format!("mapping_policy\t{}", self.plan.mapping_policy));
-        for p in &self.plan.publications {
-            lines.push(format!("publication\t{}\t{}", p.step_oid, p.head_branch));
-        }
-        lines.join("\n")
-    }
-}
-
-#[derive(Serialize)]
-pub struct GitHubStatusResult {
-    pub route: GitHubRoute,
-    pub report: GitHubVerificationReport,
-}
-
-impl ToHuman for GitHubStatusResult {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("GitHub Review Status: {}", self.report.aggregate_status));
-        lines.push(format!("Host: {}", self.route.installation));
-        lines.push(format!("Repository: {}", self.report.repository));
-        lines.push(format!("Checks Passed: {}/{}", self.report.check_runs_passed, self.report.check_runs_total));
-        lines.push(format!("Mergeable: {}", self.report.is_mergeable));
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for GitHubStatusResult {
-    fn to_porcelain(&self) -> String {
-        format!("status\t{}\t{}", self.report.aggregate_status, self.report.is_mergeable)
-    }
-}
-
-#[derive(Serialize)]
-pub struct GitHubPlanResult(pub GitHubUploadPlan);
-
-impl ToHuman for GitHubPlanResult {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("GitHub Upload Plan ({})", self.0.mapping_policy));
-        for p in &self.0.publications {
-            lines.push(format!("  {} -> {}", &p.step_oid[..7.min(p.step_oid.len())], p.head_branch));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for GitHubPlanResult {
-    fn to_porcelain(&self) -> String {
-        format!("policy\t{}", self.0.mapping_policy)
-    }
-}
-
-#[derive(Serialize)]
-pub struct GitHubUploadResult {
-    pub route: GitHubRoute,
-    pub plan: GitHubUploadPlan,
-    pub results: Vec<String>,
-}
-
-impl ToHuman for GitHubUploadResult {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push("GitHub Publication Complete:".to_string());
-        for r in &self.results {
-            lines.push(format!("  {}", r));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for GitHubUploadResult {
-    fn to_porcelain(&self) -> String {
-        format!("result\t{}", self.results.len())
-    }
-}
-
-#[derive(Serialize)]
-pub struct GitHubReconcileResult {
-    pub plan: GitHubUploadPlan,
-    pub status: String,
-}
-
-impl ToHuman for GitHubReconcileResult {
-    fn to_human(&self) -> String {
-        format!("GitHub Reconcile Status: {}", self.status)
-    }
-}
-
-impl ToPorcelain for GitHubReconcileResult {
-    fn to_porcelain(&self) -> String {
-        format!("status\t{}", self.status)
-    }
-}
-
-#[derive(Serialize)]
-pub struct GitHubOpenResult {
-    pub url: String,
-    pub plan: GitHubUploadPlan,
-}
-
-impl ToHuman for GitHubOpenResult {
-    fn to_human(&self) -> String {
-        format!("GitHub Pull Requests URL: {}", self.url)
-    }
-}
-
-impl ToPorcelain for GitHubOpenResult {
+impl ToPorcelain for UnifiedReviewOpen {
     fn to_porcelain(&self) -> String {
         format!("url\t{}", self.url)
     }

@@ -185,14 +185,22 @@ impl GitRepo {
         if !rev.starts_with("refs/") {
             if let Ok(sha) = self
                 .command()
-                .args(&["rev-parse", "--verify", &format!("refs/heads/{}^{{commit}}", rev)])
+                .args(&[
+                    "rev-parse",
+                    "--verify",
+                    &format!("refs/heads/{}^{{commit}}", rev),
+                ])
                 .run()
             {
                 return Ok(sha);
             }
             if let Ok(sha) = self
                 .command()
-                .args(&["rev-parse", "--verify", &format!("refs/tags/{}^{{commit}}", rev)])
+                .args(&[
+                    "rev-parse",
+                    "--verify",
+                    &format!("refs/tags/{}^{{commit}}", rev),
+                ])
                 .run()
             {
                 return Ok(sha);
@@ -338,10 +346,7 @@ impl GitRepo {
             _ => {
                 if !output.status.success() {
                     return Err(StaircaseError::GitCommandFailed {
-                        command: format!(
-                            "git merge-base --is-ancestor {} {}",
-                            anc_oid, desc_oid
-                        ),
+                        command: format!("git merge-base --is-ancestor {} {}", anc_oid, desc_oid),
                         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
                     });

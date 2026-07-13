@@ -23,7 +23,9 @@ impl super::Command for Reorder {
             let parsed: Result<Vec<usize>, _> = steps.iter().map(|s| s.parse::<usize>()).collect();
             parsed.map_err(|_| anyhow!("Invalid step permutation in --steps. Expected numeric 1-based indices (e.g. --steps 1,3,2)"))?
         } else {
-            return Err(anyhow!("Either --steps or --order (indices) must be provided"));
+            return Err(anyhow!(
+                "Either --steps or --order (indices) must be provided"
+            ));
         };
 
         let mut zero_based_steps = Vec::new();

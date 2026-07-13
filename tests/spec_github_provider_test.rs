@@ -1,7 +1,6 @@
 use git_staircase::GitRepo;
 use git_staircase::workspace::github_provider::{
-    create_github_upload_plan, get_github_verification, parse_github_remote_url,
-    probe_github_route,
+    create_github_upload_plan, get_github_verification, parse_github_remote_url, probe_github_route,
 };
 use std::fs;
 use std::sync::Mutex;
@@ -9,7 +8,12 @@ use tempfile::TempDir;
 
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-fn setup_github_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo, TempDir) {
+fn setup_github_repo() -> (
+    std::sync::MutexGuard<'static, ()>,
+    TempDir,
+    GitRepo,
+    TempDir,
+) {
     let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
@@ -21,8 +25,15 @@ fn setup_github_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo,
     let repo = GitRepo::new(repo_dir.path().to_path_buf());
     repo.run(&["init"]).unwrap();
     repo.run(&["config", "user.name", "Test User"]).unwrap();
-    repo.run(&["config", "user.email", "test@example.com"]).unwrap();
-    repo.run(&["remote", "add", "origin", "git@github.com:example-org/example-repo.git"]).unwrap();
+    repo.run(&["config", "user.email", "test@example.com"])
+        .unwrap();
+    repo.run(&[
+        "remote",
+        "add",
+        "origin",
+        "git@github.com:example-org/example-repo.git",
+    ])
+    .unwrap();
 
     let file_path = repo_dir.path().join("file.txt");
     fs::write(&file_path, "initial").unwrap();
@@ -70,11 +81,13 @@ fn test_github_upload_plan_and_verification() {
     let head_oid = repo.resolve_commit("HEAD").unwrap();
     let route = probe_github_route(&repo, None).unwrap().unwrap();
 
-    let plan_agg = create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("aggregate")).unwrap();
+    let plan_agg =
+        create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("aggregate")).unwrap();
     assert_eq!(plan_agg.publications.len(), 1);
     assert_eq!(plan_agg.publications[0].head_branch, "staircase/aggregate");
 
-    let plan_stacked = create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("stacked")).unwrap();
+    let plan_stacked =
+        create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("stacked")).unwrap();
     assert_eq!(plan_stacked.publications.len(), 1);
     assert_eq!(plan_stacked.publications[0].head_branch, "staircase/step-1");
 

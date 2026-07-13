@@ -1,10 +1,8 @@
-use crate::error::{Result, StaircaseError};
-use crate::git::GitRepo;
-use crate::model::{
-    LifecycleEvent, LifecycleState,
-};
 use crate::core::persistence;
 use crate::core::resolved::ResolvedSelector;
+use crate::error::{Result, StaircaseError};
+use crate::git::GitRepo;
+use crate::model::{LifecycleEvent, LifecycleState};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub enum UnarchiveBranchesMode {
@@ -104,12 +102,20 @@ pub fn unarchive_staircase(
                 }
             }
 
-            if let Ok(stdout) = repo.run(&["config", "--get-regexp", &format!("^branch\\.{}\\.", dest_branch_name)]) {
+            if let Ok(stdout) = repo.run(&[
+                "config",
+                "--get-regexp",
+                &format!("^branch\\.{}\\.", dest_branch_name),
+            ]) {
                 if !stdout.trim().is_empty() {
                     let is_owned = record
                         .archive_manifest
                         .as_ref()
-                        .map(|m| m.branch_configs.iter().any(|bc| bc.branch_name == dest_branch_name))
+                        .map(|m| {
+                            m.branch_configs
+                                .iter()
+                                .any(|bc| bc.branch_name == dest_branch_name)
+                        })
                         .unwrap_or(false);
                     if !is_owned {
                         return Err(StaircaseError::Other(format!(

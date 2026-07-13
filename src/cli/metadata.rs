@@ -1,8 +1,8 @@
-use anyhow::{Result, anyhow};
 use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
 use crate::core::{self, ResolvedSelector};
 use crate::git::GitRepo;
 use crate::model::{StaircaseLink, StaircaseUserMetadata, StepMetadata};
+use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
 use serde::Serialize;
 use std::env;
@@ -155,7 +155,10 @@ pub struct StepMetadataOutput {
 impl ToHuman for StepMetadataOutput {
     fn to_human(&self) -> String {
         let mut out = String::new();
-        out.push_str(&format!("Staircase: {}, Step: {}\n", self.name, self.step_key));
+        out.push_str(&format!(
+            "Staircase: {}, Step: {}\n",
+            self.name, self.step_key
+        ));
         if let Some(ref title) = self.metadata.title {
             out.push_str(&format!("Title: {}\n", title));
         }
@@ -192,7 +195,10 @@ impl Command for MetadataCmd {
                 let json_str = serde_json::to_string_pretty(&current_meta)?;
 
                 let temp_dir = env::temp_dir();
-                let temp_file = temp_dir.join(format!("STAIRCASE_META_{}.json", uuid::Uuid::new_v4().simple()));
+                let temp_file = temp_dir.join(format!(
+                    "STAIRCASE_META_{}.json",
+                    uuid::Uuid::new_v4().simple()
+                ));
                 fs::write(&temp_file, &json_str)?;
 
                 let editor = env::var("GIT_EDITOR")
@@ -283,7 +289,8 @@ impl Command for MetadataCmd {
                 let json_str = serde_json::to_string_pretty(&current_step_meta)?;
 
                 let temp_dir = env::temp_dir();
-                let temp_file = temp_dir.join(format!("STEP_META_{}.json", uuid::Uuid::new_v4().simple()));
+                let temp_file =
+                    temp_dir.join(format!("STEP_META_{}.json", uuid::Uuid::new_v4().simple()));
                 fs::write(&temp_file, &json_str)?;
 
                 let editor = env::var("GIT_EDITOR")
@@ -324,7 +331,11 @@ fn resolve_step_arg(sel: &ResolvedSelector, step_arg: Option<&str>) -> Result<St
         let meta = sel.staircase.metadata();
         if idx < meta.steps.len() {
             let step = &meta.steps[idx];
-            return Ok(if !step.id.is_empty() { step.id.clone() } else { step.name.clone() });
+            return Ok(if !step.id.is_empty() {
+                step.id.clone()
+            } else {
+                step.name.clone()
+            });
         }
     }
     if let Some(arg) = step_arg {

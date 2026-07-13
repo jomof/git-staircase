@@ -8,7 +8,10 @@ use std::sync::{Arc, Mutex};
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MemoKey {
     /// Ancestry reachability check between two commit OIDs.
-    Ancestry { ancestor: String, descendant: String },
+    Ancestry {
+        ancestor: String,
+        descendant: String,
+    },
     /// Merge base between two commit OIDs.
     MergeBase { a: String, b: String },
     /// Patch ID for a diff between two commit OIDs.
@@ -141,7 +144,9 @@ impl Memoizer {
             a: a.to_string(),
             b: b.to_string(),
         };
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_merge_base(&self, a: &str, b: &str, result: &str) {
@@ -157,7 +162,9 @@ impl Memoizer {
             base: base.to_string(),
             tip: tip.to_string(),
         };
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_patch_id(&self, base: &str, tip: &str, patch_id: &str) {
@@ -172,7 +179,9 @@ impl Memoizer {
         let key = MemoKey::TreeId {
             commit: commit.to_string(),
         };
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_tree_id(&self, commit: &str, tree_id: &str) {
@@ -184,7 +193,9 @@ impl Memoizer {
 
     pub fn get_object_format(&self) -> Option<String> {
         let key = MemoKey::ObjectFormat;
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_object_format(&self, format: &str) {
@@ -198,7 +209,9 @@ impl Memoizer {
         hasher.update(data.as_bytes());
         let content_sha = format!("{:x}", hasher.finalize());
         let key = MemoKey::HashData { content_sha };
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_hash_data(&self, data: &str, hash: &str) {
@@ -214,7 +227,9 @@ impl Memoizer {
         let key = MemoKey::ResolveCommit {
             rev: rev.to_string(),
         };
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_resolve_commit(&self, rev: &str, oid: &str) {
@@ -250,7 +265,9 @@ impl Memoizer {
         let key = MemoKey::ResolveSymbolic {
             name: name.to_string(),
         };
-        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
 
     pub fn set_symbolic_name(&self, name: &str, full_name: &str) {
@@ -283,7 +300,10 @@ mod tests {
 
         assert_eq!(memoizer.get_patch_id("c1", "c2"), None);
         memoizer.set_patch_id("c1", "c2", "patch123");
-        assert_eq!(memoizer.get_patch_id("c1", "c2"), Some("patch123".to_string()));
+        assert_eq!(
+            memoizer.get_patch_id("c1", "c2"),
+            Some("patch123".to_string())
+        );
 
         memoizer.clear();
         assert_eq!(memoizer.get_ancestry("commitA", "commitB"), None);
@@ -327,6 +347,11 @@ mod tests {
 
         let recorded = calls.lock().unwrap();
         assert_eq!(recorded.len(), 1);
-        assert_eq!(recorded[0], MemoKey::TreeId { commit: "commit1".to_string() });
+        assert_eq!(
+            recorded[0],
+            MemoKey::TreeId {
+                commit: "commit1".to_string()
+            }
+        );
     }
 }
