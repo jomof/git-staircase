@@ -1,5 +1,3 @@
-mod common;
-
 use git_staircase::GitRepo;
 use git_staircase::workspace::{
     bootstrap, doctor, forget_workspace_record, list_workspace_records, BootstrapOptions,
@@ -11,20 +9,8 @@ use tempfile::TempDir;
 
 static TEST_MUTEX: Mutex<()> = Mutex::new(());
 
-struct WorkspaceTestGuard {
-    _guard: std::sync::MutexGuard<'static, ()>,
-}
-
-impl Drop for WorkspaceTestGuard {
-    fn drop(&mut self) {
-        unsafe {
-            std::env::remove_var("GIT_STAIRCASE_WORKSPACE_DIR");
-        }
-    }
-}
-
-fn setup_test_repo() -> (WorkspaceTestGuard, TempDir, GitRepo, TempDir) {
-    let guard = TEST_MUTEX.lock().unwrap_or_else(|e| e.into_inner());
+fn setup_test_repo() -> (std::sync::MutexGuard<'static, ()>, TempDir, GitRepo, TempDir) {
+    let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
 
@@ -43,7 +29,7 @@ fn setup_test_repo() -> (WorkspaceTestGuard, TempDir, GitRepo, TempDir) {
     repo.run(&["add", "file.txt"]).unwrap();
     repo.run(&["commit", "-m", "initial"]).unwrap();
 
-    (WorkspaceTestGuard { _guard: guard }, repo_dir, repo, storage_dir)
+    (guard, repo_dir, repo, storage_dir)
 }
 
 #[test]
