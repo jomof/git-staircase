@@ -1,3 +1,4 @@
+use crate::core::refs::{StaircaseRefs, PUBLIC_PREFIX, STATE_PREFIX, ARCHIVE_PREFIX};
 use crate::error::{Result, StaircaseError};
 use crate::git::{GitRepo, TreeEntry};
 use crate::model::{
@@ -42,13 +43,13 @@ pub fn write_record(
     if update_refs {
         if lifecycle.state == LifecycleState::Active {
             if !metadata.name.is_empty() {
-                let public_ref = format!("refs/staircases/{}", metadata.name);
+                let public_ref = StaircaseRefs::public(&metadata.name);
                 repo.run(&["update-ref", &public_ref, &record_oid])?;
             }
-            let state_record_ref = format!("refs/staircase-state/{}/record", metadata.id);
+            let state_record_ref = StaircaseRefs::state_record(&metadata.id);
             repo.run(&["update-ref", &state_record_ref, &record_oid])?;
 
-            let state_desc_ref = format!("refs/staircase-state/{}/descriptor", metadata.id);
+            let state_desc_ref = StaircaseRefs::state_descriptor(&metadata.id);
             repo.run(&["update-ref", &state_desc_ref, &structure_oid])?;
 
             for step in &metadata.steps {
@@ -57,11 +58,11 @@ pub fn write_record(
                 } else {
                     &step.name
                 };
-                let step_ref = format!("refs/staircase-state/{}/steps/{}", metadata.id, key);
+                let step_ref = StaircaseRefs::state_step(&metadata.id, key);
                 repo.run(&["update-ref", &step_ref, &step.cut])?;
             }
         } else if lifecycle.state == LifecycleState::Archived {
-            let archive_record_ref = format!("refs/staircase-archive/{}/record", metadata.id);
+            let archive_record_ref = StaircaseRefs::archive_record(&metadata.id);
             repo.run(&["update-ref", &archive_record_ref, &record_oid])?;
 
             for step in &metadata.steps {
@@ -70,7 +71,7 @@ pub fn write_record(
                 } else {
                     &step.name
                 };
-                let step_ref = format!("refs/staircase-archive/{}/steps/{}", metadata.id, key);
+                let step_ref = StaircaseRefs::archive_step(&metadata.id, key);
                 repo.run(&["update-ref", &step_ref, &step.cut])?;
             }
         }
@@ -256,10 +257,10 @@ pub fn serialize_descriptor(repo: &GitRepo, metadata: &StaircaseMetadata) -> Res
 }
 
 pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetadata> {
-    let name_ref = format!("refs/staircases/{}", id_or_name);
-    let id_record_ref = format!("refs/staircase-state/{}/record", id_or_name);
-    let id_desc_ref = format!("refs/staircase-state/{}/descriptor", id_or_name);
-    let archive_ref = format!("refs/staircase-archive/{}/record", id_or_name);
+    let name_ref = StaircaseRefs::public(id_or_name);
+    let id_record_ref = StaircaseRefs::state_record(id_or_name);
+    let id_desc_ref = StaircaseRefs::state_descriptor(id_or_name);
+    let archive_ref = StaircaseRefs::archive_record(id_or_name);
 
     let (ref_name, is_name) = if repo.resolve_ref_opt(&name_ref)?.is_some() {
         (name_ref, true)
@@ -283,10 +284,10 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
         meta.name = id_or_name.to_string();
     } else if meta.name.is_empty() {
         let oid = repo.resolve_ref(&ref_name)?;
-        if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", &oid, "refs/staircases/"]) {
+        if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", &oid, PUBLIC_PREFIX]) {
             if let Some(line) = stdout.lines().next() {
                 let refname = line.split_whitespace().last().unwrap_or("");
-                if let Some(name) = refname.strip_prefix("refs/staircases/") {
+                if let Some(name) = refname.strip_prefix(PUBLIC_PREFIX) {
                     meta.name = name.to_string();
                 }
             }
@@ -415,11 +416,8 @@ pub fn record_verification(
     results: &[VerificationResult],
 ) -> Result<String> {
     let ref_name = match kind {
-        IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
-        IdentityKind::Revision => format!(
-            "refs/staircases/by-revision/{}/verification",
-            key.replace(":", "/")
-        ),
+        IdentityKind::Lineage => StaircaseRefs::verification(key),
+        IdentityKind::Revision => StaircaseRefs::revision_verification(&key.replace(":", "/")),
         _ => {
             return Err(StaircaseError::Other(format!(
                 "Unsupported identity kind for verification: {:?}",
@@ -457,11 +455,11 @@ pub fn list_staircases_filtered(
     let mut seen_ids = std::collections::HashSet::new();
 
     if include_active {
-        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", "refs/staircases/"]) {
+        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", PUBLIC_PREFIX]) {
             for line in stdout.lines() {
                 let refname = line.trim();
-                if refname.starts_with("refs/staircases/") {
-                    let name = refname.strip_prefix("refs/staircases/").unwrap();
+                if refname.starts_with(PUBLIC_PREFIX) {
+                    let name = refname.strip_prefix(PUBLIC_PREFIX).unwrap();
                     if !name.contains('/') {
                         if let Ok(meta) = read_metadata(repo, name) {
                             seen_ids.insert(meta.id.clone());
@@ -475,13 +473,13 @@ pub fn list_staircases_filtered(
         if let Ok(stdout) = repo.run(&[
             "for-each-ref",
             "--format=%(refname)",
-            "refs/staircase-state/",
+            STATE_PREFIX,
         ]) {
             for line in stdout.lines() {
                 let refname = line.trim();
                 if refname.ends_with("/record") || refname.ends_with("/descriptor") {
                     let parts: Vec<&str> = refname
-                        .strip_prefix("refs/staircase-state/")
+                        .strip_prefix(STATE_PREFIX)
                         .unwrap()
                         .split('/')
                         .collect();
@@ -503,13 +501,13 @@ pub fn list_staircases_filtered(
         if let Ok(stdout) = repo.run(&[
             "for-each-ref",
             "--format=%(refname)",
-            "refs/staircase-archive/",
+            ARCHIVE_PREFIX,
         ]) {
             for line in stdout.lines() {
                 let refname = line.trim();
                 if refname.ends_with("/record") {
                     let parts: Vec<&str> = refname
-                        .strip_prefix("refs/staircase-archive/")
+                        .strip_prefix(ARCHIVE_PREFIX)
                         .unwrap()
                         .split('/')
                         .collect();
@@ -531,21 +529,21 @@ pub fn list_staircases_filtered(
 }
 
 pub fn delete_staircase_refs(repo: &GitRepo, id: &str, name: &str) -> Result<()> {
-    let state_prefix = format!("refs/staircase-state/{}/", id);
+    let state_prefix = format!("{}{}/", STATE_PREFIX, id);
     if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &state_prefix]) {
         for line in stdout.lines() {
             let refname = line.trim();
             repo.run(&["update-ref", "-d", refname])?;
         }
     }
-    let archive_prefix = format!("refs/staircase-archive/{}/", id);
+    let archive_prefix = format!("{}{}/", ARCHIVE_PREFIX, id);
     if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &archive_prefix]) {
         for line in stdout.lines() {
             let refname = line.trim();
             repo.run(&["update-ref", "-d", refname])?;
         }
     }
-    let ref_name = format!("refs/staircases/{}", name);
+    let ref_name = StaircaseRefs::public(name);
     repo.run(&["update-ref", "-d", &ref_name])?;
     Ok(())
 }
@@ -581,11 +579,11 @@ pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMeta
     let record = read_record(repo, oid)?;
     let mut meta = record.metadata;
 
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", oid, "refs/staircases/"]) {
+    if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", oid, PUBLIC_PREFIX]) {
         if let Some(name) = stdout.lines().next().and_then(|line| {
             line.split_whitespace()
                 .last()?
-                .strip_prefix("refs/staircases/")
+                .strip_prefix(PUBLIC_PREFIX)
         }) {
             meta.name = name.to_string();
         }
@@ -602,11 +600,8 @@ pub fn read_verification(
     kind: IdentityKind,
 ) -> Result<Option<Vec<VerificationResult>>> {
     let ref_name = match kind {
-        IdentityKind::Lineage => format!("refs/staircases/{}/verification", key),
-        IdentityKind::Revision => format!(
-            "refs/staircases/by-revision/{}/verification",
-            key.replace(":", "/")
-        ),
+        IdentityKind::Lineage => StaircaseRefs::verification(key),
+        IdentityKind::Revision => StaircaseRefs::revision_verification(&key.replace(":", "/")),
         _ => return Ok(None),
     };
 

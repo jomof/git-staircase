@@ -1,3 +1,5 @@
+use crate::core::utils::current_timestamp;
+use crate::core::refs::{StaircaseRefs, STATE_PREFIX};
 use crate::core::persistence;
 use crate::core::resolved::ResolvedSelector;
 use crate::error::{Result, StaircaseError};
@@ -46,11 +48,11 @@ pub fn archive_staircase(
     }
 
     let meta = selector.staircase.metadata();
-    let record_ref = format!("refs/staircase-state/{}/record", meta.id);
-    let archive_record_ref = format!("refs/staircase-archive/{}/record", meta.id);
+    let record_ref = StaircaseRefs::state_record(&meta.id);
+    let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
 
     let current_record = persistence::read_record(repo, &record_ref)
-        .or_else(|_| persistence::read_record(repo, &format!("refs/staircases/{}", meta.name)))
+        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))
         .or_else(|_| persistence::read_record(repo, &archive_record_ref))?;
 
     if current_record.lifecycle.state == LifecycleState::Archived {
@@ -153,7 +155,7 @@ pub fn archive_staircase(
     }
 
     let event_id = format!("evt-archive-{}", uuid::Uuid::new_v4().simple());
-    let timestamp = crate::core::utils::current_timestamp();
+    let timestamp = current_timestamp();
 
     let mut archive_owned_refs = Vec::new();
     for (idx, full_ref) in owned_branches.iter().enumerate() {
@@ -164,7 +166,7 @@ pub fn archive_staircase(
             original_refname: full_ref.clone(),
             object_type: "commit".to_string(),
             original_oid: oid,
-            archive_refname: format!("refs/staircase-archive/{}/owned/{}", meta.id, ref_id),
+            archive_refname: StaircaseRefs::archive_owned(&meta.id, &ref_id),
             ownership_class: "primary".to_string(),
             visibility_class: "hidden".to_string(),
             restoration_policy: "restore-or-rename".to_string(),
@@ -183,7 +185,7 @@ pub fn archive_staircase(
         expected_source_oids.insert(step_key.to_string(), step.cut.clone());
         archive_retention_refs.insert(
             step_key.to_string(),
-            format!("refs/staircase-archive/{}/steps/{}", meta.id, step_key),
+            StaircaseRefs::archive_step(&meta.id, step_key),
         );
     }
 
@@ -272,10 +274,10 @@ pub fn archive_staircase(
         event.record_oid_after = Some(record.record_oid.clone());
     }
 
-    let public_ref = format!("refs/staircases/{}", meta.name);
+    let public_ref = StaircaseRefs::public(&meta.name);
     let _ = repo.run(&["update-ref", "-d", &public_ref]);
 
-    let state_prefix = format!("refs/staircase-state/{}/", meta.id);
+    let state_prefix = format!("{}{}/", STATE_PREFIX, meta.id);
     if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &state_prefix]) {
         for line in stdout.lines() {
             let r = line.trim();
@@ -301,7 +303,7 @@ pub fn archive_staircase(
 
 pub fn release_staircase_name(repo: &GitRepo, selector: &ResolvedSelector) -> Result<String> {
     let meta = selector.staircase.metadata();
-    let archive_record_ref = format!("refs/staircase-archive/{}/record", meta.id);
+    let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
 
     let mut record = persistence::read_record(repo, &archive_record_ref)?;
 
@@ -317,7 +319,7 @@ pub fn release_staircase_name(repo: &GitRepo, selector: &ResolvedSelector) -> Re
     record.lifecycle.events.push(LifecycleEvent {
         event_id,
         kind: "name-released".to_string(),
-        timestamp: crate::core::utils::current_timestamp(),
+        timestamp: current_timestamp(),
         actor: None,
         record_oid_before: Some(record.record_oid.clone()),
         record_oid_after: None,

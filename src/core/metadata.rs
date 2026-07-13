@@ -1,19 +1,21 @@
+use crate::core::utils::current_timestamp;
+use crate::core::refs::StaircaseRefs;
 use crate::core::persistence;
 use crate::core::resolved::ResolvedSelector;
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::model::{StaircaseLink, StaircaseRecord, StaircaseUserMetadata, StepMetadata};
+use crate::model::{StaircaseLink, StaircaseRecord, StaircaseMetadata, StaircaseUserMetadata, StepMetadata};
 
 pub fn get_user_metadata(
     repo: &GitRepo,
     selector: &ResolvedSelector,
 ) -> Result<StaircaseUserMetadata> {
     let meta = selector.staircase.metadata();
-    let record_ref = format!("refs/staircase-state/{}/record", meta.id);
-    let archive_ref = format!("refs/staircase-archive/{}/record", meta.id);
+    let record_ref = StaircaseRefs::state_record(&meta.id);
+    let archive_ref = StaircaseRefs::archive_record(&meta.id);
 
     let record = persistence::read_record(repo, &record_ref)
-        .or_else(|_| persistence::read_record(repo, &format!("refs/staircases/{}", meta.name)))
+        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))
         .or_else(|_| persistence::read_record(repo, &archive_ref))?;
 
     Ok(record.user_metadata)
@@ -25,16 +27,16 @@ pub fn update_user_metadata(
     mut new_user_meta: StaircaseUserMetadata,
 ) -> Result<StaircaseRecord> {
     let meta = selector.staircase.metadata();
-    let record_ref = format!("refs/staircase-state/{}/record", meta.id);
-    let archive_ref = format!("refs/staircase-archive/{}/record", meta.id);
+    let record_ref = StaircaseRefs::state_record(&meta.id);
+    let archive_ref = StaircaseRefs::archive_record(&meta.id);
 
     let record = persistence::read_record(repo, &record_ref)
-        .or_else(|_| persistence::read_record(repo, &format!("refs/staircases/{}", meta.name)))
+        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))
         .or_else(|_| persistence::read_record(repo, &archive_ref))?;
 
     new_user_meta.labels.sort();
     new_user_meta.labels.dedup();
-    new_user_meta.updated_at = Some(crate::core::utils::current_timestamp());
+    new_user_meta.updated_at = Some(current_timestamp());
 
     let updated_record = persistence::write_record(
         repo,
@@ -55,7 +57,7 @@ pub fn set_title(
 ) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     if user_meta.created_at.is_none() {
-        user_meta.created_at = Some(crate::core::utils::current_timestamp());
+        user_meta.created_at = Some(current_timestamp());
     }
     user_meta.title = Some(title.to_string());
     update_user_metadata(repo, selector, user_meta)
@@ -68,7 +70,7 @@ pub fn set_description(
 ) -> Result<StaircaseRecord> {
     let mut user_meta = get_user_metadata(repo, selector)?;
     if user_meta.created_at.is_none() {
-        user_meta.created_at = Some(crate::core::utils::current_timestamp());
+        user_meta.created_at = Some(current_timestamp());
     }
     user_meta.description = Some(description.to_string());
     update_user_metadata(repo, selector, user_meta)
@@ -141,7 +143,7 @@ pub fn update_step_metadata(
     update_user_metadata(repo, selector, user_meta)
 }
 
-fn resolve_step_key(meta: &crate::model::StaircaseMetadata, step_key: &str) -> Result<String> {
+fn resolve_step_key(meta: &StaircaseMetadata, step_key: &str) -> Result<String> {
     if let Ok(ordinal) = step_key.parse::<usize>() {
         if ordinal >= 1 && ordinal <= meta.steps.len() {
             let step = &meta.steps[ordinal - 1];

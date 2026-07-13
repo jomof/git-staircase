@@ -1,3 +1,5 @@
+use crate::core::utils::current_timestamp;
+use crate::core::refs::{StaircaseRefs, ARCHIVE_PREFIX};
 use crate::core::persistence;
 use crate::core::resolved::ResolvedSelector;
 use crate::error::{Result, StaircaseError};
@@ -34,12 +36,12 @@ pub fn unarchive_staircase(
     options: &UnarchiveOptions,
 ) -> Result<UnarchiveResult> {
     let meta = selector.staircase.metadata();
-    let archive_record_ref = format!("refs/staircase-archive/{}/record", meta.id);
-    let active_record_ref = format!("refs/staircase-state/{}/record", meta.id);
+    let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
+    let active_record_ref = StaircaseRefs::state_record(&meta.id);
 
     let record = persistence::read_record(repo, &archive_record_ref)
         .or_else(|_| persistence::read_record(repo, &active_record_ref))
-        .or_else(|_| persistence::read_record(repo, &format!("refs/staircases/{}", meta.name)))?;
+        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))?;
 
     if record.lifecycle.state == LifecycleState::Active {
         return Ok(UnarchiveResult {
@@ -54,7 +56,7 @@ pub fn unarchive_staircase(
         .clone()
         .unwrap_or_else(|| record.metadata.name.clone());
 
-    let public_ref = format!("refs/staircases/{}", target_name);
+    let public_ref = StaircaseRefs::public(&target_name);
     if let Ok(existing_record_oid) = repo.resolve_ref_opt(&public_ref) {
         if let Some(oid) = existing_record_oid {
             if let Ok(existing_record) = persistence::read_record(repo, &oid) {
@@ -136,7 +138,7 @@ pub fn unarchive_staircase(
     updated_lifecycle.events.push(LifecycleEvent {
         event_id: event_id.clone(),
         kind: "unarchived".to_string(),
-        timestamp: crate::core::utils::current_timestamp(),
+        timestamp: current_timestamp(),
         actor: None,
         record_oid_before: Some(record.record_oid.clone()),
         record_oid_after: None,
@@ -184,7 +186,7 @@ pub fn unarchive_staircase(
         }
     }
 
-    let archive_prefix = format!("refs/staircase-archive/{}/", meta.id);
+    let archive_prefix = format!("{}{}/", ARCHIVE_PREFIX, meta.id);
     if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &archive_prefix]) {
         for line in stdout.lines() {
             let r = line.trim();

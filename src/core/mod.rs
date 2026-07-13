@@ -1,3 +1,6 @@
+pub mod refs;
+#[cfg(test)]
+pub mod refs_test;
 pub mod archive;
 pub mod discovery;
 pub mod draft;

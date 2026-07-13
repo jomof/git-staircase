@@ -1,3 +1,4 @@
+use crate::core::refs::{StaircaseRefs, PUBLIC_PREFIX};
 use super::discovery::{compute_implicit_id, discover};
 use super::persistence;
 use super::{ResolvedSelector, ResolvedStaircase};
@@ -64,7 +65,7 @@ fn resolve_managed(
     resolved_staircases: &mut HashMap<String, ResolvedStaircase>,
 ) -> Result<()> {
     let stripped_name = name
-        .strip_prefix("refs/staircases/")
+        .strip_prefix(PUBLIC_PREFIX)
         .or_else(|| name.strip_prefix("staircases/"))
         .unwrap_or(name);
 
@@ -219,7 +220,7 @@ fn report_ambiguity(
     if !managed.is_empty() {
         msg.push_str("\n\nmanaged staircase:");
         for m in managed {
-            msg.push_str(&format!("\n  refs/staircases/{}", m.name));
+            msg.push_str(&format!("\n  {}", StaircaseRefs::public(&m.name)));
             msg.push_str(&format!("\n  lineage: {}", m.id));
         }
     }
@@ -343,7 +344,7 @@ pub fn resolve_by_revision(repo: &GitRepo, oid: &str) -> Result<ResolvedStaircas
     for s in staircases {
         if s.id == metadata.id {
             // Verify if the current ref for this staircase matches this OID
-            if let Ok(current_oid) = repo.resolve_ref(&format!("refs/staircases/{}", s.name)) {
+            if let Ok(current_oid) = repo.resolve_ref(&StaircaseRefs::public(&s.name)) {
                 if current_oid == oid {
                     return Ok(ResolvedStaircase::Managed(metadata));
                 }

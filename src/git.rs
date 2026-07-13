@@ -1,3 +1,4 @@
+use crate::core::refs::StaircaseRefs;
 use crate::error::{Result, StaircaseError};
 use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
@@ -426,14 +427,14 @@ impl GitRepo {
     }
 
     pub fn update_step_ref(&self, id: &str, step_id: &str, cut: &str) -> Result<()> {
-        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_id);
+        let ref_name = StaircaseRefs::state_step(id, step_id);
         self.command().args(&["update-ref", &ref_name, cut]).run()?;
         self.memoizer.clear();
         Ok(())
     }
 
     pub fn delete_step_ref(&self, id: &str, step_id: &str) -> Result<()> {
-        let ref_name = format!("refs/staircase-state/{}/steps/{}", id, step_id);
+        let ref_name = StaircaseRefs::state_step(id, step_id);
         self.command()
             .args(&["update-ref", "-d", &ref_name])
             .run()?;
