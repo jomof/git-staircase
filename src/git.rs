@@ -260,6 +260,10 @@ impl GitRepo {
     }
 
     pub fn preload_ancestry(&self, oids: &[&str]) -> Result<()> {
+        self.preload_ancestry_ext(oids, &[])
+    }
+
+    pub fn preload_ancestry_ext(&self, oids: &[&str], exclude_oids: &[&str]) -> Result<()> {
         use std::collections::{HashMap, HashSet, VecDeque};
         let mut resolved_oids = Vec::new();
         for &oid in oids {
@@ -277,14 +281,29 @@ impl GitRepo {
             .into_iter()
             .collect();
 
-        if unique_oids.len() <= 1 {
+        if unique_oids.is_empty() {
             return Ok(());
         }
 
+        let mut resolved_exclude = Vec::new();
+        for &ex in exclude_oids {
+            if ex.is_empty() {
+                continue;
+            }
+            if let Ok(resolved) = self.resolve_commit(ex) {
+                resolved_exclude.push(format!("^{resolved}"));
+            }
+        }
+
+        let cmd_args = vec!["rev-list", "--parents", "--ignore-missing"];
+        let mut args_oids: Vec<String> = unique_oids.clone();
+        args_oids.extend(resolved_exclude);
+        let str_args: Vec<&str> = args_oids.iter().map(String::as_str).collect();
+
         let output = self
             .command()
-            .args(&["rev-list", "--parents", "--ignore-missing"])
-            .args(&unique_oids)
+            .args(&cmd_args)
+            .args(&str_args)
             .check_status(false)
             .run_output()?;
 
@@ -300,6 +319,13 @@ impl GitRepo {
             if let Some(commit) = parts.next() {
                 let parents: Vec<String> = parts.map(|s| s.to_string()).collect();
                 parents_map.insert(commit.to_string(), parents);
+            }
+        }
+
+        let mut all_target_oids = unique_oids.clone();
+        for &ex in exclude_oids {
+            if let Ok(resolved) = self.resolve_commit(ex) {
+                all_target_oids.push(resolved);
             }
         }
 
@@ -319,7 +345,7 @@ impl GitRepo {
                 }
             }
 
-            for other_oid in &unique_oids {
+            for other_oid in &all_target_oids {
                 let is_anc = reachable.contains(other_oid);
                 self.memoizer.set_ancestry(other_oid, start_oid, is_anc);
             }

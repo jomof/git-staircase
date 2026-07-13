@@ -52,9 +52,8 @@ pub fn discover(
             )));
         }
     };
-    let mut all_oids: Vec<&str> = branches.iter().map(|b| b.oid.as_str()).collect();
-    all_oids.push(&onto_oid);
-    let _ = repo.preload_ancestry(&all_oids);
+    let all_oids: Vec<&str> = branches.iter().map(|b| b.oid.as_str()).collect();
+    let _ = repo.preload_ancestry_ext(&all_oids, &[&onto_oid]);
 
     let active_branches = filter_active_branches(repo, branches, &onto_oid, &onto_final)?;
 

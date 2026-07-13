@@ -31,9 +31,6 @@ pub fn get_status_metadata_ext(
     let mut actual_oids = Vec::new();
 
     let mut oids_to_preload = Vec::new();
-    if let Ok(toid) = repo.resolve_commit(&metadata.target) {
-        oids_to_preload.push(toid);
-    }
     for step in &metadata.steps {
         oids_to_preload.push(step.cut.clone());
     }
