@@ -91,15 +91,22 @@ pub fn write_record(
 }
 
 pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
-    let target_oid = repo
+    let mut target_oid = repo
         .resolve_ref_opt(target)?
         .unwrap_or_else(|| target.to_string());
 
-    let obj_type = repo
+    let mut obj_type = repo
         .run(&["cat-file", "-t", &target_oid])
         .unwrap_or_default()
         .trim()
         .to_string();
+
+    if obj_type == "commit" {
+        if let Ok(tree_oid) = repo.run(&["rev-parse", &format!("{}^{{tree}}", target_oid)]) {
+            target_oid = tree_oid.trim().to_string();
+            obj_type = "tree".to_string();
+        }
+    }
 
     if obj_type == "blob" {
         let content = repo.run(&["cat-file", "-p", &target_oid])?;
