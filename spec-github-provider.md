@@ -1,16 +1,12 @@
-# Addendum G: GitHub Hosting, Pull Request, Verification, and Landing Provider
+# Addendum G: GitHub Repository Routing, Pull Request, Verification, and Landing Provider
 
 ## 1. Status and Scope
 
-This addendum defines the Staircase GitHub provider.
+This addendum defines the Staircase GitHub provider. It specializes the provider contracts in the consolidated **Git Staircase Specification**, especially its workspace and provider architecture, implicit and managed behavior, persistent records, mutation protocol, verification, review-provider contract, landing, lifecycle, output, security, and provider-accommodation requirements.
 
-It depends on:
+The consolidated specification is authoritative for core vocabulary and command semantics. This addendum defines only GitHub-specific routes, identities, mapping topologies, publication mechanics, verification evidence, and landing behavior. Where this addendum and the core appear to conflict, the core requirement governs unless the core explicitly delegates the behavior to the provider.
 
-1. **Git Staircase: Conceptual Specification**
-2. **Addendum A: Implicit Staircases and Automatic Adoption**
-3. **Addendum B: Staircase Names, Selectors, References, and Identifiers**
-4. **Addendum C: Sequential Primary-Branch Naming for Linear Staircases**
-5. **Addendum D: Automatic Workspace Discovery, Provider Bootstrap, and Integration Contexts**
+The provider may compose with any workspace or integration-context provider. In particular, a `repo` workspace provider may supply workspace, project, integration, or repository hints, but GitHub independently resolves and validates its hosted-repository and pull-request routes.
 
 The provider may implement the following capabilities:
 
@@ -23,7 +19,7 @@ review-transport
 landing
 ```
 
-It may provide integration-context candidates derived from an explicitly selected pull-request base branch, but it is not a general workspace or integration-context provider.
+It is not a general `workspace`, `project-mapping`, or `integration-context` provider. After a review destination has been selected or an existing pull request has been associated, it MAY return the exact pull-request base OID and a compatible local ref as typed integration-context evidence. The core still selects and validates the integration context under its precedence rules.
 
 The provider supports:
 
@@ -33,21 +29,23 @@ The provider supports:
 * Pull requests from forks.
 * Aggregate pull requests.
 * Branch-based chains of stacked pull requests.
-* Status checks and check runs.
+* Explicit cumulative pull-request sets.
+* Check runs and commit statuses.
 * Branch protection and ruleset requirements.
 * Auto-merge.
-* Merge queues.
+* Merge queues and merge-group verification.
 * Merge, squash, and rebase landing methods.
 
-The provider must remain usable in:
+The provider MUST remain usable in:
 
-* A standalone Git repository.
+* A standalone Git repository using the `core.git` workspace fallback.
 * A provider-managed multi-repository workspace.
 * An attached or detached worktree.
 * A repository with several GitHub remotes.
 * A repository with separate fetch, push, base, and fork remotes.
+* An active or archived managed staircase for operations permitted by the core lifecycle model.
 
-GitHub pull requests propose merging a head branch into a base branch, and may use a head branch from another repository in a fork network.
+GitHub pull requests propose merging one head branch into one base branch. The head branch may belong to the base repository or to another repository in the fork network. Staircase lineage, step identity, local cut layout, and durable operation recovery remain core concepts rather than GitHub-native objects.
 
 ---
 
@@ -114,6 +112,10 @@ The GitHub provider does not:
 * Fetch pull-request refs during passive bootstrap.
 * Contact GitHub merely to make `git staircase list` more decorative.
 * Automatically create or delete remote branches during provider discovery.
+* Transport Staircase records through pull-request publication; `git staircase push` and `fetch` remain separate core transport operations.
+* Treat GitHub labels, milestones, projects, branch names, or pull-request titles as Staircase lineage or stable step identity.
+* Mutate pull requests or remote branches merely because a staircase is archived or unarchived locally.
+* Store credentials, transient check output, or unvalidated server text in authoritative Staircase structure.
 
 ---
 
@@ -465,7 +467,7 @@ push destination
 head repository
 base repository
 read-only mirror
-integration target source
+symbolic integration-target source
 ```
 
 Roles are selected through evidence and explicit policy, not remote names.
@@ -503,9 +505,9 @@ A successful local fetch does not prove push permission.
 
 ---
 
-## 7. Integration Context and Review Destination
+## 7. Integration-Context Evidence and Review Destination
 
-### 7.1 Review destination as target evidence
+### 7.1 Review destination as integration-context evidence
 
 Once a base repository and base branch have been selected, the provider may return the corresponding local remote-tracking branch or resolved OID as an integration-context candidate.
 
@@ -533,9 +535,9 @@ A default branch is useful evidence, but it is not necessarily:
 * The staircase’s intended destination.
 * The release branch.
 * The branch used by an existing pull request.
-* The correct target for every local branch.
+* The correct symbolic integration target for every local branch.
 
-The default branch may be used automatically only when a configured policy explicitly states that new reviews target the repository default.
+The default branch may be used automatically only when a configured policy explicitly states that new reviews use the repository default branch as their review destination.
 
 ---
 
@@ -563,7 +565,8 @@ Machine representation:
 ```json
 {
   "provider": "github",
-  "installation_id": "github.com",
+  "installation_id": "<stable-installation-id>",
+  "installation_locator": "github.com",
   "base_repository_id": "<stable-repository-id>",
   "number": 412
 }
@@ -632,7 +635,7 @@ base OID
 last observed state
 ```
 
-The head OID is required before verification evidence may be attached to a local staircase revision.
+The head OID is required before verification evidence may be attached to a local structure revision.
 
 ---
 
@@ -760,6 +763,30 @@ A GitHub label, milestone, project item, or shared title prefix must not replace
 
 ---
 
+### 9.5 Cumulative pull-request set
+
+Under the **cumulative** policy:
+
+```text
+one active staircase prefix
+    → one pull request
+
+all pull requests
+    base = selected integration branch
+```
+
+The pull request for step `i` contains the cumulative prefix through that step. This is not an incremental stacked chain. The provider MUST report that upper reviews repeat lower-step changes, may not be independently landable, and require separate landing rules.
+
+---
+
+### 9.6 Mapping persistence
+
+`aggregate`, `stacked`, and `cumulative` are provider realizations of the core review-mapping classes. A mapping selected only for `review plan` is invocation-local. Persisting a default mapping requires a managed staircase and a structure-record mutation through the core policy mechanism.
+
+A mapping transition for an already-associated staircase MUST produce a complete plan that identifies pull requests to retain, retarget, detach, close, supersede, or create. No existing pull-request identity is reassigned to a different conceptual step merely because the requested topology changed.
+
+---
+
 ## 10. Stacked Pull-Request Topology Constraints
 
 ### 10.1 Base branches belong to the base repository
@@ -850,7 +877,7 @@ The provider must label the topology accurately.
 
 ### 11.1 Local layout names are positional
 
-Under Addendum C, local names such as:
+Under the core `sequential-v1` primary-branch layout, local names such as:
 
 ```text
 feature-1
@@ -878,7 +905,7 @@ Consequently:
 
 ### 11.3 Default remote-head policy
 
-After a pull request is created, its remote head branch should remain stable for the lifetime of that review.
+After a pull request is created, its remote head branch SHOULD remain stable for the lifetime of that review. Stability is the invariant; the initial spelling is selected by policy. For newly created stacked mappings, the provider-generated `stable` naming policy SHOULD be the default unless repository policy requires another scheme.
 
 A managed step stores:
 
@@ -919,7 +946,7 @@ This preserves pull-request identity.
 
 ### 11.4 Provider-generated stable head names
 
-A workspace may instead use provider-generated remote branch names based on stable identity:
+Under the `stable` policy, the provider uses remote branch names based on stable identity:
 
 ```text
 staircase/<lineage-id>/<step-id>
@@ -958,6 +985,8 @@ It is not the default.
 Before creating or updating pull requests, the provider constructs a publication plan:
 
 ```text
+structure revision OID or implicit structural key
+record revision OID, when managed
 local source OID
 head repository
 remote branch
@@ -1034,7 +1063,8 @@ For fork pull requests, maintainers may have conditional permission to update a 
 Before network mutation, the provider produces a complete review plan containing:
 
 ```text
-staircase revision
+structure revision OID or implicit structural key
+record revision OID, when managed
 mapping policy
 base repository and branch
 head repository
@@ -1062,13 +1092,35 @@ The provider checks:
 * Existing pull requests with conflicting topology.
 * Draft policy.
 * Visibility and fork compatibility.
-* Whether the staircase revision changed during planning.
+* Whether the selected structure revision, record revision, or implicit structural key changed during planning.
 * Whether a head branch moved remotely.
 * Whether a pull request already exists for the intended branch pair.
 
 ---
 
-### 13.3 Pull-request creation
+### 13.3 Staircase drafts and GitHub draft pull requests
+
+A GitHub **draft pull request** is remote review state. A Staircase **worktree draft** is staged, unstaged, untracked, or ignored local content relative to an exact basis. The provider MUST NOT conflate them.
+
+The provider supports the core hypothetical planning form:
+
+```console
+git staircase review plan <selector> --include-draft
+```
+
+The result MUST:
+
+* Describe the hypothetical immutable commit and review topology that would result from materializing the exact current index under the selected intent.
+* Label the plan hypothetical.
+* Identify unstaged, untracked, and ignored content that is excluded.
+* Avoid creating commits, adopting, pushing, or creating pull requests.
+* Distinguish a policy to create the eventual pull request in GitHub draft state from the presence of a local worktree draft.
+
+`review create` and `review upload` operate on immutable commit OIDs. A combined materialize-and-publish workflow MUST complete and publish the local Staircase mutation before beginning GitHub branch or pull-request mutation.
+
+---
+
+### 13.4 Pull-request creation
 
 A pull request must be created against exact planned:
 
@@ -1083,7 +1135,7 @@ The local branch spelling is not substituted after planning without revalidation
 
 ---
 
-### 13.4 Existing pull-request discovery
+### 13.5 Existing pull-request discovery
 
 Network-assisted discovery may search by:
 
@@ -1100,7 +1152,7 @@ The provider must not choose silently.
 
 ---
 
-### 13.5 Local pull-request refs
+### 13.6 Local pull-request refs
 
 GitHub exposes temporary read-only refs such as:
 
@@ -1123,7 +1175,7 @@ They do not by themselves establish:
 
 ---
 
-### 13.6 Association persistence
+### 13.7 Association persistence
 
 A managed staircase may store:
 
@@ -1138,10 +1190,54 @@ last observed head OID
 base branch
 last observed base OID
 mapping policy
-last query timestamp
+last confirmed remote branch OID used as a lease
 ```
 
-Remote observations are cached evidence and must be revalidated before mutation.
+Remote observations are cached evidence and MUST be revalidated before mutation.
+
+Durable review associations that affect mapping, publication, or landing belong in the managed structure descriptor under a namespaced GitHub extension. Volatile observations such as current checks, mergeability, queue position, or the last query time belong in provider cache unless a core recovery or audit rule requires them in an operation journal.
+
+---
+
+### 13.8 Attaching and detaching existing pull requests
+
+The provider supports the core commands:
+
+```console
+git staircase review attach <step-or-staircase-selector> \
+    --provider github --review <github-review-selector>
+git staircase review detach <step-or-staircase-selector> \
+    --provider github [--review <github-review-selector>]
+```
+
+`review attach` MUST:
+
+1. Resolve the selector to one canonical pull-request identity.
+2. Establish the installation, base repository, base branch, head repository, head branch, base OID, and head OID when network access is available.
+3. Validate compatibility with the selected aggregate, step, or cumulative subject.
+4. Refuse a branch-name, title, or commit-only guess when several pull requests match.
+5. Store a provisional association when validation is incomplete and prevent that association from satisfying review or verification policy.
+6. Publish the association through full-record compare-and-swap.
+
+`review detach` removes only the local association by default. It does not close the pull request, delete its branch, retarget it, disable auto-merge, or leave a merge queue unless an explicit GitHub mutation is separately planned.
+
+---
+
+### 13.9 Record publication and remote uncertainty
+
+A durable create, upload, attach, detach, retarget, queue, auto-merge, or landing operation spans local and remote surfaces that cannot be one physical transaction.
+
+The provider MUST therefore use the core mutation protocol:
+
+* Select one exact record revision or implicit discovery snapshot.
+* Determine whether automatic adoption is required before remote mutation.
+* Persist a durable operation journal before an uncertain remote mutation can occur.
+* Protect every local record update with full-record compare-and-swap.
+* Protect every non-fast-forward branch update with an expected-old remote OID.
+* Reconcile the actual pull-request and branch state after mutation.
+* Leave the operation resumable or reconciliation-required when the remote result is uncertain or the local record changed concurrently.
+
+A successful remote mutation followed by `concurrent-record-update` MUST NOT be repeated blindly. The next action is `git staircase review reconcile <selector>` against the canonical pull-request identity and exact planned OIDs.
 
 ---
 
@@ -1233,15 +1329,15 @@ It must not be reopened or replaced automatically merely because a local branch 
 
 ### 16.1 Separate verification subjects
 
-GitHub-related verification may apply to different commits:
+GitHub-related verification may apply to different typed core subjects:
 
-1. The pull-request head commit.
-2. GitHub’s simulated test merge commit.
-3. A merge-queue merge-group commit.
-4. The eventual landed commit.
-5. A local staircase prefix commit.
+1. `provider-review-revision`: the pull-request head commit.
+2. `provider-test-merge`: GitHub’s simulated test merge commit.
+3. `provider-merge-group`: a merge-queue merge-group commit.
+4. `landed-revision`: the eventual landed commit.
+5. `structure-prefix` or `structure-aggregate`: a local Staircase subject.
 
-These subjects must not be conflated.
+These subjects MUST NOT be conflated. Every evidence item MUST identify its exact subject OID, exact base OID where applicable, policy and profile identity, observation provenance, and freshness conditions.
 
 ---
 
@@ -1321,7 +1417,7 @@ It must not infer missing checks merely from one repository-scoped query.
 
 A check result is considered current only when it applies to the exact required subject OID.
 
-Checks for a previous head OID do not verify a rewritten staircase revision.
+Checks for a previous head OID do not verify a rewritten structure revision.
 
 ---
 
@@ -1488,7 +1584,7 @@ With rebase landing:
 * Original local commit IDs may not become ancestors of the destination.
 * Upper staircase branches may require restacking onto the new landed commits.
 
-The provider must reconcile by patch or outcome relationship and then produce a new exact staircase revision.
+The provider must reconcile by patch or outcome relationship and then produce a new exact structure revision.
 
 ---
 
@@ -1526,15 +1622,17 @@ After pull request (P_i) lands, the provider must:
 9. Retire the lower remote head branch only when no dependent pull request uses it as a base.
 10. Continue only when the next review is current and policy permits landing.
 
-This sequence is one managed Staircase operation.
+This sequence is one managed Staircase operation whenever lineage, review continuity, or recovery state is retained.
 
 It may span several remote transactions and therefore requires:
 
-* A durable operation journal.
-* Exact old and new OIDs.
-* Resume.
-* Abort where feasible.
+* The exact expected record revision at operation start.
+* A durable operation journal and operation refs for local recovery objects.
+* Exact destination-before, destination-after, head, base, and remote-branch OIDs.
+* Full-record compare-and-swap for every durable local transition.
+* Resume and abort where feasible.
 * Reconciliation after uncertain network outcomes.
+* Re-evaluation of checks, reviews, mergeability, auto-merge, and queue state after every base or head transition.
 
 ---
 
@@ -1610,7 +1708,7 @@ In a detached worktree:
 * The provider must not assume detached `HEAD` is a pull-request head.
 * The provider must not create a review from detached `HEAD` unless it is selected explicitly as the source or materialized through a managed remote-head policy.
 
-This permits the provider to compose naturally with the detached-workspace model in Addendum D.
+This permits the provider to compose naturally with the core detached-worktree and typed integration-context model.
 
 ---
 
@@ -1710,7 +1808,7 @@ authentication profile class
 
 Cached evidence becomes stale when:
 
-* The local staircase revision changes.
+* The local structure revision changes.
 * The head branch moves.
 * The base branch moves.
 * The pull request is retargeted.
@@ -1723,49 +1821,199 @@ Cached evidence becomes stale when:
 
 ---
 
-## 27. Commands
+## 27. Persistent State, Policy, Lifecycle, and Transport Boundaries
 
-Recommended commands include:
+### 27.1 Managed GitHub extension state
+
+A durable GitHub mapping requires a managed staircase. The structure descriptor MAY contain a versioned namespaced extension with:
+
+```text
+provider route identity
+base and head repository identities
+base branch
+mapping policy
+aggregate or step-to-pull-request associations
+stable remote head branch mappings
+expected remote branch OIDs
+landing and branch-retention policy that affects interpretation
+parent structure revision
+```
+
+The provider extension MUST NOT store credentials. Volatile checks, reviews, mergeability, queue position, rate-limit state, and authentication diagnostics are cached observations, not authoritative local structure.
+
+A durable mapping change, association change, remote-head mapping change, or landing-policy change modifies the structure and record revisions. A cache refresh alone normally changes neither.
+
+---
+
+### 27.2 Policy
+
+Persistent policy is set through the core command:
+
+```console
+git staircase policy set <selector> <key>=<value>...
+```
+
+Core review-mapping and landing policies use core-defined keys. GitHub-only policy keys MUST be namespaced. A conforming provider SHOULD define schemas for at least:
+
+```text
+github.base-repository
+github.base-branch
+github.head-repository
+github.remote-head-naming = stable | mirror-primary
+github.create-as-draft = true | false
+github.delete-head-after-merge = true | false
+github.auto-merge = disabled | allowed | required
+github.merge-queue = disabled | allowed | required
+```
+
+Policy validation MUST consider the complete resulting route and topology. For example, `mirror-primary` is invalid when it would break existing pull-request head identity, and `delete-head-after-merge=true` cannot override an active upper pull request that still uses the branch as its base.
+
+---
+
+### 27.3 Implicit staircases and automatic adoption
+
+Read-only route discovery, `review plan`, pull-request discovery, and exact-revision status comparison MAY operate on an implicit staircase without adoption.
+
+The provider MUST require management before preserving:
+
+```text
+pull-request associations
+stable remote review branch mappings
+stacked or cumulative topology
+persistent GitHub or landing policy
+stepwise landing continuity
+remote operation recovery state after command control is relinquished
+```
+
+A command that requires this state SHOULD adopt automatically under the core rules. With `--no-adopt`, it MUST fail before local or remote mutation. Human and machine output MUST report the adoption reason and resulting lineage.
+
+The provider MAY support:
+
+```console
+git staircase review upload <implicit-selector> --ephemeral --mapping aggregate
+```
+
+only as a one-time aggregate publication that retains no durable review association or landing continuity. It MUST NOT be used for stacked or cumulative mappings, and its output MUST say that later update continuity was not recorded.
+
+---
+
+### 27.4 Archive and unarchive
+
+Core archive is local and offline by default.
+
+Archiving a managed staircase:
+
+* Preserves GitHub review identities, routes, remote-head mappings, and last-known exact OIDs in the archived record.
+* Removes only Staircase-owned active local refs according to the core lifecycle rules.
+* Does not close pull requests, delete GitHub branches, leave queues, disable auto-merge, or change labels.
+* Does not treat continuing remote visibility as an archive failure.
+
+Unarchiving restores local active state according to the core archive manifest. Before any later review upload, verification refresh, queue action, auto-merge action, or landing, the provider MUST revalidate the installation, repository route, pull-request state, head and base OIDs, and branch availability.
+
+Any provider-side archival action is a separate explicit plan. Closing a pull request, adding an archival label, deleting a remote branch, or disabling auto-merge are distinct mutations and MUST be named separately in that plan.
+
+---
+
+### 27.5 Staircase-state transport versus review publication
+
+The command families are distinct:
+
+```text
+git staircase push / fetch
+    transport Staircase records, metadata, lifecycle, and required Git objects
+
+git staircase review create / upload
+    create pull-request identities and publish review head branches
+```
+
+A review upload MUST NOT silently publish `refs/staircases/*`, `refs/staircase-state/*`, or `refs/staircase-archive/*`. Staircase transport MUST NOT silently create or update pull requests.
+
+---
+
+### 27.6 Concurrent records and uncertain remote state
+
+After any required automatic adoption, every durable GitHub mutation starts from one exact record revision. If another process changes structure, metadata, lifecycle, policy, or review association before publication, the local record update fails with core code:
+
+```text
+concurrent-record-update
+```
+
+If the remote mutation may already have succeeded, the operation remains reconciliation-required. The provider MUST query by canonical installation, base repository, pull-request identity, and exact head/base OIDs. It MUST NOT infer success from titles or branch spelling and MUST NOT issue a second create, push, retarget, merge, queue, or auto-merge request until the first outcome is resolved.
+
+---
+
+## 28. Commands
+
+The GitHub provider specializes the consolidated core command surface. Canonical examples are:
 
 ```console
 git staircase provider github doctor
 
-git staircase review plan auth
-git staircase review create auth
+git staircase review plan auth --mapping stacked
+git staircase review create auth --mapping stacked
 git staircase review upload auth
 git staircase review status auth
-git staircase review reconcile auth
+git staircase review show auth
 git staircase review open auth:2
+git staircase review reconcile auth
+
+git staircase review attach auth:2 \
+    --provider github --review github.com/organization/project#412
+git staircase review detach auth:2 \
+    --provider github --review github.com/organization/project#412
 
 git staircase verify auth --provider github
 
-git staircase land auth
-git staircase land auth --method merge
-git staircase land auth --method squash
-git staircase land auth --method rebase
-git staircase land auth --queue
+git staircase land auth --aggregate --method squash
+git staircase land auth --stepwise --method merge
+git staircase land auth --through auth:2 --method squash
+git staircase land auth --aggregate --queue
 ```
 
-Mapping-specific commands may include:
+Mapping-specific planning and creation include:
 
 ```console
 git staircase review plan auth --mapping aggregate
 git staircase review plan auth --mapping stacked
 git staircase review plan auth --mapping cumulative
+
+git staircase review create auth --mapping aggregate
+git staircase review create auth --mapping stacked
+git staircase review create auth --mapping cumulative
 ```
 
-Route overrides may include:
+Route overrides include:
 
 ```console
 git staircase review create auth \
+    --mapping aggregate \
     --github-base github.com/organization/project \
     --base-branch release \
     --github-head github.com/user/project
 ```
 
----
+A one-time aggregate publication without durable association MAY be exposed as:
 
-## 28. Diagnostics
+```console
+git staircase review upload feature --ephemeral --mapping aggregate \
+    --github-base github.com/organization/project \
+    --base-branch main \
+    --github-head github.com/user/project
+```
+
+Provider-specific durable preferences use the core policy command:
+
+```console
+git staircase policy set auth \
+    github.remote-head-naming=stable \
+    github.merge-queue=required
+```
+
+`review create` establishes native review identities and may perform the minimum initial branch publication required by GitHub, but its output MUST distinguish pull requests created, branches published, and exact head revisions observed. `review upload` publishes exact current revisions to existing associations and creates only those reviews that the explicit operation plan says remain missing.
+
+All human, porcelain, and JSON output follows the core output contract. Machine output MUST use full typed OIDs and canonical pull-request identities, and MUST keep provider details beneath stable core result or error codes.
+
+## 29. Diagnostics
 
 Provider diagnostics should distinguish:
 
@@ -1795,6 +2043,31 @@ branch update blocked by policy
 fork topology cannot represent incremental stacked reviews
 ```
 
+These conditions map to stable core error codes such as:
+
+```text
+provider-unbound
+provider-route-incomplete
+provider-authentication-unavailable
+remote-newer
+remote-diverged
+remote-outcome-unknown
+verification-stale
+landing-blocked
+concurrent-record-update
+```
+
+GitHub-specific detail codes SHOULD be namespaced, for example:
+
+```text
+github.pull-request-identity-ambiguous
+github.head-branch-deleted
+github.base-branch-deleted
+github.stacked-fork-topology-unrepresentable
+github.merge-group-stale
+github.branch-update-blocked-by-ruleset
+```
+
 Example:
 
 ```text
@@ -1819,9 +2092,9 @@ Available mappings:
 
 ---
 
-## 29. Security
+## 30. Security
 
-### 29.1 Passive discovery
+### 30.1 Passive discovery
 
 Passive discovery must not:
 
@@ -1835,7 +2108,7 @@ Passive discovery must not:
 
 ---
 
-### 29.2 Remote URLs
+### 30.2 Remote URLs
 
 Remote URLs are untrusted input.
 
@@ -1849,7 +2122,7 @@ They must be:
 
 ---
 
-### 29.3 Pull-request content
+### 30.3 Pull-request content
 
 Titles, descriptions, comments, reviewer names, labels, check output, and URLs returned by GitHub are untrusted display data.
 
@@ -1863,7 +2136,7 @@ They must not be evaluated as:
 
 ---
 
-### 29.4 Force updates
+### 30.4 Force updates
 
 Every non-fast-forward remote update requires:
 
@@ -1877,7 +2150,7 @@ No generic `--force` option may bypass the lease.
 
 ---
 
-### 29.5 Uncertain mutations
+### 30.5 Uncertain mutations
 
 After a timeout or interrupted network response, the provider must query remote state before retrying:
 
@@ -1893,112 +2166,122 @@ Blind retry is prohibited when the first operation may have succeeded.
 
 ---
 
-## 30. Interaction with Implicit Staircases
+## 31. Interaction with Implicit Staircases
 
-### 30.1 Read-only planning
+### 31.1 Read-only use
 
-An implicit staircase may use the GitHub provider for:
+An implicit staircase MAY use the GitHub provider for:
 
-* Route discovery.
-* Review-plan preview.
+* Passive route discovery.
+* `review plan`.
 * Existing pull-request discovery.
-* Read-only verification.
+* Read-only exact-revision comparison.
+* Provider verification when the pull-request identity is supplied or resolved unambiguously.
 * Aggregate review comparison.
 
----
-
-### 30.2 Adoption triggers
-
-Adoption is required before storing:
-
-* Stable pull-request associations.
-* Stable remote review branch mappings.
-* A stacked pull-request topology.
-* Review mapping policy.
-* Landing policy.
-* Durable upload recovery state.
-* Cross-operation reconciliation state.
-* Stepwise landing progress.
-
-Creating or associating a pull request therefore normally adopts an implicit staircase automatically.
+None of these operations creates lineage or stable step identity.
 
 ---
 
-### 30.3 One-time aggregate upload
+### 31.2 Adoption triggers
 
-A strictly one-time aggregate pull-request creation could theoretically operate without adoption if no association is retained.
+Creation or retention of a durable pull-request association, stable remote-head mapping, stacked or cumulative topology, persistent policy, or stepwise landing state requires management as specified in Section 27.3 and the core automatic-adoption rules.
 
-The provider should not make this the default because it would discard the review continuity needed for later updates.
+When automatic adoption occurs, the triggering review operation and adoption are one logical operation. Failure before durable mutation SHOULD remove provisional adoption state; failure after uncertain remote mutation MUST retain enough managed recovery state to reconcile safely.
 
 ---
 
-## 31. Normative Invariants
+### 31.3 Ephemeral aggregate publication
+
+An ephemeral aggregate upload is allowed only under the restrictions in Section 27.3. It does not make a pull request discoverable as the same Staircase review in a later invocation unless the user later attaches it explicitly.
+
+## 32. Normative Invariants
 
 An implementation conforming to this addendum must preserve the following invariants.
 
-### 31.1 GitHub is not a workspace provider
+### 32.1 GitHub is not a workspace provider
 
 A GitHub remote does not redefine the containing workspace.
 
-### 31.2 Provider applicability and review route are distinct
+### 32.2 Provider applicability and review route are distinct
 
 The provider may be bound while base, head, or destination remains unresolved.
 
-### 31.3 Pull-request identity is base-repository scoped
+### 32.3 Pull-request identity is base-repository scoped
 
 A number alone is insufficient outside an already resolved base repository.
 
-### 31.4 Head OID is the exact review revision
+### 32.4 Head OID is the exact review revision
 
 Checks and verification are attached to exact OIDs.
 
-### 31.5 Local branch names and remote review branches are separate
+### 32.5 Local branch names and remote review branches are separate
 
 Sequential local renaming does not silently rename an established pull-request head branch.
 
-### 31.6 Pull-request mapping is explicit
+### 32.6 Pull-request mapping is explicit
 
 Aggregate, stacked, and cumulative mappings are not interchangeable.
 
-### 31.7 Fork topology is modeled honestly
+### 32.7 Fork topology is modeled honestly
 
 The provider does not pretend that branches in a fork are upstream base branches.
 
-### 31.8 Non-fast-forward pushes are lease-protected
+### 32.8 Non-fast-forward pushes are lease-protected
 
 Unconditional force push is prohibited.
 
-### 31.9 Checks, statuses, reviews, and mergeability remain distinct
+### 32.9 Checks, statuses, reviews, and mergeability remain distinct
 
 No single green indicator is silently promoted to complete verification.
 
-### 31.10 Verification subject is typed
+### 32.10 Verification subject is typed
 
 Head, test merge, merge group, and landed commit evidence are not conflated.
 
-### 31.11 Merge method affects staircase repair
+### 32.11 Merge method affects staircase repair
 
 Squash and rebase landing may require upper-step restacking.
 
-### 31.12 Upper pull requests do not land before dependencies
+### 32.12 Upper pull requests do not land before dependencies
 
 The provider enforces staircase order unless an explicit policy changes the topology.
 
-### 31.13 Remote branch deletion respects dependencies
+### 32.13 Remote branch deletion respects dependencies
 
 A branch used as an active pull-request base is retained.
 
-### 31.14 Network discovery is explicit
+### 32.14 Network discovery is explicit
 
 Ordinary local listing does not authenticate or query GitHub by default.
 
-### 31.15 Uncertain remote results are reconciled
+### 32.15 Uncertain remote results are reconciled
 
 Potentially successful mutations are not blindly repeated.
 
+### 32.16 Durable associations are record-CAS protected
+
+A mapping or association change cannot overwrite a concurrent structure, metadata, lifecycle, policy, or review-association update.
+
+### 32.17 Archive is local by default
+
+Local archive or unarchive does not implicitly mutate pull requests, merge queues, auto-merge state, labels, or remote branches.
+
+### 32.18 Review publication and Staircase transport are separate
+
+Pull-request publication does not transport Staircase records, and Staircase transport does not create pull requests.
+
+### 32.19 Provider observations do not redefine local structure
+
+Checks, approvals, branch state, and mergeability are evidence against exact subjects and routes; they do not silently change cuts, steps, lineage, or lifecycle.
+
+### 32.20 Core command and output contracts remain authoritative
+
+Provider options specialize `review`, `verify`, `land`, `policy`, and diagnostics without introducing incompatible aliases or machine-output shapes.
+
 ---
 
-## 32. Example: Standalone Repository with One GitHub Remote
+## 33. Example: Standalone Repository with One GitHub Remote
 
 Local configuration:
 
@@ -2035,7 +2318,7 @@ No staircases.
 
 ---
 
-## 33. Example: Fork and Upstream Remotes
+## 34. Example: Fork and Upstream Remotes
 
 Local remotes:
 
@@ -2073,7 +2356,7 @@ The provider recommends aggregate review unless a valid stacked topology is expl
 
 ---
 
-## 34. Example: Same-Repository Stacked Pull Requests
+## 35. Example: Same-Repository Stacked Pull Requests
 
 Staircase:
 
@@ -2103,7 +2386,7 @@ A local split renumbers `feature-2` to `feature-3`, but the existing remote revi
 
 ---
 
-## 35. Example: Squash Landing of the Bottom Step
+## 36. Example: Squash Landing of the Bottom Step
 
 Before landing:
 
@@ -2138,7 +2421,7 @@ The provider:
 
 ---
 
-## 36. Summary
+## 37. Summary
 
 The GitHub provider translates between:
 
@@ -2146,7 +2429,9 @@ The GitHub provider translates between:
 Staircase concepts:
   lineage
   ordered steps
+  structure and record revisions
   cut OIDs
+  stable step IDs
   local primary branches
   verification contracts
   landing order
@@ -2171,8 +2456,9 @@ core.git or workspace provider
              ▼
 GitHub provider
     identifies hosted repositories
-    publishes stable remote review branches
-    creates or associates pull requests
+    resolves base and head repository routes
+    publishes stable remote review branches with leases
+    creates, attaches, or reconciles pull requests
     maps checks and reviews to exact OIDs
     lands reviews while preserving staircase order
 ```
@@ -2180,3 +2466,406 @@ GitHub provider
 The governing rule is:
 
 > GitHub pull requests name review relationships between branches. Staircase supplies the durable identity and dependency structure that those relationships do not provide on their own.
+
+---
+
+# Appendix A: User journeys
+
+## A.1 Conventions used in the transcripts
+
+This appendix is normative for command names, operation boundaries, selector behavior, adoption behavior, and the material facts that GitHub-provider output must communicate.
+
+Concrete OIDs, UUIDs, repository IDs, pull-request numbers, queue positions, and URLs are illustrative. Human output MAY vary in spacing and abbreviation, but it MUST preserve every material fact shown. JSON and porcelain modes remain governed by the consolidated core schemas and use full typed identifiers.
+
+Lines beginning with `$` are commands. Unless explicitly identified as ordinary Git, they are `git staircase` commands. Network operations are explicit. `git staircase list` and passive provider bootstrap remain offline.
+
+The transcripts use SHA-1 abbreviations only for readability. Implementations MUST support the repository's configured object format.
+
+---
+
+## A.2 Journey 1: Publish a same-repository stacked pull-request chain
+
+### A.2.1 Starting state
+
+A standalone repository has `refs/remotes/github/main` at `a100000`. Three local branches form one implicit sequential staircase:
+
+```text
+checkout-1 -> b110000  Extract payment request model
+checkout-2 -> c120000  Add payment authorization service
+checkout   -> d130000  Wire the checkout UI
+```
+
+One GitHub remote is locally configured for `github.com/acme/store`. The first listing passively binds repository routing but performs no network request:
+
+```console
+$ git staircase list
+[stderr] Configured Staircase workspace:
+[stderr]   workspace:           core.git
+[stderr]   repository-routing:  github
+[stderr]   review:              github
+[stderr]
+[stdout] checkout  3 steps  clean  sequential  (implicit)
+```
+
+The developer previews a stacked topology. Planning may query GitHub because review planning is an explicit provider operation, but it does not adopt or mutate:
+
+```console
+$ git staircase review plan checkout --mapping stacked
+GitHub review plan for 'checkout' (implicit)
+  structural key: implicit@8a26e35f6c91
+  installation: github.com
+  base repository: acme/store
+  base branch: refs/heads/main
+  base OID: a100000
+  head repository: acme/store
+  mapping: stacked
+  remote-head naming: stable after adoption
+
+  step  local cut  planned remote head                              base
+  1     b110000    staircase/<new-lineage>/<new-step-1>             main
+  2     c120000    staircase/<new-lineage>/<new-step-2>             staircase/<new-lineage>/<new-step-1>
+  3     d130000    staircase/<new-lineage>/<new-step-3>             staircase/<new-lineage>/<new-step-2>
+
+Actions:
+  publish 3 remote branches
+  create 3 pull requests
+  persist 3 review associations
+  adoption required: durable stacked topology and review identity
+
+No local or remote mutation performed.
+```
+
+Creating the reviews automatically adopts the staircase because GitHub review identity and stable remote-head mappings must survive later local renumbering:
+
+```console
+$ git staircase review create checkout --mapping stacked
+Adopted implicit staircase 'checkout'.
+  reason: durable GitHub stacked review associations
+  lineage: 7a31c92d-7f12-4b84-b818-c0c2767d4df1
+  steps: 3
+
+Published GitHub review topology.
+  installation: github.com
+  base repository: acme/store
+  head repository: acme/store
+
+  step  pull request  head OID  base branch                         result
+  1     #701          b110000   main                                created
+  2     #702          c120000   staircase/7a31c9/5a91e2            created
+  3     #703          d130000   staircase/7a31c9/43d8b7            created
+
+  structure revision: 4e61a7c
+  record revision: 9bf2d10
+```
+
+The provider compares exact local and remote revisions rather than branch names alone:
+
+```console
+$ git staircase review status checkout
+checkout
+  provider: github
+  mapping: stacked
+  destination: github.com/acme/store refs/heads/main
+
+  step  pull request  local     remote head  base                              sync       review   checks
+  1     #701          b110000   b110000      main                              current    pending  pending
+  2     #702          c120000   c120000      staircase/7a31c9/5a91e2          current    pending  pending
+  3     #703          d130000   d130000      staircase/7a31c9/43d8b7          current    pending  pending
+```
+
+A later local split inserts a new step below the old second step. Sequential local branches are renumbered, but the established remote head for old step 2 remains bound to its stable step ID:
+
+```console
+$ git staircase split checkout:2 --at c115000
+Split step 2 of 'checkout'.
+  steps: 3 -> 4
+
+  position  local branch  cut       GitHub association
+  1         checkout-1    b110000   #701
+  2         checkout-2    c115000   none
+  3         checkout-3    c120000   #702; remote head unchanged
+  4         checkout      d130000   #703; remote head unchanged
+
+  existing pull-request identities preserved: 3
+  new review identity required: 1
+```
+
+The new step review is created as a step-scoped mutation anchored to the enclosing record revision. The provider inserts it into the remote dependency chain without recreating the existing reviews:
+
+```console
+$ git staircase review create checkout:2
+Created GitHub review for 'checkout' step 2.
+  pull request: #704
+  base: staircase/7a31c9/5a91e2
+  head: staircase/7a31c9/9d04aa at c115000
+
+Updated dependent topology:
+  #702 base: staircase/7a31c9/5a91e2 -> staircase/7a31c9/9d04aa
+  #702 head branch: unchanged
+  #703 base and head branches: unchanged
+  pull requests recreated: 0
+  record revision: 2f710a8 -> 7bc122e
+```
+
+This journey demonstrates the separation of local positional branch names, stable step IDs, remote review-branch locators, pull-request identity, and exact head OIDs.
+
+---
+
+## A.3 Journey 2: Reject an impossible fork stack and publish an aggregate pull request
+
+A contributor has two remotes:
+
+```text
+personal  -> github.com/alex/parser
+upstream  -> github.com/acme/parser
+```
+
+The local implicit staircase `unicode` has three steps. Network validation proves that `alex/parser` is a fork of `acme/parser`, that the contributor can push only to the fork, and that the intermediate fork branches cannot be selected as base branches of pull requests owned by `acme/parser`.
+
+The requested incremental upstream stack is rejected without adoption or remote mutation:
+
+```console
+$ git staircase review plan unicode --mapping stacked \
+    --github-base github.com/acme/parser \
+    --base-branch main \
+    --github-head github.com/alex/parser
+error: GitHub cannot represent the requested incremental stacked topology
+  code: provider-route-incomplete
+  detail: github.stacked-fork-topology-unrepresentable
+
+  base repository: github.com/acme/parser
+  head repository: github.com/alex/parser
+  step 2 requires step 1's head branch as its pull-request base, but that
+  branch exists only in the fork and cannot be a base branch of a pull
+  request owned by acme/parser.
+
+Available mappings:
+  aggregate
+  cumulative
+  explicit fork-hosted chain with a separately planned upstream promotion review
+
+No adoption or remote mutation performed.
+```
+
+The aggregate mapping is honest and representable:
+
+```console
+$ git staircase review plan unicode --mapping aggregate \
+    --github-base github.com/acme/parser \
+    --base-branch main \
+    --github-head github.com/alex/parser
+GitHub review plan for 'unicode' (implicit)
+  mapping: aggregate
+  base: acme/parser refs/heads/main at a200000
+  head: alex/parser staircase/<new-lineage>/aggregate at d230000
+  included steps: 3
+  action: publish one branch and create one pull request
+  adoption required: durable pull-request association
+
+No local or remote mutation performed.
+```
+
+The contributor creates the durable aggregate review:
+
+```console
+$ git staircase review create unicode --mapping aggregate \
+    --github-base github.com/acme/parser \
+    --base-branch main \
+    --github-head github.com/alex/parser
+Adopted implicit staircase 'unicode'.
+  reason: durable GitHub aggregate review association
+  lineage: d51ec28c-4e7d-4d90-95fc-60b6c20c4ed4
+
+Created pull request acme/parser#1842.
+  base: acme/parser refs/heads/main at a200000
+  head: alex/parser staircase/d51ec28c/aggregate at d230000
+  exact review revision: d230000
+  mapping: aggregate
+  record revision: 70f1d42
+```
+
+The provider does not disguise this pull request as three isolated step reviews. One pull request reviews the aggregate top.
+
+---
+
+## A.4 Journey 3: Reconcile an upload whose network result is unknown
+
+A managed aggregate staircase `search-cache` is associated with `acme/search#944`. Its stable remote head branch currently points to `e310000`. A local rebase produces `e410000`, making the review `local-newer` and all previous exact-revision verification stale.
+
+```console
+$ git staircase review upload search-cache
+Uploading 'search-cache' to GitHub.
+  pull request: acme/search#944
+  remote branch: staircase/24b90a/aggregate
+  expected old remote OID: e310000
+  new head OID: e410000
+
+error: the network response ended before the branch and pull-request state could be confirmed
+  code: remote-outcome-unknown
+  detail: github.branch-update-result-unknown
+  operation: github-upload 8e45cf19
+
+The update may have succeeded. It will not be repeated blindly.
+Next: git staircase review reconcile search-cache
+```
+
+The durable journal retains the exact old and new OIDs. Reconciliation queries the canonical pull-request identity and branch route, discovers that the push did succeed, and records the exact observed state without creating another pull request or pushing again:
+
+```console
+$ git staircase review reconcile search-cache
+Reconciled GitHub operation 8e45cf19.
+  pull request: acme/search#944
+  remote branch OID: e410000
+  pull-request head OID: e410000
+  local planned OID: e410000
+  result: previous upload succeeded
+
+  synchronization: current
+  verification: pending for exact head e410000
+  record revision: 1e3a773 -> 5c604be
+  additional remote mutations: none
+```
+
+If the branch had instead remained at `e310000`, reconciliation would mark the first upload as not applied and permit a newly planned retry. If it had moved to an unrelated OID, it would report `remote-newer` or `remote-diverged` and would not overwrite it.
+
+---
+
+## A.5 Journey 4: Squash-land the bottom pull request and repair the remaining chain
+
+A managed three-step same-repository staircase `billing` has current pull requests:
+
+```text
+#810: main                         <- staircase/6b9221/step-a at b510000
+#811: staircase/6b9221/step-a     <- staircase/6b9221/step-b at c520000
+#812: staircase/6b9221/step-b     <- staircase/6b9221/step-c at d530000
+```
+
+All exact current heads satisfy policy. The developer lands only the bottom step by squash:
+
+```console
+$ git staircase land billing --through billing:1 --method squash
+Landing 'billing' through step 1.
+  provider: github
+  pull request: acme/payments#810
+  method requested: squash
+  destination before: a500000
+  reviewed head: b510000
+
+GitHub landing result:
+  method observed: squash
+  destination after: q610000
+  landed commit: q610000
+  original reviewed commit reachable from destination: no
+
+Repairing remaining staircase:
+  integration anchor: a500000 -> q610000
+  step 2: c520000 -> c620000
+  step 3: d530000 -> d630000
+  lease-updated remote heads: 2
+  retargeted pull request #811: staircase/6b9221/step-a -> main
+  pull request #812 remains based on staircase/6b9221/step-b
+  deleted remote branch: staircase/6b9221/step-a, after #811 retarget was confirmed
+
+Review consequences:
+  #811 head changed and base changed: checks stale, review relevance re-evaluated
+  #812 head changed: checks stale
+  auto-merge and merge-queue state revalidated: none active
+
+Remaining active steps: 2
+  local primary branches renumbered: billing-1, billing
+  structural state: clean
+  structure revision: 9f18d02 -> ac9925d
+  record revision: 3a8bd40 -> b5c113e
+```
+
+The next status shows that review identity survived while exact review revisions changed:
+
+```console
+$ git staircase review status billing
+billing
+  mapping: stacked
+  integration anchor: q610000
+
+  step  pull request  local     remote head  base  sync     review      checks
+  1     #811          c620000   c620000      main  current  re-evaluate pending
+  2     #812          d630000   d630000      staircase/6b9221/step-b
+                                                     current  re-evaluate pending
+```
+
+The provider will not land #812 before #811. After current checks and review policy pass again, `git staircase land billing --stepwise --method squash` may continue bottom to top.
+
+---
+
+## A.6 Journey 5: Attach an existing pull request from detached `HEAD`, archive locally, and restore branchlessly
+
+A developer is in a detached worktree at manifest or CI checkout `a700000`. Elsewhere in the repository, branch `audit` materializes one implicit step ending at `b710000`. An existing pull request `acme/security#412` has exact head `b710000` and base `main` at `a700000`.
+
+Attaching the existing review requires durable identity, so the command adopts automatically:
+
+```console
+$ git staircase review attach audit \
+    --provider github \
+    --review github.com/acme/security#412
+Adopted implicit staircase 'audit'.
+  reason: durable existing GitHub review association
+  lineage: 4e01b781-72d6-4ca6-ab26-aab9766dc854
+
+Attached GitHub pull request.
+  identity: github.com/acme/security#412
+  base: acme/security refs/heads/main at a700000
+  head: acme/security refs/heads/audit at b710000
+  exact review revision: b710000
+  mapping subject: aggregate staircase
+  current worktree: detached at a700000; unchanged
+  record revision: 77d89a0
+```
+
+The developer archives the local staircase. Archive is offline and does not touch GitHub:
+
+```console
+$ git staircase archive audit --reason "Security review paused"
+Archived 'audit'.
+  lineage: 4e01b781-72d6-4ca6-ab26-aab9766dc854
+  removed owned active local branches: audit
+  preserved archive cut refs: 1
+  preserved GitHub association: acme/security#412
+  GitHub pull request changed: no
+  remote branch changed: no
+```
+
+Ordinary active listings no longer show it, while the pull request remains open remotely:
+
+```console
+$ git staircase list
+No staircases.
+
+$ git staircase list --archived
+archive  audit  1 step  clean  GitHub acme/security#412
+```
+
+Later the developer restores the managed staircase without recreating the local branch:
+
+```console
+$ git staircase unarchive audit --branches=none
+Unarchived 'audit'.
+  lineage: 4e01b781-72d6-4ca6-ab26-aab9766dc854
+  active local primary branches: none
+  internal cut refs restored: 1
+  GitHub association retained; remote validation required before mutation
+```
+
+An explicit status refresh revalidates the remote state:
+
+```console
+$ git staircase review status audit
+Revalidated GitHub association.
+  pull request: acme/security#412
+  state: open
+  local top: b710000
+  remote head: b710000
+  base OID: a700000
+  synchronization: current
+  branchless local staircase: yes
+```
+
+This journey demonstrates that detached `HEAD`, local branch materialization, managed structure, archive lifecycle, and GitHub pull-request identity are independent layers.
