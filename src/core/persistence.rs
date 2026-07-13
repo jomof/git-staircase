@@ -1,4 +1,4 @@
-use crate::core::refs::{StaircaseRefs, PUBLIC_PREFIX, STATE_PREFIX, ARCHIVE_PREFIX};
+use crate::core::refs::{ARCHIVE_PREFIX, PUBLIC_PREFIX, STATE_PREFIX, StaircaseRefs};
 use crate::error::{Result, StaircaseError};
 use crate::git::{GitRepo, TreeEntry};
 use crate::model::{
@@ -477,11 +477,7 @@ pub fn list_staircases_filtered(
             }
         }
 
-        if let Ok(stdout) = repo.run(&[
-            "for-each-ref",
-            "--format=%(refname)",
-            STATE_PREFIX,
-        ]) {
+        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", STATE_PREFIX]) {
             for line in stdout.lines() {
                 let refname = line.trim();
                 if refname.ends_with("/record") || refname.ends_with("/descriptor") {
@@ -505,11 +501,7 @@ pub fn list_staircases_filtered(
     }
 
     if include_archived {
-        if let Ok(stdout) = repo.run(&[
-            "for-each-ref",
-            "--format=%(refname)",
-            ARCHIVE_PREFIX,
-        ]) {
+        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", ARCHIVE_PREFIX]) {
             for line in stdout.lines() {
                 let refname = line.trim();
                 if refname.ends_with("/record") {
@@ -587,11 +579,11 @@ pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMeta
     let mut meta = record.metadata;
 
     if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", oid, PUBLIC_PREFIX]) {
-        if let Some(name) = stdout.lines().next().and_then(|line| {
-            line.split_whitespace()
-                .last()?
-                .strip_prefix(PUBLIC_PREFIX)
-        }) {
+        if let Some(name) = stdout
+            .lines()
+            .next()
+            .and_then(|line| line.split_whitespace().last()?.strip_prefix(PUBLIC_PREFIX))
+        {
             meta.name = name.to_string();
         }
     }

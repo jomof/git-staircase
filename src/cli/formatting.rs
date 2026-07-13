@@ -1,6 +1,7 @@
 use crate::ResolvedStaircase;
 use crate::model::{
-    Discovery, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, VerificationResult, WorktreeDraft, DraftIntent,
+    Discovery, DraftIntent, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step,
+    VerificationResult, WorktreeDraft,
 };
 use serde::Serialize;
 
@@ -37,7 +38,6 @@ pub enum Presentation {
 pub trait ToPresentation {
     fn to_presentation(&self) -> Presentation;
 }
-
 
 fn get_draft_fields(draft: &WorktreeDraft) -> Vec<Presentation> {
     let mut children = vec![];
@@ -195,12 +195,13 @@ fn render_porcelain(p: &Presentation) -> String {
     }
 }
 
-
 pub trait UsePresentation: ToPresentation {}
 
 impl<T: UsePresentation> ToHuman for T {
     fn to_human(&self) -> String {
-        render_human(&self.to_presentation(), 0).trim_end().to_string()
+        render_human(&self.to_presentation(), 0)
+            .trim_end()
+            .to_string()
     }
 }
 
@@ -209,8 +210,6 @@ impl<T: UsePresentation> ToPorcelain for T {
         render_porcelain(&self.to_presentation())
     }
 }
-
-
 
 impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {

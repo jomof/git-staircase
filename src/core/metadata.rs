@@ -1,10 +1,12 @@
-use crate::core::utils::current_timestamp;
-use crate::core::refs::StaircaseRefs;
 use crate::core::persistence;
+use crate::core::refs::StaircaseRefs;
 use crate::core::resolved::ResolvedSelector;
+use crate::core::utils::current_timestamp;
 use crate::error::Result;
 use crate::git::GitRepo;
-use crate::model::{StaircaseLink, StaircaseRecord, StaircaseMetadata, StaircaseUserMetadata, StepMetadata};
+use crate::model::{
+    StaircaseLink, StaircaseMetadata, StaircaseRecord, StaircaseUserMetadata, StepMetadata,
+};
 
 pub fn get_user_metadata(
     repo: &GitRepo,

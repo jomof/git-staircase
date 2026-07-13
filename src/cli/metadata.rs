@@ -1,4 +1,7 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation, UsePresentation};
+use crate::cli::{
+    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
+    UsePresentation,
+};
 use crate::core::{self, ResolvedSelector};
 use crate::git::GitRepo;
 use crate::model::{StaircaseLink, StaircaseUserMetadata, StepMetadata};
@@ -154,7 +157,7 @@ impl ToPresentation for UserMetadataOutput {
                 children: h_children,
             })),
             Presentation::Porcelain(Box::new(Presentation::Plain(
-                serde_json::to_string_pretty(&self.metadata).unwrap_or_default()
+                serde_json::to_string_pretty(&self.metadata).unwrap_or_default(),
             ))),
         ])
     }
@@ -197,7 +200,7 @@ impl ToPresentation for StepMetadataOutput {
                 children: h_children,
             })),
             Presentation::Porcelain(Box::new(Presentation::Plain(
-                serde_json::to_string_pretty(&self.metadata).unwrap_or_default()
+                serde_json::to_string_pretty(&self.metadata).unwrap_or_default(),
             ))),
         ])
     }

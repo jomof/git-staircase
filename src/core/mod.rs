@@ -1,6 +1,3 @@
-pub mod refs;
-#[cfg(test)]
-pub mod refs_test;
 pub mod archive;
 pub mod discovery;
 pub mod draft;
@@ -10,6 +7,9 @@ pub mod inference;
 pub mod manipulation;
 pub mod metadata;
 pub mod persistence;
+pub mod refs;
+#[cfg(test)]
+pub mod refs_test;
 pub mod resolution;
 pub mod resolved;
 pub mod restack;

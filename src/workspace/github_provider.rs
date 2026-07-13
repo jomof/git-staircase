@@ -402,6 +402,19 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
+    fn get_stable_identifiers(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+    ) -> Result<Vec<Option<String>>> {
+        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        Ok(plan
+            .publications
+            .iter()
+            .map(|p| Some(p.head_branch.clone()))
+            .collect())
+    }
+
     fn open(&self, _repo: &GitRepo, _oids: &[String]) -> Result<UnifiedReviewOpen> {
         let url = format!(
             "https://{}/{}/pulls",

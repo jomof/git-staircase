@@ -83,5 +83,10 @@ pub trait ReviewProviderInstance {
         destination: Option<&str>,
     ) -> Result<UnifiedReviewUpload>;
     fn reconcile(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewReconcile>;
+    fn get_stable_identifiers(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+    ) -> Result<Vec<Option<String>>>;
     fn open(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewOpen>;
 }

@@ -1,7 +1,7 @@
-use crate::core::utils::current_timestamp;
-use crate::core::refs::{StaircaseRefs, ARCHIVE_PREFIX};
 use crate::core::persistence;
+use crate::core::refs::{ARCHIVE_PREFIX, StaircaseRefs};
 use crate::core::resolved::ResolvedSelector;
+use crate::core::utils::current_timestamp;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{LifecycleEvent, LifecycleState};

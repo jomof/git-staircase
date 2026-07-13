@@ -1,7 +1,7 @@
-use crate::core::refs::{StaircaseRefs, PUBLIC_PREFIX};
 use super::discovery::{compute_implicit_id, discover};
 use super::persistence;
 use super::{ResolvedSelector, ResolvedStaircase};
+use crate::core::refs::{PUBLIC_PREFIX, StaircaseRefs};
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{Discovery, StaircaseMetadata, Step};

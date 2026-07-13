@@ -418,3 +418,110 @@ fn test_revision_identity_prefix() {
         revision_id
     );
 }
+
+#[test]
+fn test_identity_review() {
+    // ARRANGE
+    let ctx = TestContext::new();
+    let target = ctx.repo.resolve_commit("main").unwrap();
+
+    // Commit with Change-Id
+    let c1 = ctx.commit(
+        "f1.txt",
+        "1",
+        "c1\n\nChange-Id: I1234567890abcdef1234567890abcdef12345678",
+    );
+    let c2 = ctx.commit(
+        "f2.txt",
+        "2",
+        "c2\n\nChange-Id: Iabcdef1234567890abcdef1234567890abcdef12",
+    );
+
+    let s1 = StaircaseMetadata {
+        landing_policy: None,
+        id: "uuid".to_string(),
+        name: "name".to_string(),
+        target: target.clone(),
+        verification_policy: None,
+        steps: vec![
+            Step {
+                id: String::new(),
+                name: "s1".to_string(),
+                cut: c1.clone(),
+                branch: None,
+            },
+            Step {
+                id: String::new(),
+                name: "s2".to_string(),
+                cut: c2.clone(),
+                branch: None,
+            },
+        ],
+        primary_branch_layout: None,
+        branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
+    };
+
+    // ACT
+    let id1 = core::compute_identity(
+        &ctx.repo,
+        &ResolvedStaircase::Managed(s1.clone()),
+        IdentityKind::Review,
+    )
+    .unwrap();
+
+    // ARRANGE (Rebase - preserves Change-Ids but changes OIDs)
+    ctx.run_git(&["checkout", "main"]);
+    let c1_new = ctx.commit(
+        "f1.txt",
+        "1",
+        "c1 rebased\n\nChange-Id: I1234567890abcdef1234567890abcdef12345678",
+    );
+    let c2_new = ctx.commit(
+        "f2.txt",
+        "2",
+        "c2 rebased\n\nChange-Id: Iabcdef1234567890abcdef1234567890abcdef12",
+    );
+
+    let s2 = StaircaseMetadata {
+        landing_policy: None,
+        id: "uuid".to_string(),
+        name: "name".to_string(),
+        target: target.clone(),
+        verification_policy: None,
+        steps: vec![
+            Step {
+                id: String::new(),
+                name: "s1".to_string(),
+                cut: c1_new.clone(),
+                branch: None,
+            },
+            Step {
+                id: String::new(),
+                name: "s2".to_string(),
+                cut: c2_new.clone(),
+                branch: None,
+            },
+        ],
+        primary_branch_layout: None,
+        branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
+    };
+
+    // ACT (New identity)
+    let id2 = core::compute_identity(
+        &ctx.repo,
+        &ResolvedStaircase::Managed(s2.clone()),
+        IdentityKind::Review,
+    )
+    .unwrap();
+
+    // ASSERT
+    assert!(!id1.is_empty(), "Review identity should not be empty");
+    assert_eq!(
+        id1, id2,
+        "Review identity should be stable across rebase if Change-Ids are preserved"
+    );
+}

@@ -1,8 +1,13 @@
 use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::IdentityKind;
+use crate::workspace::bootstrap::{BootstrapOptions, bootstrap};
+use crate::workspace::gerrit_provider::GerritProvider;
+use crate::workspace::github_provider::GitHubProvider;
+use crate::workspace::review_provider::ReviewProvider;
 
 use super::ResolvedStaircase;
+
 pub fn compute_identity(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
@@ -69,6 +74,54 @@ pub fn compute_identity(
             }
             repo.hash_data(&patch_ids.join("\n"))
         }
-        IdentityKind::Review => Ok("".to_string()),
+        IdentityKind::Review => {
+            let boot_res = bootstrap(
+                repo,
+                &BootstrapOptions {
+                    no_bootstrap: true,
+                    ..Default::default()
+                },
+            )?;
+
+            let providers: Vec<Box<dyn ReviewProvider>> =
+                vec![Box::new(GerritProvider), Box::new(GitHubProvider)];
+
+            let mut identifiers = Vec::new();
+            let oids: Vec<String> = staircase
+                .metadata()
+                .steps
+                .iter()
+                .map(|s| s.cut.clone())
+                .collect();
+
+            for provider in providers {
+                if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
+                    identifiers = instance.get_stable_identifiers(repo, &oids)?;
+                    break;
+                }
+            }
+
+            if identifiers.is_empty() {
+                for oid in &oids {
+                    let msg = repo.run(&["log", "-1", "--format=%B", oid])?;
+                    match crate::workspace::gerrit_provider::parse_change_ids(&msg) {
+                        crate::workspace::gerrit_provider::ChangeIdParseResult::Single(id) => {
+                            identifiers.push(Some(id))
+                        }
+                        crate::workspace::gerrit_provider::ChangeIdParseResult::Multiple(ids) => {
+                            identifiers.push(ids.first().cloned())
+                        }
+                        _ => identifiers.push(None),
+                    }
+                }
+            }
+
+            let data = identifiers
+                .iter()
+                .map(|opt| opt.as_deref().unwrap_or("<none>"))
+                .collect::<Vec<_>>()
+                .join("\n");
+            repo.hash_data(&data)
+        }
     }
 }

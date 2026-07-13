@@ -34,8 +34,8 @@ pub mod verify;
 pub mod workspace;
 
 pub use formatting::{
-    CommitInfo, LogOutput, PlainOutput, ReorderResult, StaircaseCommits, StepCommits, StepsList,
-    Success, Summary, ToHuman, ToPorcelain, ToPresentation, Presentation, UsePresentation,
+    CommitInfo, LogOutput, PlainOutput, Presentation, ReorderResult, StaircaseCommits, StepCommits,
+    StepsList, Success, Summary, ToHuman, ToPorcelain, ToPresentation, UsePresentation,
 };
 
 #[derive(Clone, Copy, Debug)]
