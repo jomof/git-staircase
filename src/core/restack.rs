@@ -82,13 +82,55 @@ impl<'a> Restacker<'a> {
                 if let Ok(commits) = self.repo.commits_between(old_parent, actual_oid) {
                     for c in commits {
                         let tree = self.repo.get_tree_id(&c)?;
-                        let msg = self.repo.run(&["log", "-1", "--format=%B", &c])?;
-                        let new_c = self
+                        let metadata = self.repo.run(&[
+                            "log",
+                            "-1",
+                            "--format=%an%n%ae%n%at%n%cn%n%ce%n%ct%n%P",
+                            &c,
+                        ])?;
+                        let meta_lines: Vec<&str> = metadata.lines().collect();
+                        if meta_lines.len() < 6 {
+                            return Err(StaircaseError::Other(format!(
+                                "Failed to parse metadata for commit {}",
+                                c
+                            )));
+                        }
+                        let author_name = meta_lines[0];
+                        let author_email = meta_lines[1];
+                        let author_date = meta_lines[2];
+                        let committer_name = meta_lines[3];
+                        let committer_email = meta_lines[4];
+                        let committer_date = meta_lines[5];
+                        let parents_raw = if meta_lines.len() >= 7 {
+                            meta_lines[6]
+                        } else {
+                            ""
+                        };
+                        let parents_list: Vec<&str> = parents_raw.split_whitespace().collect();
+
+                        let mut cmd = self
                             .repo
-                            .run(&["commit-tree", &tree, "-p", &current_base, "-m", &msg])?
-                            .trim()
-                            .to_string();
-                        current_base = new_c;
+                            .command()
+                            .args(&["commit-tree", &tree])
+                            .arg("-p")
+                            .arg(&current_base);
+
+                        for i in 1..parents_list.len() {
+                            cmd = cmd.arg("-p").arg(parents_list[i]);
+                        }
+
+                        let msg = self.repo.run(&["log", "-1", "--format=%B", &c])?;
+                        let new_c = cmd
+                            .arg("-m")
+                            .arg(&msg)
+                            .env("GIT_AUTHOR_NAME", author_name)
+                            .env("GIT_AUTHOR_EMAIL", author_email)
+                            .env("GIT_AUTHOR_DATE", author_date)
+                            .env("GIT_COMMITTER_NAME", committer_name)
+                            .env("GIT_COMMITTER_EMAIL", committer_email)
+                            .env("GIT_COMMITTER_DATE", committer_date)
+                            .run()?;
+                        current_base = new_c.trim().to_string();
                     }
                 }
                 Ok(current_base)

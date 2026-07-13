@@ -20,6 +20,7 @@ pub struct GitCommand<'a> {
     interactive: bool,
     check_status: bool,
     trim: bool,
+    envs: std::collections::HashMap<String, String>,
 }
 
 impl<'a> GitCommand<'a> {
@@ -31,6 +32,7 @@ impl<'a> GitCommand<'a> {
             interactive: false,
             check_status: true,
             trim: true,
+            envs: std::collections::HashMap::new(),
         }
     }
 
@@ -66,6 +68,10 @@ impl<'a> GitCommand<'a> {
         self
     }
 
+    pub fn env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
+        self.envs.insert(key.into(), value.into());
+        self
+    }
     pub fn run(self) -> Result<String> {
         let trim = self.trim;
         let output = self.run_output()?;
@@ -79,6 +85,9 @@ impl<'a> GitCommand<'a> {
 
     pub fn run_output(self) -> Result<std::process::Output> {
         let mut cmd = self.repo.git_cmd();
+        for (k, v) in &self.envs {
+            cmd.env(k, v);
+        }
         cmd.args(&self.args);
 
         let output = if self.interactive {
