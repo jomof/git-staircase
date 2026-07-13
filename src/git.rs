@@ -364,7 +364,6 @@ impl GitRepo {
         if let Some(res) = self.memoizer.get_ancestry(&anc_oid, &desc_oid) {
             return Ok(res);
         }
-        eprintln!("[PERF MISS] is_ancestor cache miss for {} -> {}", anc_oid, desc_oid);
 
         let output = self
             .command()
