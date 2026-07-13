@@ -9,6 +9,7 @@ pub mod metadata;
 pub mod persistence;
 pub mod resolution;
 pub mod resolved;
+pub mod restack;
 pub mod status;
 pub mod unarchive;
 pub mod utils;
@@ -39,6 +40,7 @@ pub use resolution::{
 };
 pub use resolved::adopt;
 pub use resolved::{ResolvedSelector, ResolvedStaircase};
+pub use restack::{RestackOptions, RestackStrategy, Restacker};
 pub use status::{get_status, get_status_metadata};
 pub use unarchive::{
     UnarchiveBranchesMode, UnarchiveOptions, UnarchiveResult, unarchive_staircase,

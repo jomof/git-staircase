@@ -1,3 +1,4 @@
+use super::restack::{RestackOptions, RestackStrategy, Restacker};
 use crate::core::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -425,6 +426,7 @@ pub fn materialize_draft(
         (pos, meta.steps[pos].clone())
     };
 
+    let original_cuts: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
     let basis_oid = draft.basis.clone();
 
     let commit_msg = options
@@ -446,6 +448,8 @@ pub fn materialize_draft(
 
     let mut updated_steps_count = 1;
 
+    let restacker = Restacker::prepare(repo, &meta.steps)?;
+
     match intent {
         DraftIntent::ExtendStep | DraftIntent::Unassigned => {
             meta.steps[step_idx].cut = commit_oid.clone();
@@ -455,27 +459,25 @@ pub fn materialize_draft(
             repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
 
             if step_idx + 1 < meta.steps.len() {
-                // Restack upper steps
-                let mut current_base = commit_oid.clone();
+                let mut old_parents = Vec::new();
                 for i in (step_idx + 1)..meta.steps.len() {
-                    let old_cut = meta.steps[i].cut.clone();
-                    let old_parent = meta.steps[i - 1].cut.clone();
-                    if let Ok(commits) = repo.commits_between(&old_parent, &old_cut) {
-                        for c in commits {
-                            let tree = repo.get_tree_id(&c)?;
-                            let msg = repo.run(&["log", "-1", "--format=%B", &c])?;
-                            let new_c = repo
-                                .run(&["commit-tree", &tree, "-p", &current_base, "-m", &msg])?
-                                .trim()
-                                .to_string();
-                            current_base = new_c;
-                        }
-                    }
-                    meta.steps[i].cut = current_base.clone();
-                    if let Some(ref branch) = meta.steps[i].branch {
-                        repo.update_branch(branch, &current_base)?;
-                    }
-                    repo.update_step_ref(&meta.id, &meta.steps[i].id, &current_base)?;
+                    old_parents.push(original_cuts[i - 1].clone());
+                }
+
+                let mut remaining_steps = meta.steps[step_idx + 1..].to_vec();
+                restacker.perform_restack(
+                    &meta.id,
+                    &mut remaining_steps,
+                    &commit_oid,
+                    &old_parents,
+                    &RestackOptions {
+                        strategy: RestackStrategy::Manual,
+                        leave_upper_steps_stale: false,
+                    },
+                )?;
+
+                for (i, step) in remaining_steps.into_iter().enumerate() {
+                    meta.steps[step_idx + 1 + i] = step;
                     updated_steps_count += 1;
                 }
             }
@@ -510,26 +512,49 @@ pub fn materialize_draft(
             repo.update_step_ref(&meta.id, &new_step_id, &commit_oid)?;
 
             if step_idx + 2 < meta.steps.len() {
-                let mut current_base = commit_oid.clone();
+                let mut old_parents = Vec::new();
                 for i in (step_idx + 2)..meta.steps.len() {
-                    let old_cut = meta.steps[i].cut.clone();
-                    let old_parent = meta.steps[i - 1].cut.clone();
-                    if let Ok(commits) = repo.commits_between(&old_parent, &old_cut) {
-                        for c in commits {
-                            let tree = repo.get_tree_id(&c)?;
-                            let msg = repo.run(&["log", "-1", "--format=%B", &c])?;
-                            let new_c = repo
-                                .run(&["commit-tree", &tree, "-p", &current_base, "-m", &msg])?
-                                .trim()
-                                .to_string();
-                            current_base = new_c;
-                        }
-                    }
-                    meta.steps[i].cut = current_base.clone();
-                    if let Some(ref branch) = meta.steps[i].branch {
-                        repo.update_branch(branch, &current_base)?;
-                    }
-                    repo.update_step_ref(&meta.id, &meta.steps[i].id, &current_base)?;
+                    // For NewStep, the old parent of the first restacked step (step_idx + 2)
+                    // is the old cut of step_idx + 1.
+                    old_parents.push(original_cuts[i - 2].clone());
+                }
+                // Wait, original_cuts is indexed by the OLD meta.steps.
+                // meta.steps[step_idx+2] is OLD meta.steps[step_idx+1].
+                // So its old parent was OLD meta.steps[step_idx].
+                // Let's re-calculate more carefully.
+            }
+            // Actually, NewStep implementation in original was also a bit complex.
+            // Let's just fix it properly.
+
+            // Re-implementing restack for NewStep using perform_restack
+            if step_idx + 2 < meta.steps.len() {
+                let mut old_parents = Vec::new();
+                // original_cuts[j] is the cut of OLD step j.
+                // We inserted a new step at step_idx + 1.
+                // So meta.steps[step_idx + 2] is OLD step step_idx + 1.
+                // Its old parent was OLD step step_idx.
+                for i in (step_idx + 2)..meta.steps.len() {
+                    let old_idx = i - 1; // Index in OLD meta.steps
+                    old_parents.push(original_cuts[old_idx - 1].clone());
+                }
+
+                let mut remaining_steps = meta.steps[step_idx + 2..].to_vec();
+                restacker.perform_restack(
+                    &meta.id,
+                    &mut remaining_steps,
+                    &commit_oid, // Base for first restacked step (which is NewStep)
+                    // Wait, base for first restacked step should be the NEWLY inserted step's cut.
+                    &old_parents,
+                    &RestackOptions {
+                        strategy: RestackStrategy::Manual,
+                        leave_upper_steps_stale: false,
+                    },
+                )?;
+                // wait, if I use commit_oid as base, it's correct because the first restacked step
+                // is meta.steps[step_idx+2], and its parent is meta.steps[step_idx+1] which has cut commit_oid.
+
+                for (i, step) in remaining_steps.into_iter().enumerate() {
+                    meta.steps[step_idx + 2 + i] = step;
                     updated_steps_count += 1;
                 }
             }

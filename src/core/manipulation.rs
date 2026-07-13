@@ -1,9 +1,10 @@
 use super::persistence;
+use super::restack::{RestackOptions, RestackStrategy, Restacker};
 use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{LandingPolicy, Step};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 use uuid::Uuid;
 
 pub struct RebaseOptions {
@@ -46,7 +47,7 @@ fn check_active(staircase: &ResolvedStaircase) -> Result<()> {
             "staircase is archived; unarchive it before mutation".to_string(),
         ));
     }
-    Ok(())
+    Ok(0).map(|_| ())
 }
 
 pub fn split(
@@ -170,128 +171,6 @@ pub fn join(
     Ok(())
 }
 
-struct StaircaseRebaser<'a> {
-    repo: &'a GitRepo,
-    original_head: Option<String>,
-    original_head_oid: String,
-    original_branch_oids: HashMap<String, String>,
-}
-
-impl<'a> StaircaseRebaser<'a> {
-    fn new(repo: &'a GitRepo, steps: &[Step]) -> Result<Self> {
-        let original_head = repo.current_branch()?;
-        let original_head_oid = repo.resolve_commit("HEAD")?;
-        let mut original_branch_oids = HashMap::new();
-        for step in steps {
-            if let Some(ref branch) = step.branch {
-                if let Some(oid) = repo.resolve_commit_opt(&format!("refs/heads/{}", branch))? {
-                    original_branch_oids.insert(branch.clone(), oid);
-                }
-            }
-        }
-        Ok(Self {
-            repo,
-            original_head,
-            original_head_oid,
-            original_branch_oids,
-        })
-    }
-
-    fn rollback(&self) {
-        let _ = self.repo.run(&["rebase", "--abort"]);
-        for (branch, oid) in &self.original_branch_oids {
-            let _ = self.repo.update_branch(branch, oid);
-        }
-        self.restore_head_silent();
-    }
-
-    fn restore_head_silent(&self) {
-        if let Some(ref refname) = self.original_head {
-            let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
-            let _ = self.repo.run(&["checkout", target]);
-        } else {
-            let _ = self.repo.run(&["checkout", &self.original_head_oid]);
-        }
-    }
-
-    fn finalize(&self) -> Result<()> {
-        if let Some(ref refname) = self.original_head {
-            let target = refname.strip_prefix("refs/heads/").unwrap_or(refname);
-            self.repo.run(&["checkout", target])?;
-        } else {
-            self.repo.run(&["checkout", &self.original_head_oid])?;
-        }
-        Ok(())
-    }
-
-    fn rebase_step(
-        &self,
-        step: &Step,
-        actual_oid: &str,
-        old_parent: &str,
-        new_parent: &str,
-    ) -> Result<String> {
-        let mut rebase_target = actual_oid.to_string();
-        if let Some(ref branch_name) = step.branch {
-            if self
-                .repo
-                .resolve_commit_opt(&format!("refs/heads/{}", branch_name))?
-                .is_some()
-            {
-                rebase_target = branch_name.clone();
-            }
-        }
-
-        self.repo
-            .run_interactive(&["rebase", "--onto", new_parent, old_parent, &rebase_target])?;
-
-        self.repo.resolve_commit("HEAD")
-    }
-}
-
-fn perform_restack(
-    repo: &GitRepo,
-    rebaser: &StaircaseRebaser,
-    steps: &mut [Step],
-    base_oid: &str,
-    old_parent_oids: &[String],
-    options: &RebaseOptions,
-) -> Result<Option<usize>> {
-    let mut current_base = base_oid.to_string();
-    for i in 0..steps.len() {
-        let step = &steps[i];
-        let actual_oid = repo.resolve_commit(&step.cut)?;
-        let old_parent_oid = &old_parent_oids[i];
-
-        let should_rebase =
-            &current_base != old_parent_oid || !repo.is_ancestor(&current_base, &actual_oid)?;
-
-        if should_rebase {
-            match rebaser.rebase_step(step, &actual_oid, old_parent_oid, &current_base) {
-                Ok(new_oid) => {
-                    steps[i].cut = new_oid.clone();
-                    current_base = new_oid;
-                    if options.leave_upper_steps_stale {
-                        return Ok(Some(i));
-                    }
-                }
-                Err(e) => {
-                    return Err(StaircaseError::Other(format!(
-                        "Rebase failed for step '{}'. Please resolve conflicts and run restack again.\nError: {}",
-                        step.name, e
-                    )));
-                }
-            }
-        } else {
-            current_base = actual_oid.clone();
-            if steps[i].cut != actual_oid {
-                steps[i].cut = actual_oid;
-            }
-        }
-    }
-    Ok(None)
-}
-
 pub fn reorder(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
@@ -317,7 +196,7 @@ pub fn reorder(
     }
 
     if !options.no_restack {
-        let rebaser = StaircaseRebaser::new(repo, &old_steps)?;
+        let restacker = Restacker::prepare(repo, &old_steps)?;
         let target_oid = repo.resolve_commit(&metadata.target)?;
 
         let mut old_parent_oids = Vec::new();
@@ -332,21 +211,21 @@ pub fn reorder(
             old_parent_oids.push(old_parent_oid);
         }
 
-        match perform_restack(
-            repo,
-            &rebaser,
+        match restacker.perform_restack(
+            &metadata.id,
             &mut new_steps,
             &target_oid,
             &old_parent_oids,
-            &RebaseOptions {
+            &RestackOptions {
+                strategy: RestackStrategy::Rebase,
                 leave_upper_steps_stale: false,
             },
         ) {
             Ok(_) => {
-                rebaser.finalize()?;
+                restacker.finalize()?;
             }
             Err(e) => {
-                rebaser.rollback();
+                restacker.rollback();
                 return Err(e);
             }
         }
@@ -465,7 +344,7 @@ pub fn restack(
     }
 
     let mut metadata = status.metadata.clone();
-    let rebaser = StaircaseRebaser::new(repo, &metadata.steps)?;
+    let restacker = Restacker::prepare(repo, &metadata.steps)?;
     let target_oid = repo.resolve_commit(&metadata.target)?;
 
     let mut old_parent_oids = Vec::new();
@@ -493,16 +372,18 @@ pub fn restack(
         old_parent_oids.push(old_parent_oid);
     }
 
-    match perform_restack(
-        repo,
-        &rebaser,
+    match restacker.perform_restack(
+        &metadata.id,
         &mut metadata.steps,
         &target_oid,
         &old_parent_oids,
-        &options,
+        &RestackOptions {
+            strategy: RestackStrategy::Rebase,
+            leave_upper_steps_stale: options.leave_upper_steps_stale,
+        },
     ) {
         Ok(stop_index) => {
-            rebaser.finalize()?;
+            restacker.finalize()?;
 
             if let Some(idx) = stop_index {
                 for i in (idx + 1)..metadata.steps.len() {
@@ -514,7 +395,7 @@ pub fn restack(
             Ok(())
         }
         Err(e) => {
-            rebaser.rollback();
+            restacker.rollback();
             Err(e)
         }
     }
