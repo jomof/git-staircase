@@ -188,7 +188,7 @@ impl GitRepo {
                 .args(&[
                     "rev-parse",
                     "--verify",
-                    &format!("refs/heads/{}^{{commit}}", rev),
+                    &format!("refs/tags/{}^{{commit}}", rev),
                 ])
                 .run()
             {
@@ -199,7 +199,7 @@ impl GitRepo {
                 .args(&[
                     "rev-parse",
                     "--verify",
-                    &format!("refs/tags/{}^{{commit}}", rev),
+                    &format!("refs/heads/{}^{{commit}}", rev),
                 ])
                 .run()
             {
