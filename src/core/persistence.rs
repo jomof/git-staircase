@@ -1,5 +1,5 @@
 use crate::error::{Result, StaircaseError};
-use crate::git::GitRepo;
+use crate::git::{GitRepo, TreeEntry};
 use crate::model::{
     ArchiveManifest, IdentityKind, LifecycleState, StaircaseLifecycle, StaircaseMetadata,
     StaircaseRecord, StaircaseUserMetadata, Step, VerificationPolicy, VerificationResult,
@@ -15,44 +15,26 @@ pub fn write_record(
     update_refs: bool,
 ) -> Result<StaircaseRecord> {
     let structure_desc = serialize_descriptor(repo, metadata)?;
-    let structure_oid = repo
-        .run_with_stdin(&["hash-object", "-w", "--stdin"], &structure_desc)?
-        .trim()
-        .to_string();
+    let structure_oid = repo.write_blob(&structure_desc)?;
 
-    let meta_json = serde_json::to_string_pretty(user_metadata)?;
-    let metadata_oid = repo
-        .run_with_stdin(&["hash-object", "-w", "--stdin"], &meta_json)?
-        .trim()
-        .to_string();
+    let metadata_oid = repo.write_json(user_metadata)?;
+    let lifecycle_oid = repo.write_json(lifecycle)?;
 
-    let lifecycle_json = serde_json::to_string_pretty(lifecycle)?;
-    let lifecycle_oid = repo
-        .run_with_stdin(&["hash-object", "-w", "--stdin"], &lifecycle_json)?
-        .trim()
-        .to_string();
-
-    let mut tree_input = format!(
-        "100644 blob {}\tstructure\n100644 blob {}\tmetadata\n100644 blob {}\tlifecycle\n",
-        structure_oid, metadata_oid, lifecycle_oid
-    );
+    let mut entries = vec![
+        TreeEntry::blob(&structure_oid, "structure"),
+        TreeEntry::blob(&metadata_oid, "metadata"),
+        TreeEntry::blob(&lifecycle_oid, "lifecycle"),
+    ];
 
     let manifest_oid = if let Some(manifest) = archive_manifest {
-        let manifest_json = serde_json::to_string_pretty(manifest)?;
-        let m_oid = repo
-            .run_with_stdin(&["hash-object", "-w", "--stdin"], &manifest_json)?
-            .trim()
-            .to_string();
-        tree_input.push_str(&format!("100644 blob {}\tarchive-manifest\n", m_oid));
+        let m_oid = repo.write_json(manifest)?;
+        entries.push(TreeEntry::blob(&m_oid, "archive-manifest"));
         Some(m_oid)
     } else {
         None
     };
 
-    let record_oid = repo
-        .run_with_stdin(&["mktree"], &tree_input)?
-        .trim()
-        .to_string();
+    let record_oid = repo.write_tree(&entries)?;
 
     let mut full_meta = metadata.clone();
     full_meta.user_metadata = Some(user_metadata.clone());
@@ -125,17 +107,8 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
         let user_meta = meta.user_metadata.clone().unwrap_or_default();
         let lifecycle = meta.lifecycle.clone().unwrap_or_default();
 
-        let meta_json = serde_json::to_string_pretty(&user_meta)?;
-        let metadata_oid = repo
-            .run_with_stdin(&["hash-object", "-w", "--stdin"], &meta_json)?
-            .trim()
-            .to_string();
-
-        let lifecycle_json = serde_json::to_string_pretty(&lifecycle)?;
-        let lifecycle_oid = repo
-            .run_with_stdin(&["hash-object", "-w", "--stdin"], &lifecycle_json)?
-            .trim()
-            .to_string();
+        let metadata_oid = repo.write_json(&user_meta)?;
+        let lifecycle_oid = repo.write_json(&lifecycle)?;
 
         meta.user_metadata = Some(user_meta.clone());
         meta.lifecycle = Some(lifecycle.clone());
@@ -582,16 +555,11 @@ fn commit_json_data<T: serde::Serialize>(
     filename: &str,
     commit_msg: &str,
 ) -> Result<String> {
-    let json = serde_json::to_string_pretty(data)?;
+    let blob_oid = repo.write_json(data)?;
+    let entries = [TreeEntry::blob(&blob_oid, filename)];
+    let tree_oid = repo.write_tree(&entries)?;
 
-    let blob_oid = repo.run_with_stdin(&["hash-object", "-w", "--stdin"], &json)?;
-    let blob_oid = blob_oid.trim();
-
-    let tree_input = format!("100644 blob {}\t{}\n", blob_oid, filename);
-    let tree_oid = repo.run_with_stdin(&["mktree"], &tree_input)?;
-    let tree_oid = tree_oid.trim();
-
-    let mut commit_args = vec!["commit-tree", tree_oid, "-m", commit_msg];
+    let mut commit_args = vec!["commit-tree", &tree_oid, "-m", commit_msg];
 
     let parent_oid = repo.resolve_commit_opt(ref_name).unwrap_or(None);
     if let Some(ref parent) = parent_oid {
@@ -648,4 +616,3 @@ pub fn read_verification(
     let results: Vec<VerificationResult> = serde_json::from_str(&content)?;
     Ok(Some(results))
 }
-

@@ -170,3 +170,16 @@ mod tests {
         );
     }
 }
+
+#[cfg(test)]
+mod timestamp_tests {
+    use super::current_timestamp;
+    #[test]
+    fn test_current_timestamp_format() {
+        let ts = current_timestamp();
+        // Format: YYYY-MM-DDTHH:MM:SSZ (20 characters)
+        assert_eq!(ts.len(), 20);
+        assert!(ts.contains('T'));
+        assert!(ts.ends_with('Z'));
+    }
+}

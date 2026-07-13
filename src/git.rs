@@ -1,6 +1,7 @@
 use crate::error::{Result, StaircaseError};
 use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
+use serde::Serialize;
 use std::io::Write;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -117,6 +118,25 @@ impl<'a> GitCommand<'a> {
         }
 
         Ok(output)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct TreeEntry {
+    pub mode: String,
+    pub kind: String,
+    pub oid: String,
+    pub name: String,
+}
+
+impl TreeEntry {
+    pub fn blob(oid: impl Into<String>, name: impl Into<String>) -> Self {
+        Self {
+            mode: "100644".to_string(),
+            kind: "blob".to_string(),
+            oid: oid.into(),
+            name: name.into(),
+        }
     }
 }
 
@@ -384,6 +404,29 @@ impl GitRepo {
             .run()?;
         self.memoizer.set_tree_id(rev, &tree);
         Ok(tree)
+    }
+
+    pub fn write_blob(&self, content: &str) -> Result<String> {
+        self.command()
+            .args(&["hash-object", "-w", "--stdin"])
+            .stdin(content)
+            .run()
+    }
+
+    pub fn write_json<T: Serialize>(&self, data: &T) -> Result<String> {
+        let json = serde_json::to_string_pretty(data)?;
+        self.write_blob(&json)
+    }
+
+    pub fn write_tree(&self, entries: &[TreeEntry]) -> Result<String> {
+        let mut input = String::new();
+        for entry in entries {
+            input.push_str(&format!(
+                "{} {} {}\t{}\n",
+                entry.mode, entry.kind, entry.oid, entry.name
+            ));
+        }
+        self.command().args(&["mktree"]).stdin(input).run()
     }
 
     pub fn hash_data(&self, data: &str) -> Result<String> {
