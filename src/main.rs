@@ -182,7 +182,7 @@ fn main() -> Result<()> {
     let bootstrap_res = bootstrap(&repo, &options)?;
     if let Some(ref msg) = bootstrap_res.message {
         if matches!(format, cli::OutputFormat::Human) {
-            println!("{}", msg);
+            eprintln!("{}", msg);
         }
     }
 
