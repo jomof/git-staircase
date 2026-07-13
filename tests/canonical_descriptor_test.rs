@@ -22,7 +22,7 @@ fn test_canonical_descriptor_format() {
 
     // ACT: Read the descriptor object
     let ref_name = "refs/staircases/my-staircase";
-    let oid = repo
+    let _oid = repo
         .resolve_ref(ref_name)
         .expect("refs/staircases/my-staircase should exist");
     let content = repo.run(&["cat-file", "-p", &format!("{}:structure", ref_name)]).unwrap();

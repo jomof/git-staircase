@@ -2,9 +2,7 @@ use git_staircase::core::*;
 use git_staircase::model::*;
 use git_staircase::*;
 use std::fs;
-use std::path::Path;
 use std::process::Command;
-use std::time::Instant;
 use tempfile::TempDir;
 
 mod common;

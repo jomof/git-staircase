@@ -7,7 +7,7 @@ fn test_land_stepwise_integration() {
     let ctx = TestContext::new();
 
     ctx.run_git(&["checkout", "-b", "step1"]);
-    let c1 = ctx.commit("file1.txt", "1", "commit 1");
+    let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
     ctx.run_git(&["checkout", "-b", "step2"]);
     let c2 = ctx.commit("file2.txt", "2", "commit 2");

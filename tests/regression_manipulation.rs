@@ -2,11 +2,6 @@ use git_staircase::core::*;
 use git_staircase::model::*;
 use git_staircase::*;
 use std::fs;
-use std::path::Path;
-use std::process::Command;
-use std::time::Instant;
-use tempfile::TempDir;
-
 mod common;
 use common::*;
 
@@ -22,7 +17,7 @@ fn test_reorder_non_atomic() {
     fs::write(repo_path.join("file_a"), "content a").unwrap();
     run_git(repo_path, &["add", "file_a"]);
     run_git(repo_path, &["commit", "-m", "commit a"]);
-    let oid_a_orig = run_git(repo_path, &["rev-parse", "HEAD"]);
+    let _oid_a_orig = run_git(repo_path, &["rev-parse", "HEAD"]);
 
     run_git(repo_path, &["checkout", "-b", "branch-b"]);
     fs::write(repo_path.join("file_b"), "content b").unwrap();

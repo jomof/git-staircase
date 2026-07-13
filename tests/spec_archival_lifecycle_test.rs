@@ -1,6 +1,5 @@
 mod common;
 use common::*;
-use git_staircase::cli::{Command, StaircaseSelectorArgs};
 use git_staircase::core::{
     self, ArchiveOptions, UnarchiveBranchesMode, UnarchiveOptions,
 };

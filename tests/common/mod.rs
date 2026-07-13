@@ -6,6 +6,7 @@ use tempfile::TempDir;
 
 pub struct TestContext {
     pub tmp: TempDir,
+    #[allow(dead_code)]
     pub repo: GitRepo,
 }
 

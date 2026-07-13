@@ -5,7 +5,6 @@ use common::*;
 fn test_adopt_canonicalizes_onto() {
     // ARRANGE
     let ctx = TestContext::new();
-    let dir = ctx.path();
 
     // Create a branch to adopt
     ctx.run_git(&["checkout", "-b", "feature"]);
@@ -38,7 +37,6 @@ fn test_adopt_canonicalizes_onto() {
 fn test_infer_onto_canonicalizes() {
     // ARRANGE
     let ctx = TestContext::new();
-    let dir = ctx.path();
 
     // Create a branch and set its upstream to main
     ctx.run_git(&["checkout", "-b", "feature"]);
