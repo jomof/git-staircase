@@ -481,11 +481,11 @@ impl GitRepo {
         let mut input = String::new();
         for entry in entries {
             input.push_str(&format!(
-                "{} {} {}\t{}\n",
+                "{} {} {}\t{}\0",
                 entry.mode, entry.kind, entry.oid, entry.name
             ));
         }
-        self.command().args(&["mktree"]).stdin(input).run()
+        self.command().args(&["mktree", "-z"]).stdin(input).run()
     }
 
     pub fn hash_data(&self, data: &str) -> Result<String> {

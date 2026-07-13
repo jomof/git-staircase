@@ -29,7 +29,7 @@ fn test_write_tree_special_chars() {
 
     let ls_tree = String::from_utf8(
         Command::new("git")
-            .args(&["ls-tree", &tree_oid])
+            .args(&["ls-tree", "-z", &tree_oid])
             .current_dir(&workdir)
             .output()
             .unwrap()
