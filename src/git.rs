@@ -165,7 +165,8 @@ impl GitRepo {
     }
 
     pub fn run(&self, args: &[&str]) -> Result<String> {
-        self.command().args(args).run()
+        let trim = !args.first().map_or(false, |&cmd| cmd == "cat-file");
+        self.command().args(args).trim(trim).run()
     }
 
     pub fn run_with_stdin(&self, args: &[&str], stdin: &str) -> Result<String> {
