@@ -30,6 +30,16 @@ pub fn get_status_metadata_ext(
 
     let mut actual_oids = Vec::new();
 
+    let mut oids_to_preload = Vec::new();
+    if let Ok(toid) = repo.resolve_commit(&metadata.target) {
+        oids_to_preload.push(toid);
+    }
+    for step in &metadata.steps {
+        oids_to_preload.push(step.cut.clone());
+    }
+    let str_oids: Vec<&str> = oids_to_preload.iter().map(|s| s.as_str()).collect();
+    let _ = repo.preload_ancestry(&str_oids);
+
     for step in &metadata.steps {
         let actual_oid = if let Some(ref branch) = step.branch {
             repo.resolve_commit_opt(&format!("refs/heads/{}", branch))?

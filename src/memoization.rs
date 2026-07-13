@@ -19,6 +19,12 @@ pub enum MemoKey {
     ObjectFormat,
     /// Git object hash for raw string content.
     HashData { content_sha: String },
+    /// Resolved commit OID for a given revision string.
+    ResolveCommit { rev: String },
+    /// Resolved ref OID (or None if missing) for a revision string.
+    ResolveRef { rev: String },
+    /// Full refname for a symbolic branch or ref name.
+    ResolveSymbolic { name: String },
 }
 
 /// Serialized/typed memoized value.
@@ -26,6 +32,7 @@ pub enum MemoKey {
 pub enum MemoValue {
     Bool(bool),
     Text(String),
+    NoneText,
 }
 
 impl MemoValue {
@@ -201,6 +208,56 @@ impl Memoizer {
         let content_sha = format!("{:x}", hasher.finalize());
         let key = MemoKey::HashData { content_sha };
         self.store.put(key, MemoValue::Text(hash.to_string()));
+    }
+
+    pub fn get_resolve_commit(&self, rev: &str) -> Option<String> {
+        let key = MemoKey::ResolveCommit {
+            rev: rev.to_string(),
+        };
+        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_resolve_commit(&self, rev: &str, oid: &str) {
+        let key = MemoKey::ResolveCommit {
+            rev: rev.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(oid.to_string()));
+    }
+
+    pub fn get_resolve_ref(&self, rev: &str) -> Option<Option<String>> {
+        let key = MemoKey::ResolveRef {
+            rev: rev.to_string(),
+        };
+        match self.store.get(&key) {
+            Some(MemoValue::Text(s)) => Some(Some(s)),
+            Some(MemoValue::NoneText) => Some(None),
+            _ => None,
+        }
+    }
+
+    pub fn set_resolve_ref(&self, rev: &str, oid: Option<&str>) {
+        let key = MemoKey::ResolveRef {
+            rev: rev.to_string(),
+        };
+        let val = match oid {
+            Some(s) => MemoValue::Text(s.to_string()),
+            None => MemoValue::NoneText,
+        };
+        self.store.put(key, val);
+    }
+
+    pub fn get_symbolic_name(&self, name: &str) -> Option<String> {
+        let key = MemoKey::ResolveSymbolic {
+            name: name.to_string(),
+        };
+        self.store.get(&key).and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_symbolic_name(&self, name: &str, full_name: &str) {
+        let key = MemoKey::ResolveSymbolic {
+            name: name.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(full_name.to_string()));
     }
 
     pub fn clear(&self) {

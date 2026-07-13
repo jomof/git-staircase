@@ -175,6 +175,12 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
         Ok(oid) => oid,
         Err(_) => return Ok(false),
     };
+    let mut oids = vec![target_oid.as_str()];
+    for step in &staircase.steps {
+        oids.push(step.cut.as_str());
+    }
+    let _ = repo.preload_ancestry(&oids);
+
     let mut last_cut = target_oid;
     for step in &staircase.steps {
         let current_cut = match repo.resolve_commit(&step.cut) {
@@ -208,6 +214,11 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
             step.id = Uuid::new_v4().to_string();
         }
     }
+    let mut oids = vec![target_oid.as_str()];
+    for step in &staircase.steps {
+        oids.push(step.cut.as_str());
+    }
+    let _ = repo.preload_ancestry(&oids);
     let mut last_cut = target_oid;
     for step in &staircase.steps {
         let current_cut = repo.resolve_commit(&step.cut)?;
