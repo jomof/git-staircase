@@ -182,6 +182,22 @@ impl GitRepo {
     }
 
     pub fn resolve_commit(&self, rev: &str) -> Result<String> {
+        if !rev.starts_with("refs/") {
+            if let Ok(sha) = self
+                .command()
+                .args(&["rev-parse", "--verify", &format!("refs/heads/{}^{{commit}}", rev)])
+                .run()
+            {
+                return Ok(sha);
+            }
+            if let Ok(sha) = self
+                .command()
+                .args(&["rev-parse", "--verify", &format!("refs/tags/{}^{{commit}}", rev)])
+                .run()
+            {
+                return Ok(sha);
+            }
+        }
         self.command()
             .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
             .run()
@@ -209,7 +225,10 @@ impl GitRepo {
     }
 
     pub fn resolve_commit_opt(&self, rev: &str) -> Result<Option<String>> {
-        self.resolve_ref_opt(&format!("{}^{{commit}}", rev))
+        match self.resolve_commit(rev) {
+            Ok(sha) => Ok(Some(sha)),
+            Err(_) => Ok(None),
+        }
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
