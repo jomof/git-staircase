@@ -59,12 +59,29 @@ pub fn run_git(dir: &Path, args: &[&str]) -> String {
 }
 
 #[allow(dead_code)]
+pub fn get_head_oid(dir: &Path) -> String {
+    let head_file = dir.join(".git").join("HEAD");
+    if let Ok(content) = fs::read_to_string(&head_file) {
+        let content = content.trim();
+        if let Some(ref_path) = content.strip_prefix("ref: ") {
+            let ref_file = dir.join(".git").join(ref_path);
+            if let Ok(oid) = fs::read_to_string(&ref_file) {
+                return oid.trim().to_string();
+            }
+        } else if content.len() == 40 {
+            return content.to_string();
+        }
+    }
+    run_git(dir, &["rev-parse", "HEAD"])
+}
+
+#[allow(dead_code)]
 pub fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
     let path = dir.join(file);
     fs::write(path, contents).unwrap();
     run_git(dir, &["add", "."]);
     run_git(dir, &["commit", "--allow-empty", "-m", msg]);
-    run_git(dir, &["rev-parse", "HEAD"])
+    get_head_oid(dir)
 }
 
 #[allow(dead_code)]
@@ -72,9 +89,6 @@ pub fn setup_repo() -> (TempDir, GitRepo) {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().to_path_buf();
     run_git(&path, &["init", "-b", "main"]);
-    // Configure user for commits
-    run_git(&path, &["config", "user.email", "test@example.com"]);
-    run_git(&path, &["config", "user.name", "Test"]);
     commit(&path, "init.txt", "initial", "initial commit");
     let repo = GitRepo::new(path);
     (tmp, repo)
