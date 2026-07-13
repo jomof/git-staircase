@@ -39,27 +39,33 @@ pub struct MaterializeResult {
 }
 
 fn get_draft_attachment_path(repo: &GitRepo) -> Result<PathBuf> {
-    let path_str = repo.run(&["rev-parse", "--git-path", "staircase-draft.json"])?;
-    let path_str = path_str.trim();
-    if path_str.starts_with('/') {
-        Ok(PathBuf::from(path_str))
-    } else {
-        Ok(repo.workdir.join(path_str))
-    }
+    Ok(repo.workdir.join(".git").join("staircase-draft.json"))
 }
 
 fn get_snapshots_dir(repo: &GitRepo) -> Result<PathBuf> {
-    let path_str = repo.run(&["rev-parse", "--git-path", "staircase-snapshots"])?;
-    let path_str = path_str.trim();
-    let p = if path_str.starts_with('/') {
-        PathBuf::from(path_str)
-    } else {
-        repo.workdir.join(path_str)
-    };
+    let p = repo.workdir.join(".git").join("staircase-snapshots");
     if !p.exists() {
         let _ = fs::create_dir_all(&p);
     }
     Ok(p)
+}
+
+fn detect_active_git_operation(repo: &GitRepo) -> Result<Option<String>> {
+    let git_dir = repo.workdir.join(".git");
+    let checks = [
+        ("MERGE_HEAD", "merge"),
+        ("rebase-merge", "rebase"),
+        ("rebase-apply", "rebase"),
+        ("CHERRY_PICK_HEAD", "cherry-pick"),
+        ("REVERT_HEAD", "revert"),
+        ("BISECT_LOG", "bisect"),
+    ];
+    for (git_file, op_name) in checks {
+        if git_dir.join(git_file).exists() {
+            return Ok(Some(op_name.to_string()));
+        }
+    }
+    Ok(None)
 }
 
 pub fn read_persistent_attachment(repo: &GitRepo) -> Result<Option<DraftAttachment>> {
@@ -92,26 +98,7 @@ pub fn delete_persistent_attachment(repo: &GitRepo) -> Result<()> {
 }
 
 pub fn check_transient_operation(repo: &GitRepo) -> Result<Option<String>> {
-    let checks = [
-        ("MERGE_HEAD", "merge"),
-        ("rebase-merge", "rebase"),
-        ("rebase-apply", "rebase"),
-        ("CHERRY_PICK_HEAD", "cherry-pick"),
-        ("REVERT_HEAD", "revert"),
-        ("BISECT_LOG", "bisect"),
-    ];
-    for (git_file, op_name) in checks {
-        let path_str = repo.run(&["rev-parse", "--git-path", git_file])?;
-        let p = if path_str.starts_with('/') {
-            PathBuf::from(path_str.trim())
-        } else {
-            repo.workdir.join(path_str.trim())
-        };
-        if p.exists() {
-            return Ok(Some(op_name.to_string()));
-        }
-    }
-    Ok(None)
+    detect_active_git_operation(repo)
 }
 
 pub fn get_worktree_draft(repo: &GitRepo) -> Result<WorktreeDraft> {
