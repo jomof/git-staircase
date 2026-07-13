@@ -215,8 +215,10 @@ impl GitRepo {
         if name.starts_with("refs/") {
             return Ok(name.to_string());
         }
-        if let Some(res) = self.memoizer.get_symbolic_name(name) {
-            return Ok(res);
+        if name != "HEAD" {
+            if let Some(res) = self.memoizer.get_symbolic_name(name) {
+                return Ok(res);
+            }
         }
         let full_name = self
             .command()
@@ -228,7 +230,9 @@ impl GitRepo {
                 name
             )));
         }
-        self.memoizer.set_symbolic_name(name, &full_name);
+        if name != "HEAD" {
+            self.memoizer.set_symbolic_name(name, &full_name);
+        }
         Ok(full_name)
     }
 
