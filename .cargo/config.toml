@@ -1,2 +1,21 @@
 [build]
-rustflags = ["-D", "warnings", "-W", "clippy::absolute_paths"]
+rustflags = [
+    "-D", "warnings",
+    "-W", "clippy::absolute_paths",
+    "-W", "clippy::wildcard_imports",
+    "-W", "clippy::enum_glob_use",
+    "-W", "clippy::mod_module_files",
+    "-W", "clippy::unwrap_used",
+    "-W", "clippy::expect_used",
+    "-W", "clippy::panic",
+    "-W", "clippy::todo",
+    "-W", "clippy::unimplemented",
+    "-W", "clippy::implicit_clone",
+    "-W", "clippy::inefficient_to_string",
+    "-W", "clippy::trivially_copy_pass_by_ref",
+    "-W", "clippy::needless_pass_by_value",
+    "-W", "clippy::collapsible_if",
+    "-W", "clippy::shadow_unrelated",
+    "-W", "clippy::unused_async",
+]
+
