@@ -83,8 +83,13 @@ pub fn setup_repo() -> (TempDir, GitRepo) {
 #[allow(dead_code)]
 pub fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
     let bin = env!("CARGO_BIN_EXE_git-staircase");
+    let ws_dir = dir
+        .parent()
+        .map(|p| p.join(".workspace_storage"))
+        .unwrap_or_else(|| dir.join(".workspace_storage"));
     let output = Command::new(bin)
         .current_dir(dir)
+        .env("GIT_STAIRCASE_WORKSPACE_DIR", ws_dir)
         .args(args)
         .output()
         .expect("Failed to execute git-staircase");
