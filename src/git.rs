@@ -182,9 +182,6 @@ impl GitRepo {
     }
 
     pub fn resolve_commit(&self, rev: &str) -> Result<String> {
-        if rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Ok(rev.to_string());
-        }
         self.command()
             .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
             .run()
@@ -212,16 +209,10 @@ impl GitRepo {
     }
 
     pub fn resolve_commit_opt(&self, rev: &str) -> Result<Option<String>> {
-        if rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Ok(Some(rev.to_string()));
-        }
         self.resolve_ref_opt(&format!("{}^{{commit}}", rev))
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
-        if rev.len() == 40 && rev.chars().all(|c| c.is_ascii_hexdigit()) {
-            return Ok(Some(rev.to_string()));
-        }
         let result = self
             .command()
             .args(&["rev-parse", "--verify", rev])
@@ -307,16 +298,18 @@ impl GitRepo {
     }
 
     pub fn is_ancestor(&self, ancestor: &str, descendant: &str) -> Result<bool> {
-        if ancestor == descendant {
+        let anc_oid = self.resolve_commit(ancestor)?;
+        let desc_oid = self.resolve_commit(descendant)?;
+        if anc_oid == desc_oid {
             return Ok(true);
         }
-        if let Some(res) = self.memoizer.get_ancestry(ancestor, descendant) {
+        if let Some(res) = self.memoizer.get_ancestry(&anc_oid, &desc_oid) {
             return Ok(res);
         }
 
         let output = self
             .command()
-            .args(&["merge-base", "--is-ancestor", ancestor, descendant])
+            .args(&["merge-base", "--is-ancestor", &anc_oid, &desc_oid])
             .check_status(false)
             .run_output()?;
 
@@ -328,7 +321,7 @@ impl GitRepo {
                     return Err(StaircaseError::GitCommandFailed {
                         command: format!(
                             "git merge-base --is-ancestor {} {}",
-                            ancestor, descendant
+                            anc_oid, desc_oid
                         ),
                         stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                         stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
@@ -338,16 +331,18 @@ impl GitRepo {
             }
         };
 
-        self.memoizer.set_ancestry(ancestor, descendant, res);
+        self.memoizer.set_ancestry(&anc_oid, &desc_oid, res);
         Ok(res)
     }
 
     pub fn merge_base(&self, a: &str, b: &str) -> Result<String> {
-        if let Some(mb) = self.memoizer.get_merge_base(a, b) {
+        let a_oid = self.resolve_commit(a)?;
+        let b_oid = self.resolve_commit(b)?;
+        if let Some(mb) = self.memoizer.get_merge_base(&a_oid, &b_oid) {
             return Ok(mb);
         }
-        let mb = self.command().args(&["merge-base", a, b]).run()?;
-        self.memoizer.set_merge_base(a, b, &mb);
+        let mb = self.command().args(&["merge-base", &a_oid, &b_oid]).run()?;
+        self.memoizer.set_merge_base(&a_oid, &b_oid, &mb);
         Ok(mb)
     }
 
