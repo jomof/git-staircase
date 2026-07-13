@@ -1,6 +1,6 @@
 use crate::ResolvedStaircase;
 use crate::model::{
-    Discovery, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, VerificationResult,
+    Discovery, StaircaseFamily, StaircaseMetadata, StaircaseStatus, Step, VerificationResult, WorktreeDraft, DraftIntent,
 };
 use serde::Serialize;
 
@@ -38,6 +38,67 @@ pub trait ToPresentation {
     fn to_presentation(&self) -> Presentation;
 }
 
+
+fn get_draft_fields(draft: &WorktreeDraft) -> Vec<Presentation> {
+    let mut children = vec![];
+    if draft.is_attachment_stale {
+        children.push(Presentation::Field {
+            label: "attachment".to_string(),
+            value: "stale".to_string(),
+        });
+    } else if let Some(ref att) = draft.attachment {
+        let attached_to = format!(
+            "{} {}",
+            att.staircase_name.as_deref().unwrap_or("unnamed"),
+            att.step_name.as_deref().unwrap_or("")
+        );
+        children.push(Presentation::Field {
+            label: "attached to".to_string(),
+            value: attached_to.trim().to_string(),
+        });
+        let intent_str = match &att.intent {
+            DraftIntent::ExtendStep => "extend-step",
+            DraftIntent::NewStep => "new-step",
+            DraftIntent::Unassigned => "unassigned",
+            DraftIntent::RewriteStep(_) => "rewrite-step",
+        };
+        children.push(Presentation::Field {
+            label: "intent".to_string(),
+            value: intent_str.to_string(),
+        });
+    }
+    let basis_short = if draft.basis.len() >= 7 {
+        &draft.basis[..7]
+    } else {
+        &draft.basis
+    };
+    children.push(Presentation::Field {
+        label: "basis".to_string(),
+        value: basis_short.to_string(),
+    });
+    children.push(Presentation::Field {
+        label: "staged".to_string(),
+        value: format!("{} paths", draft.staged_paths.len()),
+    });
+    children.push(Presentation::Field {
+        label: "unstaged".to_string(),
+        value: format!("{} paths", draft.unstaged_paths.len()),
+    });
+    children.push(Presentation::Field {
+        label: "untracked".to_string(),
+        value: format!("{} paths", draft.untracked_paths.len()),
+    });
+    children.push(Presentation::Field {
+        label: "conflicts".to_string(),
+        value: if draft.conflicted_paths.is_empty() {
+            "none".to_string()
+        } else {
+            format!("{} paths", draft.conflicted_paths.len())
+        },
+    });
+    children
+}
+
 fn render_human(p: &Presentation, indent: usize) -> String {
     let space = "  ".repeat(indent);
     match p {
@@ -57,8 +118,29 @@ fn render_human(p: &Presentation, indent: usize) -> String {
             if let Some(n) = name {
                 out.push_str(&format!("{}{}:\n", space, n));
             }
+            if rows.is_empty() {
+                return out;
+            }
+            let col_count = rows[0].len();
+            let mut col_widths = vec![0; col_count];
             for row in rows {
-                out.push_str(&format!("{}{}\n", space, row.join(" ")));
+                for (i, col) in row.iter().enumerate() {
+                    if i < col_widths.len() {
+                        col_widths[i] = col_widths[i].max(col.len());
+                    }
+                }
+            }
+            for row in rows {
+                out.push_str(&space);
+                for (i, col) in row.iter().enumerate() {
+                    let width = col_widths[i];
+                    if i == col_count - 1 {
+                        out.push_str(col);
+                    } else {
+                        out.push_str(&format!("{:<width$}  ", col, width = width));
+                    }
+                }
+                out.push('\n');
             }
             out
         }
@@ -113,22 +195,22 @@ fn render_porcelain(p: &Presentation) -> String {
     }
 }
 
-macro_rules! impl_formatting {
-    ($t:ty) => {
-        impl ToHuman for $t {
-            fn to_human(&self) -> String {
-                render_human(&self.to_presentation(), 0)
-                    .trim_end()
-                    .to_string()
-            }
-        }
-        impl ToPorcelain for $t {
-            fn to_porcelain(&self) -> String {
-                render_porcelain(&self.to_presentation())
-            }
-        }
-    };
+
+pub trait UsePresentation: ToPresentation {}
+
+impl<T: UsePresentation> ToHuman for T {
+    fn to_human(&self) -> String {
+        render_human(&self.to_presentation(), 0).trim_end().to_string()
+    }
 }
+
+impl<T: UsePresentation> ToPorcelain for T {
+    fn to_porcelain(&self) -> String {
+        render_porcelain(&self.to_presentation())
+    }
+}
+
+
 
 impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {
@@ -233,7 +315,7 @@ impl ToPresentation for StaircaseMetadata {
         ])
     }
 }
-impl_formatting!(StaircaseMetadata);
+impl UsePresentation for StaircaseMetadata {}
 
 impl ToPresentation for StaircaseStatus {
     fn to_presentation(&self) -> Presentation {
@@ -311,66 +393,9 @@ impl ToPresentation for StaircaseStatus {
         }
 
         if let Some(ref draft) = self.worktree_draft {
-            let mut draft_children = vec![];
-            if draft.is_attachment_stale {
-                draft_children.push(Presentation::Field {
-                    label: "attachment".to_string(),
-                    value: "stale".to_string(),
-                });
-            } else if let Some(ref att) = draft.attachment {
-                let attached_to = format!(
-                    "{} {}",
-                    att.staircase_name.as_deref().unwrap_or("unnamed"),
-                    att.step_name.as_deref().unwrap_or("")
-                );
-                draft_children.push(Presentation::Field {
-                    label: "attached to".to_string(),
-                    value: attached_to.trim().to_string(),
-                });
-                let intent_str = match &att.intent {
-                    crate::model::DraftIntent::ExtendStep => "extend-step",
-                    crate::model::DraftIntent::NewStep => "new-step",
-                    crate::model::DraftIntent::Unassigned => "unassigned",
-                    crate::model::DraftIntent::RewriteStep(_) => "rewrite-step",
-                };
-                draft_children.push(Presentation::Field {
-                    label: "intent".to_string(),
-                    value: intent_str.to_string(),
-                });
-            }
-            let basis_short = if draft.basis.len() >= 7 {
-                &draft.basis[..7]
-            } else {
-                &draft.basis
-            };
-            draft_children.push(Presentation::Field {
-                label: "basis".to_string(),
-                value: basis_short.to_string(),
-            });
-            draft_children.push(Presentation::Field {
-                label: "staged".to_string(),
-                value: format!("{} paths", draft.staged_paths.len()),
-            });
-            draft_children.push(Presentation::Field {
-                label: "unstaged".to_string(),
-                value: format!("{} paths", draft.unstaged_paths.len()),
-            });
-            draft_children.push(Presentation::Field {
-                label: "untracked".to_string(),
-                value: format!("{} paths", draft.untracked_paths.len()),
-            });
-            draft_children.push(Presentation::Field {
-                label: "conflicts".to_string(),
-                value: if draft.conflicted_paths.is_empty() {
-                    "none".to_string()
-                } else {
-                    format!("{} paths", draft.conflicted_paths.len())
-                },
-            });
-
             children.push(Presentation::Section {
                 title: "current worktree draft:".to_string(),
-                children: draft_children,
+                children: get_draft_fields(draft),
             });
         }
 
@@ -397,7 +422,7 @@ impl ToPresentation for StaircaseStatus {
         ])
     }
 }
-impl_formatting!(StaircaseStatus);
+impl UsePresentation for StaircaseStatus {}
 
 impl ToPresentation for StaircaseFamily {
     fn to_presentation(&self) -> Presentation {
@@ -458,7 +483,7 @@ impl ToPresentation for StaircaseFamily {
         ])
     }
 }
-impl_formatting!(StaircaseFamily);
+impl UsePresentation for StaircaseFamily {}
 
 impl ToPresentation for Discovery {
     fn to_presentation(&self) -> Presentation {
@@ -468,7 +493,7 @@ impl ToPresentation for Discovery {
         }
     }
 }
-impl_formatting!(Discovery);
+impl UsePresentation for Discovery {}
 
 impl ToPresentation for VerificationResult {
     fn to_presentation(&self) -> Presentation {
@@ -504,7 +529,7 @@ impl ToPresentation for VerificationResult {
         ])
     }
 }
-impl_formatting!(VerificationResult);
+impl UsePresentation for VerificationResult {}
 
 impl ToPresentation for ResolvedStaircase {
     fn to_presentation(&self) -> Presentation {
@@ -533,7 +558,7 @@ impl ToPresentation for ResolvedStaircase {
         }
     }
 }
-impl_formatting!(ResolvedStaircase);
+impl UsePresentation for ResolvedStaircase {}
 
 #[derive(Serialize)]
 pub struct Success {
@@ -553,7 +578,7 @@ impl ToPresentation for Success {
         Presentation::Plain(self.message.clone())
     }
 }
-impl_formatting!(Success);
+impl UsePresentation for Success {}
 
 #[derive(Serialize)]
 #[serde(transparent)]
@@ -583,7 +608,7 @@ impl ToPresentation for Summary<StaircaseStatus> {
         ])
     }
 }
-impl_formatting!(Summary<StaircaseStatus>);
+impl UsePresentation for Summary<StaircaseStatus> {}
 
 impl ToPresentation for Summary<StaircaseFamily> {
     fn to_presentation(&self) -> Presentation {
@@ -604,7 +629,7 @@ impl ToPresentation for Summary<StaircaseFamily> {
         ])
     }
 }
-impl_formatting!(Summary<StaircaseFamily>);
+impl UsePresentation for Summary<StaircaseFamily> {}
 
 #[derive(Serialize)]
 #[serde(transparent)]
@@ -617,7 +642,7 @@ impl ToPresentation for ReorderResult {
         Presentation::Plain("Reordered staircase.".to_string())
     }
 }
-impl_formatting!(ReorderResult);
+impl UsePresentation for ReorderResult {}
 
 #[derive(Serialize)]
 #[serde(transparent)]
@@ -652,7 +677,7 @@ impl ToPresentation for StepsList {
         ])
     }
 }
-impl_formatting!(StepsList);
+impl UsePresentation for StepsList {}
 
 #[derive(Serialize)]
 pub struct StaircaseCommits {
@@ -705,7 +730,7 @@ impl ToPresentation for StaircaseCommits {
         Presentation::List(children)
     }
 }
-impl_formatting!(StaircaseCommits);
+impl UsePresentation for StaircaseCommits {}
 
 #[derive(Serialize)]
 #[serde(transparent)]
@@ -716,7 +741,7 @@ impl ToPresentation for PlainOutput {
         Presentation::Plain(self.0.clone())
     }
 }
-impl_formatting!(PlainOutput);
+impl UsePresentation for PlainOutput {}
 
 #[derive(Serialize)]
 #[serde(transparent)]
@@ -739,71 +764,14 @@ impl ToPresentation for LogOutput {
         ])
     }
 }
-impl_formatting!(LogOutput);
+impl UsePresentation for LogOutput {}
 
-impl ToPresentation for crate::model::WorktreeDraft {
+impl ToPresentation for WorktreeDraft {
     fn to_presentation(&self) -> Presentation {
-        let mut children = vec![];
-        if self.is_attachment_stale {
-            children.push(Presentation::Field {
-                label: "attachment".to_string(),
-                value: "stale".to_string(),
-            });
-        } else if let Some(ref att) = self.attachment {
-            let attached_to = format!(
-                "{} {}",
-                att.staircase_name.as_deref().unwrap_or("unnamed"),
-                att.step_name.as_deref().unwrap_or("")
-            );
-            children.push(Presentation::Field {
-                label: "attached to".to_string(),
-                value: attached_to.trim().to_string(),
-            });
-            let intent_str = match &att.intent {
-                crate::model::DraftIntent::ExtendStep => "extend-step",
-                crate::model::DraftIntent::NewStep => "new-step",
-                crate::model::DraftIntent::Unassigned => "unassigned",
-                crate::model::DraftIntent::RewriteStep(_) => "rewrite-step",
-            };
-            children.push(Presentation::Field {
-                label: "intent".to_string(),
-                value: intent_str.to_string(),
-            });
-        }
-        let basis_short = if self.basis.len() >= 7 {
-            &self.basis[..7]
-        } else {
-            &self.basis
-        };
-        children.push(Presentation::Field {
-            label: "basis".to_string(),
-            value: basis_short.to_string(),
-        });
-        children.push(Presentation::Field {
-            label: "staged".to_string(),
-            value: format!("{} paths", self.staged_paths.len()),
-        });
-        children.push(Presentation::Field {
-            label: "unstaged".to_string(),
-            value: format!("{} paths", self.unstaged_paths.len()),
-        });
-        children.push(Presentation::Field {
-            label: "untracked".to_string(),
-            value: format!("{} paths", self.untracked_paths.len()),
-        });
-        children.push(Presentation::Field {
-            label: "conflicts".to_string(),
-            value: if self.conflicted_paths.is_empty() {
-                "none".to_string()
-            } else {
-                format!("{} paths", self.conflicted_paths.len())
-            },
-        });
-
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: "current worktree draft:".to_string(),
-                children,
+                children: get_draft_fields(self),
             })),
             Presentation::Porcelain(Box::new(Presentation::Record(vec![
                 "draft".to_string(),
@@ -816,7 +784,7 @@ impl ToPresentation for crate::model::WorktreeDraft {
         ])
     }
 }
-impl_formatting!(crate::model::WorktreeDraft);
+impl UsePresentation for WorktreeDraft {}
 
 impl ToPresentation for crate::model::DraftAttachment {
     fn to_presentation(&self) -> Presentation {
@@ -826,10 +794,10 @@ impl ToPresentation for crate::model::DraftAttachment {
             self.step_name.as_deref().unwrap_or("")
         );
         let intent_str = match &self.intent {
-            crate::model::DraftIntent::ExtendStep => "extend-step",
-            crate::model::DraftIntent::NewStep => "new-step",
-            crate::model::DraftIntent::Unassigned => "unassigned",
-            crate::model::DraftIntent::RewriteStep(_) => "rewrite-step",
+            DraftIntent::ExtendStep => "extend-step",
+            DraftIntent::NewStep => "new-step",
+            DraftIntent::Unassigned => "unassigned",
+            DraftIntent::RewriteStep(_) => "rewrite-step",
         };
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Plain(format!(
@@ -852,7 +820,7 @@ impl ToPresentation for crate::model::DraftAttachment {
         ])
     }
 }
-impl_formatting!(crate::model::DraftAttachment);
+impl UsePresentation for crate::model::DraftAttachment {}
 
 impl ToPresentation for crate::model::DraftSnapshot {
     fn to_presentation(&self) -> Presentation {
@@ -874,7 +842,7 @@ impl ToPresentation for crate::model::DraftSnapshot {
         ])
     }
 }
-impl_formatting!(crate::model::DraftSnapshot);
+impl UsePresentation for crate::model::DraftSnapshot {}
 
 impl ToPresentation for crate::core::draft::MaterializeResult {
     fn to_presentation(&self) -> Presentation {
@@ -898,7 +866,7 @@ impl ToPresentation for crate::core::draft::MaterializeResult {
         ])
     }
 }
-impl_formatting!(crate::core::draft::MaterializeResult);
+impl UsePresentation for crate::core::draft::MaterializeResult {}
 
 impl<T: ToHuman> ToHuman for Vec<T> {
     fn to_human(&self) -> String {

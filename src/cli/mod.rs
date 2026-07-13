@@ -35,7 +35,7 @@ pub mod workspace;
 
 pub use formatting::{
     CommitInfo, LogOutput, PlainOutput, ReorderResult, StaircaseCommits, StepCommits, StepsList,
-    Success, Summary, ToHuman, ToPorcelain,
+    Success, Summary, ToHuman, ToPorcelain, ToPresentation, Presentation, UsePresentation,
 };
 
 #[derive(Clone, Copy, Debug)]

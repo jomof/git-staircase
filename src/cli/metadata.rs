@@ -1,4 +1,4 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation, UsePresentation};
 use crate::core::{self, ResolvedSelector};
 use crate::git::GitRepo;
 use crate::model::{StaircaseLink, StaircaseUserMetadata, StepMetadata};
@@ -111,39 +111,56 @@ pub struct UserMetadataOutput {
     pub metadata: StaircaseUserMetadata,
 }
 
-impl ToHuman for UserMetadataOutput {
-    fn to_human(&self) -> String {
-        let mut out = String::new();
-        out.push_str(&format!("Staircase: {}\n", self.name));
+impl ToPresentation for UserMetadataOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
         if let Some(ref title) = self.metadata.title {
-            out.push_str(&format!("Title: {}\n", title));
+            h_children.push(Presentation::Field {
+                label: "Title".to_string(),
+                value: title.clone(),
+            });
         }
         if let Some(ref desc) = self.metadata.description {
-            out.push_str(&format!("Description:\n{}\n", desc));
+            h_children.push(Presentation::Section {
+                title: "Description:".to_string(),
+                children: vec![Presentation::Plain(desc.clone())],
+            });
         }
         if !self.metadata.labels.is_empty() {
-            out.push_str(&format!("Labels: {}\n", self.metadata.labels.join(", ")));
+            h_children.push(Presentation::Field {
+                label: "Labels".to_string(),
+                value: self.metadata.labels.join(", "),
+            });
         }
         if !self.metadata.links.is_empty() {
-            out.push_str("Links:\n");
+            let mut links_children = vec![];
             for link in &self.metadata.links {
-                out.push_str(&format!(
-                    "  [{}] {} ({})\n",
+                links_children.push(Presentation::Plain(format!(
+                    "[{}] {} ({})",
                     link.relationship,
                     link.url,
                     link.label.as_deref().unwrap_or("")
-                ));
+                )));
             }
+            h_children.push(Presentation::Section {
+                title: "Links:".to_string(),
+                children: links_children,
+            });
         }
-        out
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Staircase: {}", self.name),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Plain(
+                serde_json::to_string_pretty(&self.metadata).unwrap_or_default()
+            ))),
+        ])
     }
 }
 
-impl ToPorcelain for UserMetadataOutput {
-    fn to_porcelain(&self) -> String {
-        serde_json::to_string_pretty(&self.metadata).unwrap_or_default()
-    }
-}
+impl UsePresentation for UserMetadataOutput {}
 
 #[derive(Serialize, Debug, Clone)]
 pub struct StepMetadataOutput {
@@ -152,31 +169,41 @@ pub struct StepMetadataOutput {
     pub metadata: StepMetadata,
 }
 
-impl ToHuman for StepMetadataOutput {
-    fn to_human(&self) -> String {
-        let mut out = String::new();
-        out.push_str(&format!(
-            "Staircase: {}, Step: {}\n",
-            self.name, self.step_key
-        ));
+impl ToPresentation for StepMetadataOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
         if let Some(ref title) = self.metadata.title {
-            out.push_str(&format!("Title: {}\n", title));
+            h_children.push(Presentation::Field {
+                label: "Title".to_string(),
+                value: title.clone(),
+            });
         }
         if let Some(ref desc) = self.metadata.description {
-            out.push_str(&format!("Description: {}\n", desc));
+            h_children.push(Presentation::Field {
+                label: "Description".to_string(),
+                value: desc.clone(),
+            });
         }
         if !self.metadata.labels.is_empty() {
-            out.push_str(&format!("Labels: {}\n", self.metadata.labels.join(", ")));
+            h_children.push(Presentation::Field {
+                label: "Labels".to_string(),
+                value: self.metadata.labels.join(", "),
+            });
         }
-        out
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Staircase: {}, Step: {}", self.name, self.step_key),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Plain(
+                serde_json::to_string_pretty(&self.metadata).unwrap_or_default()
+            ))),
+        ])
     }
 }
 
-impl ToPorcelain for StepMetadataOutput {
-    fn to_porcelain(&self) -> String {
-        serde_json::to_string_pretty(&self.metadata).unwrap_or_default()
-    }
-}
+impl UsePresentation for StepMetadataOutput {}
 
 impl Command for MetadataCmd {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
