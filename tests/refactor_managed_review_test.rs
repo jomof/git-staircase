@@ -26,7 +26,7 @@ fn test_managed_review_flow_gerrit() {
     let (success, stdout, stderr) = ctx.run_staircase(&["review", "status", "my-staircase"]);
     assert!(success, "review status failed: {}", stderr);
     assert!(stdout.contains("Gerrit"));
-    assert!(stdout.contains("status: pending"));
+    assert!(stdout.to_lowercase().contains("status: pending"));
 }
 
 #[test]

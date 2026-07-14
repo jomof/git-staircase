@@ -68,7 +68,17 @@ impl<'a> Restacker<'a> {
                 let mut current_base = new_parent.to_string();
                 if let Ok(commits) = self.repo.commits_between(old_parent, actual_oid) {
                     for c in commits {
-                        let tree = self.repo.get_tree_id(&c)?;
+                        let tree = match self.repo.run(&[
+                            "merge-tree",
+                            "--write-tree",
+                            "--merge-base",
+                            old_parent,
+                            &current_base,
+                            &c,
+                        ]) {
+                            Ok(output) => output.lines().next().unwrap_or("").trim().to_string(),
+                            Err(_) => self.repo.get_tree_id(&c)?,
+                        };
                         let metadata = self.repo.run(&[
                             "log",
                             "-1",
