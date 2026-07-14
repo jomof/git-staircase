@@ -684,4 +684,119 @@ impl GitRepo {
         self.memoizer.clear();
         Ok(())
     }
+    pub fn rev_list(&self, args: &[&str]) -> Result<Vec<String>> {
+        let stdout = self.command().arg("rev-list").args(args).run()?;
+        Ok(stdout.lines().map(|s| s.to_string()).collect())
+    }
+
+    pub fn get_parents(&self, commit: &str) -> Result<Vec<String>> {
+        let stdout = self
+            .command()
+            .args(&["show", "-s", "--format=%P", commit])
+            .run()?;
+        Ok(stdout.split_whitespace().map(|s| s.to_string()).collect())
+    }
+
+    pub fn push(&self, remote: &str, refspecs: &[&str], atomic: bool, dry_run: bool) -> Result<()> {
+        let mut cmd = self.command().arg("push");
+        if atomic {
+            cmd = cmd.arg("--atomic");
+        }
+        if dry_run {
+            cmd = cmd.arg("--dry-run");
+        }
+        cmd.arg(remote).args(refspecs).run()?;
+        Ok(())
+    }
+
+    pub fn fetch(&self, remote: &str, refspecs: &[&str], dry_run: bool) -> Result<()> {
+        let mut cmd = self.command().arg("fetch");
+        if dry_run {
+            cmd = cmd.arg("--dry-run");
+        }
+        cmd.arg(remote).args(refspecs).run()?;
+        Ok(())
+    }
+
+    pub fn check_ref_format(&self, name: &str, branch: bool) -> Result<()> {
+        let mut cmd = self.command().arg("check-ref-format");
+        if branch {
+            cmd = cmd.arg("--branch");
+        }
+        cmd.arg(name).run()?;
+        Ok(())
+    }
+
+    pub fn get_object_type(&self, oid: &str) -> Result<String> {
+        Ok(self.run(&["cat-file", "-t", oid])?.trim().to_string())
+    }
+
+    pub fn cat_file(&self, oid: &str) -> Result<String> {
+        self.run(&["cat-file", "-p", oid])
+    }
+
+    pub fn ls_tree(&self, oid: &str) -> Result<Vec<TreeEntry>> {
+        let output = self.run(&["ls-tree", oid])?;
+        let mut entries = Vec::new();
+        for line in output.lines() {
+            let (metadata, name) = line.split_once("\t").ok_or_else(|| {
+                StaircaseError::Other(format!("invalid ls-tree entry in {}", oid))
+            })?;
+            let fields: Vec<_> = metadata.split_whitespace().collect();
+            if fields.len() != 3 {
+                return Err(StaircaseError::Other(format!(
+                    "invalid ls-tree metadata in {}",
+                    oid
+                )));
+            }
+            entries.push(TreeEntry {
+                mode: fields[0].to_string(),
+                kind: fields[1].to_string(),
+                oid: fields[2].to_string(),
+                name: name.to_string(),
+            });
+        }
+        Ok(entries)
+    }
+
+    pub fn for_each_ref(&self, pattern: &str, format: &str, points_at: Option<&str>) -> Result<Vec<String>> {
+        let mut cmd = self.command();
+        cmd = cmd.arg("for-each-ref").arg(format!("--format={}", format));
+        if let Some(oid) = points_at {
+            cmd = cmd.arg(format!("--points-at={}", oid));
+        }
+        let stdout = cmd.arg(pattern).run()?;
+        Ok(stdout.lines().map(|s| s.to_string()).collect())
+    }
+
+    pub fn has_merges(&self, base: &str, tip: &str) -> Result<Option<String>> {
+        let output = self
+            .command()
+            .args(&["rev-list", "--min-parents=2", &format!("{}..{}", base, tip)])
+            .run()?;
+        Ok(output.lines().next().map(|s| s.to_string()))
+    }
+
+    pub fn commit_tree(&self, tree_oid: &str, parents: &[&str], message: &str) -> Result<String> {
+        let mut cmd = self.command().arg("commit-tree").arg(tree_oid).arg("-m").arg(message);
+        for parent in parents {
+            cmd = cmd.arg("-p").arg(*parent);
+        }
+        cmd.run()
+    }
+
+    pub fn update_ref(&self, refname: &str, new_oid: &str, old_oid: Option<&str>) -> Result<()> {
+        let mut cmd = self.command().arg("update-ref").arg(refname).arg(new_oid);
+        if let Some(old) = old_oid {
+            cmd = cmd.arg(old);
+        }
+        cmd.run()?;
+        self.memoizer.clear();
+        Ok(())
+    }
+
+    pub fn read_tree_file(&self, rev: &str, path: &str) -> Result<String> {
+        self.cat_file(&format!("{}:{}", rev, path))
+    }
+
 }

@@ -89,13 +89,8 @@ impl Command for Push {
             refspecs.insert(format!("{}*:{}*", ARCHIVE_PREFIX, ARCHIVE_PREFIX));
         }
         let refspecs = refspecs.into_iter().collect::<Vec<_>>();
-        let mut args = vec!["push", "--atomic"];
-        if self.dry_run {
-            args.push("--dry-run");
-        }
-        args.push(remote);
-        args.extend(refspecs.iter().map(String::as_str));
-        repo.run(&args)?;
+        let refspecs_refs: Vec<&str> = refspecs.iter().map(|s| s.as_str()).collect();
+        repo.push(remote, &refspecs_refs, true, self.dry_run)?;
         Ok(Box::new(TransportResult {
             schema: "git-staircase/transport-result".into(),
             version: 1,
@@ -111,7 +106,7 @@ impl Command for Push {
 impl Command for Fetch {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let remote = self.remote.as_deref().unwrap_or("origin");
-        repo.run(&["check-ref-format", "--branch", remote])?;
+        repo.check_ref_format(remote, true)?;
         let mut refspecs = vec![
             format!("+{}*:refs/remotes/{}/staircases/*", PUBLIC_PREFIX, remote),
             format!(
@@ -125,13 +120,8 @@ impl Command for Fetch {
                 ARCHIVE_PREFIX, remote
             ));
         }
-        let mut args = vec!["fetch"];
-        if self.dry_run {
-            args.push("--dry-run");
-        }
-        args.push(remote);
-        args.extend(refspecs.iter().map(String::as_str));
-        repo.run(&args)?;
+        let refspecs_refs: Vec<&str> = refspecs.iter().map(|s| s.as_str()).collect();
+        repo.fetch(remote, &refspecs_refs, self.dry_run)?;
         Ok(Box::new(TransportResult {
             schema: "git-staircase/transport-result".into(),
             version: 1,

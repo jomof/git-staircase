@@ -650,11 +650,7 @@ fn add_branch_permutation(
 }
 
 fn resolve_linear_append(repo: &GitRepo, old_top: &str, range: &str) -> Result<Vec<String>> {
-    let commits = repo
-        .run(&["rev-list", "--reverse", range])?
-        .lines()
-        .map(str::to_string)
-        .collect::<Vec<_>>();
+    let commits = repo.rev_list(&["--reverse", range])?;
     if commits.is_empty() {
         return Err(StaircaseError::InvalidStructure(
             "append range contains no commits".into(),
@@ -662,11 +658,7 @@ fn resolve_linear_append(repo: &GitRepo, old_top: &str, range: &str) -> Result<V
     }
     let mut predecessor = repo.resolve_commit(old_top)?;
     for commit in &commits {
-        let parents = repo
-            .run(&["show", "-s", "--format=%P", commit])?
-            .split_whitespace()
-            .map(str::to_string)
-            .collect::<Vec<_>>();
+        let parents = repo.get_parents(commit)?;
         if parents.len() != 1 {
             return Err(StaircaseError::UnsupportedTopology {
                 operation: "append".into(),
@@ -810,7 +802,7 @@ fn canonical_override_value(repo: &GitRepo, kind: &str, value: &str) -> Result<S
                     "discovery ref overrides require a full refname".into(),
                 ));
             }
-            repo.run(&["check-ref-format", value])?;
+            repo.check_ref_format(value, false)?;
             if kind == "include-ref" {
                 repo.resolve_commit(value)?;
             }
@@ -818,7 +810,7 @@ fn canonical_override_value(repo: &GitRepo, kind: &str, value: &str) -> Result<S
         }
         "add-cut" => repo.resolve_commit(value),
         "ignore-cut" if value.starts_with("refs/") => {
-            repo.run(&["check-ref-format", value])?;
+            repo.check_ref_format(value, false)?;
             Ok(value.into())
         }
         "ignore-cut" => repo.resolve_commit(value),
@@ -830,12 +822,12 @@ fn canonical_override_value(repo: &GitRepo, kind: &str, value: &str) -> Result<S
 }
 
 fn validate_local_branch(repo: &GitRepo, branch: &str) -> Result<()> {
-    repo.run(&["check-ref-format", "--branch", branch])?;
+    repo.check_ref_format(branch, true)?;
     Ok(())
 }
 
 fn validate_staircase_name(repo: &GitRepo, name: &str) -> Result<()> {
-    repo.run(&["check-ref-format", &StaircaseRefs::public(name)])?;
+    repo.check_ref_format(&StaircaseRefs::public(name), false)?;
     Ok(())
 }
 

@@ -305,38 +305,33 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
     let target_oid = repo
         .resolve_ref_opt(target)?
         .unwrap_or_else(|| target.to_string());
-    let obj_type = repo.run(&["cat-file", "-t", &target_oid])?;
-    if obj_type.trim() != "tree" {
+    let obj_type = repo.get_object_type(&target_oid)?;
+    if obj_type != "tree" {
         return Err(StaircaseError::Other(format!(
             "record {} must be a tree, found {}",
             target_oid,
-            obj_type.trim()
+            obj_type
         )));
     }
 
-    let ls_output = repo.run(&["ls-tree", &target_oid])?;
     let mut entries = std::collections::BTreeMap::new();
-    for line in ls_output.lines() {
-        let (metadata, name) = line.split_once('\t').ok_or_else(|| {
-            StaircaseError::Other(format!("invalid record tree entry in {}", target_oid))
-        })?;
-        let fields: Vec<_> = metadata.split_whitespace().collect();
-        if fields.len() != 3 || fields[0] != "100644" || fields[1] != "blob" {
+    for entry in repo.ls_tree(&target_oid)? {
+        if entry.mode != "100644" || entry.kind != "blob" {
             return Err(StaircaseError::Other(format!(
-                "record entry '{}' must be a regular blob",
-                name
+                "record entry {} must be a regular blob",
+                entry.name
             )));
         }
         if !matches!(
-            name,
+            entry.name.as_str(),
             "structure" | "metadata" | "lifecycle" | "archive-manifest"
         ) {
             return Err(StaircaseError::Other(format!(
-                "record tree {} contains unknown entry '{}'",
-                target_oid, name
+                "record tree {} contains unknown entry {}",
+                target_oid, entry.name
             )));
         }
-        entries.insert(name.to_string(), fields[2].to_string());
+        entries.insert(entry.name, entry.oid);
     }
 
     let structure_oid = required_entry(&entries, "structure", &target_oid)?;
@@ -344,7 +339,7 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
     let lifecycle_oid = required_entry(&entries, "lifecycle", &target_oid)?;
     let manifest_oid = entries.get("archive-manifest").cloned();
 
-    let structure = repo.run(&["cat-file", "-p", &structure_oid])?;
+    let structure = repo.cat_file(&structure_oid)?;
     let (mut metadata, structural_extensions) = parse_structure(&structure)?;
     let mut user_metadata: StaircaseUserMetadata =
         read_versioned_json(repo, &metadata_oid, "git-staircase-metadata 1")?;
@@ -402,7 +397,7 @@ fn read_versioned_json<T: serde::de::DeserializeOwned>(
     oid: &str,
     expected_header: &str,
 ) -> Result<T> {
-    let content = repo.run(&["cat-file", "-p", oid])?;
+    let content = repo.cat_file(oid)?;
     let (header, json) = content
         .split_once('\n')
         .ok_or_else(|| StaircaseError::Other(format!("versioned blob {} has no header", oid)))?;
@@ -568,9 +563,8 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
         meta.name = id_or_name.to_string();
     } else if meta.name.is_empty() {
         let oid = repo.resolve_ref(&ref_name)?;
-        if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", &oid, PUBLIC_PREFIX]) {
-            if let Some(line) = stdout.lines().next() {
-                let refname = line.split_whitespace().last().unwrap_or("");
+        if let Ok(lines) = repo.for_each_ref(PUBLIC_PREFIX, "%(refname)", Some(&oid)) {
+            if let Some(refname) = lines.first() {
                 if let Some(name) = refname.strip_prefix(PUBLIC_PREFIX) {
                     meta.name = name.to_string();
                 }
@@ -806,8 +800,8 @@ pub fn list_staircases_filtered(
     let mut seen_ids = std::collections::HashSet::new();
 
     if include_active {
-        let stdout = repo.run(&["for-each-ref", "--format=%(refname)", PUBLIC_PREFIX])?;
-        for line in stdout.lines() {
+        let lines = repo.for_each_ref(PUBLIC_PREFIX, "%(refname)", None)?;
+        for line in lines {
             let refname = line.trim();
             let name = refname.strip_prefix(PUBLIC_PREFIX).unwrap_or_default();
             if name.starts_with("by-revision/") || name.ends_with("/verification") {
@@ -819,8 +813,8 @@ pub fn list_staircases_filtered(
             staircases.push(record.metadata);
         }
 
-        let stdout = repo.run(&["for-each-ref", "--format=%(refname)", STATE_PREFIX])?;
-        for line in stdout.lines() {
+        let lines = repo.for_each_ref(STATE_PREFIX, "%(refname)", None)?;
+        for line in lines {
             let refname = line.trim();
             if refname.ends_with("/record") {
                 let parts: Vec<&str> = refname
@@ -838,8 +832,8 @@ pub fn list_staircases_filtered(
     }
 
     if include_archived {
-        let stdout = repo.run(&["for-each-ref", "--format=%(refname)", ARCHIVE_PREFIX])?;
-        for line in stdout.lines() {
+        let lines = repo.for_each_ref(ARCHIVE_PREFIX, "%(refname)", None)?;
+        for line in lines {
             let refname = line.trim();
             if refname.ends_with("/record") {
                 let parts: Vec<&str> = refname
@@ -868,8 +862,8 @@ pub fn delete_staircase_refs(repo: &GitRepo, id: &str, name: &str) -> Result<()>
         format!("{}{}/", STATE_PREFIX, id),
         format!("{}{}/", ARCHIVE_PREFIX, id),
     ] {
-        let stdout = repo.run(&["for-each-ref", "--format=%(refname) %(objectname)", &prefix])?;
-        for line in stdout.lines() {
+        let lines = repo.for_each_ref(&prefix, "%(refname) %(objectname)", None)?;
+        for line in lines {
             if let Some((reference, oid)) = line.split_once(' ') {
                 plan.update(reference, Some(oid.into()), None);
             }
@@ -893,33 +887,23 @@ fn commit_json_data<T: serde::Serialize>(
     let entries = [TreeEntry::blob(&blob_oid, filename)];
     let tree_oid = repo.write_tree(&entries)?;
 
-    let mut commit_args = vec!["commit-tree", &tree_oid, "-m", commit_msg];
-
     let parent_oid = repo.resolve_commit_opt(ref_name).unwrap_or(None);
-    if let Some(ref parent) = parent_oid {
-        commit_args.push("-p");
-        commit_args.push(parent);
-    }
+    let parents = parent_oid.as_deref().map(|p| vec![p]).unwrap_or_default();
+    let commit_oid = repo.commit_tree(&tree_oid, &parents, commit_msg)?;
 
-    let commit_oid = repo.run(&commit_args)?;
-    let commit_oid = commit_oid.trim();
-
-    repo.run(&["update-ref", ref_name, commit_oid])?;
-
-    Ok(commit_oid.to_string())
+    repo.update_ref(ref_name, &commit_oid, None)?;
+    Ok(commit_oid)
 }
 
 pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMetadata> {
     let record = read_record(repo, oid)?;
     let mut meta = record.metadata;
 
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--points-at", oid, PUBLIC_PREFIX]) {
-        if let Some(name) = stdout
-            .lines()
-            .next()
-            .and_then(|line| line.split_whitespace().last()?.strip_prefix(PUBLIC_PREFIX))
-        {
-            meta.name = name.to_string();
+    if let Ok(lines) = repo.for_each_ref(PUBLIC_PREFIX, "%(refname)", Some(oid)) {
+        if let Some(refname) = lines.first() {
+            if let Some(name) = refname.strip_prefix(PUBLIC_PREFIX) {
+                meta.name = name.to_string();
+            }
         }
     }
     if meta.name.is_empty() {
@@ -943,7 +927,7 @@ pub fn read_verification(
         return Ok(None);
     }
 
-    let content = repo.run(&["cat-file", "-p", &format!("{}:verification.json", ref_name)])?;
+    let content = repo.read_tree_file(&ref_name, "verification.json")?;
     let results: Vec<VerificationResult> = serde_json::from_str(&content)?;
     Ok(Some(results))
 }

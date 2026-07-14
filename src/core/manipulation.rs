@@ -659,12 +659,8 @@ fn ensure_rewrite_supported(
 ) -> Result<()> {
     let mut predecessor = recorded_target(repo, metadata)?;
     for step in &metadata.steps {
-        let merges = repo.run(&[
-            "rev-list",
-            "--min-parents=2",
-            &format!("{}..{}", predecessor, step.cut),
-        ])?;
-        if let Some(commit) = merges.lines().next() {
+        let merges = repo.has_merges(&predecessor, &step.cut)?;
+        if let Some(commit) = merges {
             return Err(StaircaseError::UnsupportedTopology {
                 operation: operation.into(),
                 reason: format!(
@@ -748,9 +744,9 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
         format!("{}{}/", STATE_PREFIX, metadata.id),
         format!("{}{}/", ARCHIVE_PREFIX, metadata.id),
     ] {
-        let output = repo.run(&["for-each-ref", "--format=%(refname) %(objectname)", &prefix])?;
-        for line in output.lines() {
-            if let Some((reference, oid)) = line.split_once(' ') {
+        let lines = repo.for_each_ref(&prefix, "%(refname) %(objectname)", None)?;
+        for line in lines {
+            if let Some((reference, oid)) = line.split_once(" ") {
                 plan.update(reference, Some(oid.into()), None);
             }
         }
