@@ -441,12 +441,9 @@ pub struct GerritReviewAssociation {
 }
 
 impl ProviderAssociation for GerritReviewAssociation {
-    fn local_oid(&self) -> &str {
-        &self.local_commit_oid
-    }
-    fn is_retired(&self) -> bool {
-        self.retired
-    }
+    fn local_oid(&self) -> &str { &self.local_commit_oid }
+    fn is_retired(&self) -> bool { self.retired }
+    fn synchronization(&self) -> crate::workspace::review_provider::SynchronizationState { self.synchronization }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -459,7 +456,6 @@ pub struct GerritProviderState {
     pub verification: Vec<GerritVerificationEvidence>,
     pub reconciliation_required: bool,
 }
-
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GerritRemoteChange {
     pub change_id: String,
@@ -1299,18 +1295,20 @@ impl ReviewProvider for GerritProvider {
         record: Option<&WorkspaceRecord>,
     ) -> Result<Option<Box<dyn ReviewProviderInstance>>> {
         if let Some(route) = probe_gerrit_route(repo, record)? {
-            Ok(Some(Box::new(GerritInstance { route })))
+            Ok(Some(Box::new(crate::workspace::stacked_provider::StackedReviewInstance { implementation: GerritStackedImplementation, route })))
         } else {
             Ok(None)
         }
     }
 }
 
-pub struct GerritInstance {
+pub(crate) struct GerritInstance {
     pub route: GerritRoute,
 }
 
-impl ReviewProviderInstance for GerritInstance {
+#[allow(dead_code)]
+impl GerritInstance {
+    pub(crate)
     fn show(
         &self,
         repo: &GitRepo,
@@ -1855,5 +1853,91 @@ impl ReviewOperationPlan for GerritReviewOperationPlan {
     type Item = GerritPlanItem;
     fn items(&self) -> &[Self::Item] {
         &self.items
+    }
+}
+
+impl crate::workspace::stacked_provider::StackedReviewItem for GerritPlannedCommit {
+    fn subject_id(&self) -> &str { &self.oid }
+    fn local_oid(&self) -> &str { &self.oid }
+    fn title(&self) -> &str { &self.subject }
+    fn detail(&self) -> String { self.change_id_status.clone() }
+}
+
+impl crate::workspace::stacked_provider::StackedReviewPlan for GerritUploadPlan {
+    type Item = GerritPlannedCommit;
+    fn items(&self) -> &[Self::Item] { &self.commits }
+    fn mapping_policy(&self) -> &str { &self.mapping_policy }
+    fn warnings(&self) -> &[String] { &self.warnings }
+}
+
+impl crate::workspace::stacked_provider::StackedReviewAssociation for GerritReviewAssociation {
+    fn subject_id(&self) -> &str { &self.subject_id }
+    fn local_oid(&self) -> &str { &self.local_commit_oid }
+    fn synchronization(&self) -> crate::workspace::review_provider::SynchronizationState { self.synchronization }
+    fn is_retired(&self) -> bool { self.retired }
+}
+
+impl crate::workspace::stacked_provider::StackedReviewState for GerritProviderState {
+    type Association = GerritReviewAssociation;
+    fn associations(&self) -> &[Self::Association] { &self.associations }
+    fn reconciliation_required(&self) -> bool { self.reconciliation_required }
+}
+
+pub struct GerritStackedImplementation;
+
+impl crate::workspace::stacked_provider::StackedReviewImplementation for GerritStackedImplementation {
+    type State = GerritProviderState;
+    type Route = GerritRoute;
+    type Plan = GerritUploadPlan;
+    
+    fn provider_label(&self) -> &'static str { "Gerrit" }
+    fn extension_name(&self) -> &'static str { "git-staircase.gerrit" }
+    
+    fn create_plan(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], mapping: Option<&str>) -> Result<Self::Plan> {
+        create_gerrit_upload_plan(repo, route, oids, mapping)
+    }
+    
+    fn get_host(&self, route: &GerritRoute) -> String { route.server_id.clone() }
+    fn get_project(&self, route: &GerritRoute) -> String { route.project.clone() }
+    fn get_destination_branch(&self, route: &GerritRoute) -> String { route.destination_branch.clone() }
+    fn get_open_url(&self, route: &GerritRoute) -> String {
+        format!("https://{}/q/project:{}", route.server_id, route.project)
+    }
+    
+    fn render_association_detail(&self, association: &GerritReviewAssociation) -> String {
+        format!("Change-Id: {}", association.pending.change_id)
+    }
+    
+    fn render_state_details(&self, state: &GerritProviderState) -> HashMap<String, String> {
+        let mut counts = HashMap::<String, usize>::new();
+        for association in &state.associations {
+            *counts.entry(format!("{:?}", association.synchronization).to_ascii_lowercase()).or_default() += 1;
+        }
+        counts.into_iter().map(|(state, count)| (format!("sync.{}", state), count.to_string())).collect()
+    }
+    
+    fn upload(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], destination: Option<&str>, record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedReviewUpload> {
+        let instance = GerritInstance { route: route.clone() };
+        instance.upload(repo, oids, destination, record)
+    }
+    fn reconcile(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedReviewReconcile> {
+        let instance = GerritInstance { route: route.clone() };
+        instance.reconcile(repo, oids, record)
+    }
+    fn create(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], mapping: Option<&str>, record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
+        let instance = GerritInstance { route: route.clone() };
+        instance.create(repo, oids, mapping, record)
+    }
+    fn attach(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], review: &str, record: Option<&StaircaseRecord>, selected_index: Option<usize>) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
+        let instance = GerritInstance { route: route.clone() };
+        instance.attach(repo, oids, review, record, selected_index)
+    }
+    fn detach(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], review: &str, record: Option<&StaircaseRecord>, selected_index: Option<usize>) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
+        let instance = GerritInstance { route: route.clone() };
+        instance.detach(repo, oids, review, record, selected_index)
+    }
+    fn land(&self, repo: &GitRepo, route: &GerritRoute, oids: &[String], mode: &str, method: Option<&str>, record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedProviderLanding> {
+        let instance = GerritInstance { route: route.clone() };
+        instance.land(repo, oids, mode, method, record)
     }
 }

@@ -13,6 +13,7 @@ pub mod review_provider;
 #[cfg(test)]
 mod review_provider_test;
 pub mod storage;
+pub mod stacked_provider;
 
 pub use bootstrap::{BootstrapOptions, BootstrapResult, bootstrap};
 pub use doctor::{WorkspaceDoctorReport, doctor};

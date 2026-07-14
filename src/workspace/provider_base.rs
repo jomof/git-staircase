@@ -4,11 +4,10 @@ use crate::model::StaircaseRecord;
 use crate::workspace::review_provider::{
     OperationJournal, ProviderTransport, TransportRequest, TransportResponse,
     UnifiedProviderLanding, UnifiedProviderVerification, publish_provider_extension_cas,
+    SynchronizationState
 };
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-/// Standard copyright header would go here in a real PR.
 
 pub fn persist_provider_state<S: Serialize>(
     repo: &GitRepo,
@@ -22,6 +21,7 @@ pub fn persist_provider_state<S: Serialize>(
 pub trait ProviderAssociation {
     fn local_oid(&self) -> &str;
     fn is_retired(&self) -> bool;
+    fn synchronization(&self) -> SynchronizationState;
 }
 
 pub fn verify_provider_common<S, A, V>(
@@ -97,7 +97,7 @@ pub fn execute_and_journal<T: ProviderTransport>(
     }
 }
 
-pub fn status_from_record<S: for<'de> serde::Deserialize<'de>>(
+pub fn status_from_record<S: for<'de> Deserialize<'de>>(
     record: Option<&StaircaseRecord>,
     extension: &str,
 ) -> Result<Option<S>> {
