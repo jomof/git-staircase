@@ -6,7 +6,9 @@ use crate::workspace::model::{
 use std::collections::HashMap;
 use std::fs;
 use std::path::{Path, PathBuf};
-use std::process::{Command, Stdio};
+use std::process::{Child, Command, Output, Stdio};
+use std::thread;
+use std::time::{Duration, Instant};
 
 pub fn get_core_git_descriptor() -> ProviderDescriptor {
     ProviderDescriptor {
@@ -132,13 +134,39 @@ pub fn discover_installed_providers() -> Result<Vec<InstalledProvider>> {
     Ok(providers)
 }
 
+fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output> {
+    let start = Instant::now();
+    loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                return child
+                    .wait_with_output()
+                    .map_err(|e| StaircaseError::Other(e.to_string()));
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    return Err(StaircaseError::Other(format!(
+                        "Process timed out after {:?}",
+                        timeout
+                    )));
+                }
+                thread::sleep(Duration::from_millis(20));
+            }
+            Err(e) => return Err(StaircaseError::Other(e.to_string())),
+        }
+    }
+}
+
 pub fn query_provider_descriptor(exe: &Path) -> Result<ProviderDescriptor> {
-    let output = Command::new(exe)
+    let child = Command::new(exe)
         .arg("describe")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
-        .output()
+        .spawn()
         .map_err(|e| StaircaseError::Other(format!("Failed to run provider describe: {}", e)))?;
+
+    let output = wait_with_timeout(child, Duration::from_secs(1))?;
 
     if !output.status.success() {
         return Err(StaircaseError::Other(format!(
@@ -183,9 +211,7 @@ pub fn invoke_provider_probe_workspace(
         let _ = stdin.write_all(input_json.to_string().as_bytes());
     }
 
-    let output = child
-        .wait_with_output()
-        .map_err(|e| StaircaseError::Other(format!("Provider execution error: {}", e)))?;
+    let output = wait_with_timeout(child, Duration::from_secs(5))?;
 
     if !output.status.success() {
         return Ok(None);
