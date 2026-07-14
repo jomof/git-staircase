@@ -37,10 +37,8 @@ impl Command for Describe {
             );
 
             let temp_dir = env::temp_dir();
-            let temp_file = temp_dir.join(format!(
-                "STAIRCASE_DESC_{}.txt",
-                Uuid::new_v4().simple()
-            ));
+            let temp_file =
+                temp_dir.join(format!("STAIRCASE_DESC_{}.txt", Uuid::new_v4().simple()));
             fs::write(&temp_file, &init_content)?;
 
             let editor = env::var("GIT_EDITOR")
