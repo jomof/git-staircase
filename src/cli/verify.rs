@@ -71,7 +71,7 @@ impl super::Command for Verify {
                 .map(|step| step.cut.clone())
                 .collect::<Vec<_>>();
             return Ok(Box::new(StructuredOutput(
-                instance.verify_provider(repo, &oids)?,
+                instance.verify_provider(repo, &oids, None)?,
             )));
         }
         let results = core::verify(

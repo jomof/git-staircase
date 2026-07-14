@@ -441,49 +441,78 @@ pub trait ReviewProvider {
 }
 
 pub trait ReviewProviderInstance {
-    fn show(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewShow>;
-    fn status(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewStatus>;
+    fn show(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewShow>;
+    fn status(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewStatus>;
     fn plan(
         &self,
         repo: &GitRepo,
         oids: &[String],
         mapping: Option<&str>,
+        record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewPlan>;
     fn upload(
         &self,
         repo: &GitRepo,
         oids: &[String],
         destination: Option<&str>,
+        record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewUpload>;
-    fn reconcile(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewReconcile>;
+    fn reconcile(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewReconcile>;
     fn get_stable_identifiers(
         &self,
         repo: &GitRepo,
         oids: &[String],
+        record: Option<&StaircaseRecord>,
     ) -> Result<Vec<Option<String>>>;
-    fn open(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewOpen>;
+    fn open(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewOpen>;
     fn create(
         &self,
         repo: &GitRepo,
         oids: &[String],
         mapping: Option<&str>,
+        record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewMutation>;
     fn attach(
         &self,
         repo: &GitRepo,
         oids: &[String],
         review: &str,
+        record: Option<&StaircaseRecord>,
+        selected_index: Option<usize>,
     ) -> Result<UnifiedReviewMutation>;
     fn detach(
         &self,
         repo: &GitRepo,
         oids: &[String],
         review: &str,
+        record: Option<&StaircaseRecord>,
+        selected_index: Option<usize>,
     ) -> Result<UnifiedReviewMutation>;
     fn verify_provider(
         &self,
         repo: &GitRepo,
         oids: &[String],
+        record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderVerification>;
     fn land(
         &self,
@@ -491,5 +520,6 @@ pub trait ReviewProviderInstance {
         oids: &[String],
         mode: &str,
         method: Option<&str>,
+        record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderLanding>;
 }

@@ -74,6 +74,7 @@ impl super::Command for Land {
                 &oids,
                 mode,
                 self.method.as_deref(),
+                None,
             )?)));
         }
         if let Some(through) = &self.through {

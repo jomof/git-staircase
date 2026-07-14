@@ -96,7 +96,7 @@ pub fn compute_identity(
 
             for provider in providers {
                 if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
-                    identifiers = instance.get_stable_identifiers(repo, &oids)?;
+                    identifiers = instance.get_stable_identifiers(repo, &oids, None)?;
                     break;
                 }
             }
