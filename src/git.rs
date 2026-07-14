@@ -198,11 +198,18 @@ impl GitRepo {
     }
 
     pub fn resolve_ref(&self, rev: &str) -> Result<String> {
-        self.command().args(&["rev-parse", "--verify", rev]).run()
+        self.resolve_ref_opt(rev)?
+            .ok_or_else(|| StaircaseError::Other(format!("Could not resolve ref: {}", rev)))
     }
 
     pub fn resolve_commit(&self, rev: &str) -> Result<String> {
-        if !rev.starts_with("refs/") {
+        if rev != "HEAD" {
+            if let Some(oid) = self.memoizer.get_resolve_commit(rev) {
+                return Ok(oid);
+            }
+        }
+
+        let oid = if !rev.starts_with("refs/") {
             if let Ok(sha) = self
                 .command()
                 .args(&[
@@ -212,6 +219,9 @@ impl GitRepo {
                 ])
                 .run()
             {
+                if rev != "HEAD" {
+                    self.memoizer.set_resolve_commit(rev, &sha);
+                }
                 return Ok(sha);
             }
             if let Ok(sha) = self
@@ -223,18 +233,27 @@ impl GitRepo {
                 ])
                 .run()
             {
+                if rev != "HEAD" {
+                    self.memoizer.set_resolve_commit(rev, &sha);
+                }
                 return Ok(sha);
             }
+            self.command()
+                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
+                .run()?
+        } else {
+            self.command()
+                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
+                .run()?
+        };
+
+        if rev != "HEAD" {
+            self.memoizer.set_resolve_commit(rev, &oid);
         }
-        self.command()
-            .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-            .run()
+        Ok(oid)
     }
 
     pub fn resolve_symbolic_full_name(&self, name: &str) -> Result<String> {
-        if name.starts_with("refs/") {
-            return Ok(name.to_string());
-        }
         if name != "HEAD" {
             if let Some(res) = self.memoizer.get_symbolic_name(name) {
                 return Ok(res);
@@ -264,19 +283,26 @@ impl GitRepo {
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
+        if rev != "HEAD" {
+            if let Some(res) = self.memoizer.get_resolve_ref(rev) {
+                return Ok(res);
+            }
+        }
         let result = self
             .command()
             .args(&["rev-parse", "--verify", rev])
             .check_status(false)
             .run_output()?;
 
-        if result.status.success() {
-            Ok(Some(
-                String::from_utf8_lossy(&result.stdout).trim().to_string(),
-            ))
+        let res = if result.status.success() {
+            Some(String::from_utf8_lossy(&result.stdout).trim().to_string())
         } else {
-            Ok(None)
+            None
+        };
+        if rev != "HEAD" {
+            self.memoizer.set_resolve_ref(rev, res.as_deref());
         }
+        Ok(res)
     }
 
     pub fn preload_ancestry(&self, oids: &[&str]) -> Result<()> {

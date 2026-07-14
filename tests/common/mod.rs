@@ -24,17 +24,23 @@ impl TestContext {
 
     #[allow(dead_code)]
     pub fn run_git(&self, args: &[&str]) -> String {
-        run_git(self.path(), args)
+        let res = run_git(self.path(), args);
+        self.repo.memoizer.clear();
+        res
     }
 
     #[allow(dead_code)]
     pub fn commit(&self, file: &str, contents: &str, msg: &str) -> String {
-        commit(self.path(), file, contents, msg)
+        let res = commit(self.path(), file, contents, msg);
+        self.repo.memoizer.clear();
+        res
     }
 
     #[allow(dead_code)]
     pub fn run_staircase(&self, args: &[&str]) -> (bool, String, String) {
-        run_staircase(self.path(), args)
+        let res = run_staircase(self.path(), args);
+        self.repo.memoizer.clear();
+        res
     }
 }
 
