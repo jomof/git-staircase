@@ -1,4 +1,4 @@
-use super::{PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
+use super::{Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation};
 use crate::GitRepo;
 use crate::core;
 use crate::model::VerificationResult;

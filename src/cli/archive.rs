@@ -1,4 +1,6 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
+use crate::cli::{
+    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
+};
 use crate::core::{self, ArchiveOptions, ArchiveResult};
 use crate::git::GitRepo;
 use anyhow::Result;
@@ -57,7 +59,12 @@ impl ToPresentation for ArchiveOutput {
         if !self.result.moved_branches.is_empty() {
             h_children.push(Presentation::Section {
                 title: "Moved owned branches from refs/heads/:".into(),
-                children: self.result.moved_branches.iter().map(|b| Presentation::Plain(format!("  {}", b))).collect(),
+                children: self
+                    .result
+                    .moved_branches
+                    .iter()
+                    .map(|b| Presentation::Plain(format!("  {}", b)))
+                    .collect(),
             });
         }
         for warn in &self.result.unowned_warnings {
@@ -69,7 +76,10 @@ impl ToPresentation for ArchiveOutput {
                 title: if self.result.is_dry_run {
                     "Dry run: planned archive operations:".into()
                 } else {
-                    format!("Archived staircase '{}' ({})", self.result.canonical_name, self.result.archived_staircase_id)
+                    format!(
+                        "Archived staircase '{}' ({})",
+                        self.result.canonical_name, self.result.archived_staircase_id
+                    )
                 },
                 children: h_children,
             })),
@@ -95,7 +105,10 @@ impl ToPresentation for ReleaseNameOutput {
                 "Released canonical name reservation (record OID: {})",
                 self.record_oid
             )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["name_released".into(), self.record_oid.clone()]))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "name_released".into(),
+                self.record_oid.clone(),
+            ]))),
         ])
     }
 }

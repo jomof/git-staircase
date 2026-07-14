@@ -1,4 +1,4 @@
-use super::{PresentationOutput, Presentation, ToPresentation};
+use super::{Presentation, PresentationOutput, ToPresentation};
 use crate::GitRepo;
 use crate::workspace::gerrit_provider::probe_gerrit_route;
 use crate::workspace::github_provider::probe_github_route;
@@ -62,16 +62,28 @@ impl ToPresentation for ProviderDoctorReport {
         }
 
         let mut h_children = vec![
-            Presentation::Field { label: "Applicable".to_string(), value: self.applicable.to_string() },
-            Presentation::Field { label: "Readiness".to_string(), value: self.readiness.clone() },
-            Presentation::Section { title: "Route:".to_string(), children: route_fields },
+            Presentation::Field {
+                label: "Applicable".to_string(),
+                value: self.applicable.to_string(),
+            },
+            Presentation::Field {
+                label: "Readiness".to_string(),
+                value: self.readiness.clone(),
+            },
+            Presentation::Section {
+                title: "Route:".to_string(),
+                children: route_fields,
+            },
             Presentation::Plain(format!(
                 "Passive effects: {} network request(s), {} workspace mutation(s)",
                 self.passive_network_requests, self.workspace_mutations
             )),
         ];
         for d in &self.diagnostics {
-            h_children.push(Presentation::Field { label: "Diagnostic".to_string(), value: d.clone() });
+            h_children.push(Presentation::Field {
+                label: "Diagnostic".to_string(),
+                value: d.clone(),
+            });
         }
 
         let mut p_records = vec![
@@ -82,7 +94,11 @@ impl ToPresentation for ProviderDoctorReport {
         let mut route_keys: Vec<_> = self.route.keys().collect();
         route_keys.sort();
         for key in route_keys {
-            p_records.push(Presentation::Record(vec!["route".into(), key.clone(), self.route.get(key).unwrap().clone()]));
+            p_records.push(Presentation::Record(vec![
+                "route".into(),
+                key.clone(),
+                self.route.get(key).unwrap().clone(),
+            ]));
         }
 
         Presentation::List(vec![

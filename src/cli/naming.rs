@@ -1,7 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{
-    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
-};
+use crate::cli::{Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs};
 use crate::core;
 use anyhow::Result;
 use clap::Args;

@@ -68,17 +68,37 @@ impl<'a> Restacker<'a> {
                 let mut current_base = new_parent.to_string();
                 if let Ok(commits) = self.repo.commits_between(old_parent, actual_oid) {
                     for c in commits {
-                        let tree = match self.repo.run(&[
-                            "merge-tree",
-                            "--write-tree",
-                            "--merge-base",
-                            old_parent,
-                            &current_base,
-                            &c,
-                        ]) {
-                            Ok(output) => output.lines().next().unwrap_or("").trim().to_string(),
-                            Err(_) => self.repo.get_tree_id(&c)?,
-                        };
+                        let merge_output = self
+                            .repo
+                            .command()
+                            .args(&[
+                                "merge-tree",
+                                "--write-tree",
+                                "--merge-base",
+                                old_parent,
+                                &current_base,
+                                &c,
+                            ])
+                            .check_status(false)
+                            .run_output()?;
+
+                        let stdout = String::from_utf8_lossy(&merge_output.stdout);
+                        let tree = stdout.lines().next().unwrap_or("").trim().to_string();
+
+                        if tree.is_empty() {
+                            return Err(StaircaseError::Other(format!(
+                                "Failed to get tree OID from merge-tree for commit {}",
+                                c
+                            )));
+                        }
+
+                        if !merge_output.status.success() && merge_output.status.code() != Some(1) {
+                            return Err(StaircaseError::Other(format!(
+                                "merge-tree failed with unexpected status: {:?}. Stderr: {}",
+                                merge_output.status.code(),
+                                String::from_utf8_lossy(&merge_output.stderr)
+                            )));
+                        }
                         let metadata = self.repo.run(&[
                             "log",
                             "-1",

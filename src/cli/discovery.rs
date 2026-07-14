@@ -1,7 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{
-    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
-};
+use crate::cli::{Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs};
 use crate::core;
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -51,9 +49,7 @@ impl Command for DiscoveryCmd {
         match &self.command {
             DiscoverySubcommand::Show(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(core::discovery_overrides(
-                    repo, &selector,
-                )?))
+                Ok(Box::new(core::discovery_overrides(repo, &selector)?))
             }
             DiscoverySubcommand::IncludeRef(args) => mutate(repo, args, "include-ref"),
             DiscoverySubcommand::ExcludeRef(args) => mutate(repo, args, "exclude-ref"),

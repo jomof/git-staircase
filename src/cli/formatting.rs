@@ -1,7 +1,5 @@
+pub use crate::model::{StaircaseFamily, StaircaseStatus, Step};
 pub use crate::presentation::{Presentation, ToPresentation, UsePresentation};
-pub use crate::model::{
-    StaircaseFamily, StaircaseStatus, Step
-};
 use serde::Serialize;
 
 pub trait ToHuman {
@@ -107,7 +105,6 @@ pub(crate) fn render_porcelain(p: &Presentation) -> String {
         Presentation::Porcelain(inner) => render_porcelain(inner),
     }
 }
-
 
 impl<T: UsePresentation> ToHuman for T {
     fn to_human(&self) -> String {
@@ -334,9 +331,15 @@ impl ToPresentation for std::collections::BTreeMap<String, serde_json::Value> {
     fn to_presentation(&self) -> Presentation {
         let mut fields = vec![];
         for (k, v) in self {
-            fields.push(Presentation::Field { label: k.clone(), value: v.to_string() });
+            fields.push(Presentation::Field {
+                label: k.clone(),
+                value: v.to_string(),
+            });
         }
-        Presentation::Section { title: "Values:".into(), children: fields }
+        Presentation::Section {
+            title: "Values:".into(),
+            children: fields,
+        }
     }
 }
 impl UsePresentation for std::collections::BTreeMap<String, serde_json::Value> {}

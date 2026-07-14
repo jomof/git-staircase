@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, ToPresentation, Presentation};
+use crate::cli::{Command, Presentation, PresentationOutput, ToPresentation};
 use crate::core;
 use crate::core::refs::{ARCHIVE_PREFIX, PUBLIC_PREFIX, STATE_PREFIX, StaircaseRefs};
 use crate::error::StaircaseError;
@@ -43,7 +43,9 @@ impl ToPresentation for TransportResult {
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Plain(format!(
                 "Successfully {}ed to/from remote '{}' ({} refspecs)",
-                self.direction, self.remote, self.refspecs.len()
+                self.direction,
+                self.remote,
+                self.refspecs.len()
             )))),
             Presentation::Porcelain(Box::new(Presentation::Record(vec![
                 self.direction.clone(),

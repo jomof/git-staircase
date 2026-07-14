@@ -1,4 +1,4 @@
-use super::{PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
+use super::{Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation};
 use crate::GitRepo;
 use crate::IdentityKind;
 use crate::core;
@@ -43,7 +43,10 @@ impl ToPresentation for IdResult {
     fn to_presentation(&self) -> Presentation {
         let mut h_items = vec![];
         if self.was_implicit && self.kind == IdentityKind::Lineage {
-            h_items.push(Presentation::Plain(format!("adopted implicit staircase '{}'", self.name)));
+            h_items.push(Presentation::Plain(format!(
+                "adopted implicit staircase '{}'",
+                self.name
+            )));
         }
         h_items.push(Presentation::Plain(self.id.clone()));
 

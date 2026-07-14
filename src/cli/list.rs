@@ -1,4 +1,4 @@
-use super::{PresentationOutput, Summary, ToPresentation, Presentation};
+use super::{Presentation, PresentationOutput, Summary, ToPresentation};
 use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;

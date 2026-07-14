@@ -1,4 +1,6 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
+use crate::cli::{
+    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
+};
 use crate::core;
 use crate::git::GitRepo;
 use anyhow::{Result, anyhow};
@@ -28,23 +30,30 @@ impl ToPresentation for DescribeOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
         if let Some(ref t) = self.title {
-            h_children.push(Presentation::Field { label: "Title".into(), value: t.clone() });
+            h_children.push(Presentation::Field {
+                label: "Title".into(),
+                value: t.clone(),
+            });
         }
         if let Some(ref d) = self.description {
             h_children.push(Presentation::Plain(d.clone()));
         }
         if h_children.is_empty() {
-            h_children.push(Presentation::Plain(format!("No description for staircase '{}'", self.name)));
+            h_children.push(Presentation::Plain(format!(
+                "No description for staircase '{}'",
+                self.name
+            )));
         }
 
-        let mut p_records = vec![
-            Presentation::Record(vec!["name".into(), self.name.clone()]),
-        ];
+        let mut p_records = vec![Presentation::Record(vec!["name".into(), self.name.clone()])];
         if let Some(ref t) = self.title {
             p_records.push(Presentation::Record(vec!["title".into(), t.clone()]));
         }
         if let Some(ref d) = self.description {
-            p_records.push(Presentation::Record(vec!["description".into(), d.replace('\n', "\n")]));
+            p_records.push(Presentation::Record(vec![
+                "description".into(),
+                d.replace('\n', "\n"),
+            ]));
         }
 
         Presentation::List(vec![

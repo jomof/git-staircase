@@ -15,10 +15,6 @@ pub struct Normalize {
 impl Command for Normalize {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let selector = self.selector.resolve(repo)?;
-        Ok(Box::new(core::normalize(
-            repo,
-            &selector,
-            self.dry_run,
-        )?))
+        Ok(Box::new(core::normalize(repo, &selector, self.dry_run)?))
     }
 }

@@ -913,7 +913,7 @@ impl ToPresentation for LocalMutationResult {
             },
         ];
         if let Some(ref oid) = self.record_oid {
-             children.push(Presentation::Field {
+            children.push(Presentation::Field {
                 label: "record oid".to_string(),
                 value: oid[..7].to_string(),
             });
@@ -943,17 +943,31 @@ impl ToPresentation for LayoutState {
             branches.push(vec![
                 b.step_name.clone(),
                 b.expected_oid[..7].to_string(),
-                b.actual_oid.as_deref().unwrap_or("none")[..7.min(b.actual_oid.as_deref().unwrap_or("none").len())].to_string(),
+                b.actual_oid.as_deref().unwrap_or("none")
+                    [..7.min(b.actual_oid.as_deref().unwrap_or("none").len())]
+                    .to_string(),
             ]);
         }
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: format!("Layout state for staircase {}:", self.staircase_id),
                 children: vec![
-                    Presentation::Field { label: "profile".to_string(), value: self.profile.clone().unwrap_or("none".into()) },
-                    Presentation::Field { label: "base".to_string(), value: self.base.clone().unwrap_or("none".into()) },
-                    Presentation::Field { label: "state".to_string(), value: self.state.clone() },
-                    Presentation::Table { name: Some("branches".into()), rows: branches },
+                    Presentation::Field {
+                        label: "profile".to_string(),
+                        value: self.profile.clone().unwrap_or("none".into()),
+                    },
+                    Presentation::Field {
+                        label: "base".to_string(),
+                        value: self.base.clone().unwrap_or("none".into()),
+                    },
+                    Presentation::Field {
+                        label: "state".to_string(),
+                        value: self.state.clone(),
+                    },
+                    Presentation::Table {
+                        name: Some("branches".into()),
+                        rows: branches,
+                    },
                 ],
             })),
             Presentation::Porcelain(Box::new(Presentation::Record(vec![

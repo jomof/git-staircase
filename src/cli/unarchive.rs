@@ -1,4 +1,6 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
+use crate::cli::{
+    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
+};
 use crate::core::{self, UnarchiveBranchesMode, UnarchiveOptions, UnarchiveResult};
 use crate::git::GitRepo;
 use anyhow::{Result, anyhow};
@@ -40,15 +42,23 @@ impl ToPresentation for UnarchiveOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
         if !self.result.restored_branches.is_empty() {
-             h_children.push(Presentation::Section {
+            h_children.push(Presentation::Section {
                 title: "Restored local branches:".into(),
-                children: self.result.restored_branches.iter().map(|b| Presentation::Plain(format!("  refs/heads/{}", b))).collect(),
+                children: self
+                    .result
+                    .restored_branches
+                    .iter()
+                    .map(|b| Presentation::Plain(format!("  refs/heads/{}", b)))
+                    .collect(),
             });
         }
 
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
-                title: format!("Restored staircase '{}' ({}) to active state", self.result.canonical_name, self.result.restored_staircase_id),
+                title: format!(
+                    "Restored staircase '{}' ({}) to active state",
+                    self.result.canonical_name, self.result.restored_staircase_id
+                ),
                 children: h_children,
             })),
             Presentation::Porcelain(Box::new(Presentation::Record(vec![

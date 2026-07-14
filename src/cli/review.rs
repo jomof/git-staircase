@@ -5,9 +5,7 @@ use crate::model::StaircaseRecord;
 use crate::workspace::bootstrap::{BootstrapOptions, bootstrap};
 use crate::workspace::gerrit_provider::GerritProvider;
 use crate::workspace::github_provider::GitHubProvider;
-use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance,
-};
+use crate::workspace::review_provider::{ReviewProvider, ReviewProviderInstance};
 use crate::{GitRepo, ResolvedSelector};
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};

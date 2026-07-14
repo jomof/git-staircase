@@ -913,9 +913,18 @@ impl ToPresentation for ActiveOperationStatus {
         Presentation::Section {
             title: "Active Operation:".to_string(),
             children: vec![
-                Presentation::Field { label: "ID".to_string(), value: self.operation_id.clone() },
-                Presentation::Field { label: "Kind".to_string(), value: self.kind.clone() },
-                Presentation::Field { label: "Phase".to_string(), value: self.phase.clone() },
+                Presentation::Field {
+                    label: "ID".to_string(),
+                    value: self.operation_id.clone(),
+                },
+                Presentation::Field {
+                    label: "Kind".to_string(),
+                    value: self.kind.clone(),
+                },
+                Presentation::Field {
+                    label: "Phase".to_string(),
+                    value: self.phase.clone(),
+                },
             ],
         }
     }

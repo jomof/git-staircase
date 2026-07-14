@@ -1,4 +1,4 @@
-use super::{PresentationOutput, Presentation, ToPresentation};
+use super::{Presentation, PresentationOutput, ToPresentation};
 use crate::GitRepo;
 use crate::workspace::{
     BootstrapOptions, WorkspaceDoctorReport, WorkspaceRecord, bootstrap,
@@ -135,28 +135,48 @@ pub struct WorkspaceShowOutput(pub WorkspaceRecord);
 
 impl ToPresentation for WorkspaceShowOutput {
     fn to_presentation(&self) -> Presentation {
-        let mut h_children = vec![
-            Presentation::Field { label: "Root".into(), value: self.0.canonical_root.display().to_string() },
-        ];
+        let mut h_children = vec![Presentation::Field {
+            label: "Root".into(),
+            value: self.0.canonical_root.display().to_string(),
+        }];
         if let Some(ref proj) = self.0.current_project_id {
-            h_children.push(Presentation::Field { label: "Current Project".into(), value: proj.clone() });
+            h_children.push(Presentation::Field {
+                label: "Current Project".into(),
+                value: proj.clone(),
+            });
         }
         let mut bindings = vec![];
         for (cap, b) in &self.0.capability_bindings {
-            let readiness = self.0.capability_readiness.get(cap).map(ToString::to_string).unwrap_or_else(|| "unknown".into());
+            let readiness = self
+                .0
+                .capability_readiness
+                .get(cap)
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "unknown".into());
             bindings.push(Presentation::Field {
                 label: cap.to_string(),
                 value: format!("{} ({}, {})", b.provider, b.provenance, readiness),
             });
         }
-        h_children.push(Presentation::Section { title: "Capability Bindings:".into(), children: bindings });
+        h_children.push(Presentation::Section {
+            title: "Capability Bindings:".into(),
+            children: bindings,
+        });
 
         let mut p_records = vec![
             Presentation::Record(vec!["id".into(), self.0.workspace_id.clone()]),
-            Presentation::Record(vec!["root".into(), self.0.canonical_root.display().to_string()]),
+            Presentation::Record(vec![
+                "root".into(),
+                self.0.canonical_root.display().to_string(),
+            ]),
         ];
         for (cap, b) in &self.0.capability_bindings {
-             p_records.push(Presentation::Record(vec!["binding".into(), cap.to_string(), b.provider.clone(), b.provenance.to_string()]));
+            p_records.push(Presentation::Record(vec![
+                "binding".into(),
+                cap.to_string(),
+                b.provider.clone(),
+                b.provenance.to_string(),
+            ]));
         }
 
         Presentation::List(vec![
@@ -177,9 +197,18 @@ impl ToPresentation for WorkspaceProvidersOutput {
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: "Installed Providers:".into(),
-                children: self.0.iter().map(|p| Presentation::Plain(format!("- {}", p))).collect(),
+                children: self
+                    .0
+                    .iter()
+                    .map(|p| Presentation::Plain(format!("- {}", p)))
+                    .collect(),
             })),
-            Presentation::Porcelain(Box::new(Presentation::List(self.0.iter().map(|p| Presentation::Plain(p.clone())).collect()))),
+            Presentation::Porcelain(Box::new(Presentation::List(
+                self.0
+                    .iter()
+                    .map(|p| Presentation::Plain(p.clone()))
+                    .collect(),
+            ))),
         ])
     }
 }
@@ -190,8 +219,14 @@ pub struct WorkspaceDoctorOutput(pub WorkspaceDoctorReport);
 impl ToPresentation for WorkspaceDoctorOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![
-            Presentation::Field { label: "Workspace ID".into(), value: self.0.workspace_id.clone() },
-            Presentation::Field { label: "Canonical Root".into(), value: self.0.canonical_root.clone() },
+            Presentation::Field {
+                label: "Workspace ID".into(),
+                value: self.0.workspace_id.clone(),
+            },
+            Presentation::Field {
+                label: "Canonical Root".into(),
+                value: self.0.canonical_root.clone(),
+            },
         ];
         let mut capabilities = vec![];
         for capability in &self.0.capabilities {
@@ -202,18 +237,33 @@ impl ToPresentation for WorkspaceDoctorOutput {
                     capability.provider.as_deref().unwrap_or("<unbound>"),
                     capability.provenance.as_deref().unwrap_or("no-provenance"),
                     capability.readiness,
-                    capability.evidence.as_ref().map(|evidence| format!(" — {}", evidence)).unwrap_or_default()
+                    capability
+                        .evidence
+                        .as_ref()
+                        .map(|evidence| format!(" — {}", evidence))
+                        .unwrap_or_default()
                 ),
             });
         }
-        h_children.push(Presentation::Section { title: "Bound Capabilities:".into(), children: capabilities });
+        h_children.push(Presentation::Section {
+            title: "Bound Capabilities:".into(),
+            children: capabilities,
+        });
         if !self.0.missing_capabilities.is_empty() {
-            h_children.push(Presentation::Field { label: "Missing Capabilities".into(), value: self.0.missing_capabilities.join(", ") });
+            h_children.push(Presentation::Field {
+                label: "Missing Capabilities".into(),
+                value: self.0.missing_capabilities.join(", "),
+            });
         }
         if !self.0.diagnostics.is_empty() {
-             h_children.push(Presentation::Section {
+            h_children.push(Presentation::Section {
                 title: "Diagnostics:".into(),
-                children: self.0.diagnostics.iter().map(|d| Presentation::Plain(format!("- {}", d))).collect(),
+                children: self
+                    .0
+                    .diagnostics
+                    .iter()
+                    .map(|d| Presentation::Plain(format!("- {}", d)))
+                    .collect(),
             });
         }
 
@@ -222,10 +272,14 @@ impl ToPresentation for WorkspaceDoctorOutput {
             Presentation::Record(vec!["id".into(), self.0.workspace_id.clone()]),
         ];
         for (k, v) in &self.0.bound_capabilities {
-             p_records.push(Presentation::Record(vec!["binding".into(), k.clone(), v.clone()]));
+            p_records.push(Presentation::Record(vec![
+                "binding".into(),
+                k.clone(),
+                v.clone(),
+            ]));
         }
         for capability in &self.0.capabilities {
-             p_records.push(Presentation::Record(vec![
+            p_records.push(Presentation::Record(vec![
                 "capability".into(),
                 capability.capability.clone(),
                 capability.provider.as_deref().unwrap_or("").into(),

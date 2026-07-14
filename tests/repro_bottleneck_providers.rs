@@ -10,16 +10,34 @@ fn test_bottleneck_provider_discovery() {
     let repo_path = temp.path();
 
     // Initialize repo
-    Command::new("git").arg("init").current_dir(repo_path).output().unwrap();
-    Command::new("git").arg("config").arg("user.email").arg("test@example.com").current_dir(repo_path).output().unwrap();
-    Command::new("git").arg("config").arg("user.name").arg("Test User").current_dir(repo_path).output().unwrap();
+    Command::new("git")
+        .arg("init")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .arg("config")
+        .arg("user.email")
+        .arg("test@example.com")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .arg("config")
+        .arg("user.name")
+        .arg("Test User")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
 
     let repo = GitRepo::new(repo_path.to_path_buf());
     let options = git_staircase::workspace::BootstrapOptions::default();
 
     // Set a custom workspace storage dir so we don't interfere with the user
     let storage_dir = temp.path().join("storage");
-    unsafe { std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.to_str().unwrap()); }
+    unsafe {
+        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.to_str().unwrap());
+    }
 
     // MEASURE 1: Normal bootstrap (no providers, no existing record)
     let start = Instant::now();
@@ -30,7 +48,7 @@ fn test_bottleneck_provider_discovery() {
     // Create many fake providers in a directory and set GIT_STAIRCASE_PROVIDER_DIR
     let providers_dir = temp.path().join("fake_providers");
     fs::create_dir_all(&providers_dir).unwrap();
-    
+
     // Create a "describe" script that just prints a valid descriptor
     let descriptor = serde_json::json!({
         "protocol_version": 1,
@@ -44,7 +62,8 @@ fn test_bottleneck_provider_discovery() {
             "mutates_workspace": false,
             "executes_repository_hooks": false
         }
-    }).to_string();
+    })
+    .to_string();
 
     let script_content = format!("#!/bin/sh\necho '{}'", descriptor);
 
@@ -59,8 +78,13 @@ fn test_bottleneck_provider_discovery() {
         }
     }
 
-    unsafe { std::env::set_var("GIT_STAIRCASE_PROVIDER_DIR", providers_dir.to_str().unwrap()); }
-    
+    unsafe {
+        std::env::set_var(
+            "GIT_STAIRCASE_PROVIDER_DIR",
+            providers_dir.to_str().unwrap(),
+        );
+    }
+
     // Clear storage to force discovery again
     fs::remove_dir_all(&storage_dir).unwrap();
 

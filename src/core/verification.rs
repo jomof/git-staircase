@@ -214,7 +214,10 @@ use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 
 impl ToPresentation for DraftVerificationEvidence {
     fn to_presentation(&self) -> Presentation {
-        Presentation::Plain(format!("Verification evidence for basis {}", self.basis_oid))
+        Presentation::Plain(format!(
+            "Verification evidence for basis {}",
+            self.basis_oid
+        ))
     }
 }
 impl UsePresentation for DraftVerificationEvidence {}

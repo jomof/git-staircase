@@ -1,6 +1,6 @@
 mod common;
 use common::*;
-use git_staircase::cli::{Presentation, ToPresentation, PresentationOutput, OutputFormat};
+use git_staircase::cli::{OutputFormat, Presentation, PresentationOutput, ToPresentation};
 use serde::Serialize;
 
 #[derive(Serialize)]
@@ -29,10 +29,13 @@ impl ToPresentation for MockResult {
 
 #[test]
 fn test_presentation_output_trait() {
-    let result = MockResult { name: "test".to_string(), value: 42 };
+    let result = MockResult {
+        name: "test".to_string(),
+        value: 42,
+    };
     let ctx = TestContext::new();
     let repo = &ctx.repo;
-    
+
     // Just verify it doesn't panic
     result.present(OutputFormat::Human, repo).unwrap();
     result.present(OutputFormat::Json, repo).unwrap();
@@ -63,7 +66,7 @@ fn test_presentation_output_table() {
     };
     let ctx = TestContext::new();
     let repo = &ctx.repo;
-    
+
     result.present(OutputFormat::Human, repo).unwrap();
     result.present(OutputFormat::Porcelain, repo).unwrap();
 }

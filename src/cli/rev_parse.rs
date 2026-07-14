@@ -1,5 +1,7 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
+use crate::cli::{
+    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
+};
 use crate::core;
 use crate::core::refs::StaircaseRefs;
 use crate::error::StaircaseError;

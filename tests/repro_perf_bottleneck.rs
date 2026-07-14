@@ -15,13 +15,13 @@ fn test_preload_ancestry_performance() {
         let oid = ctx_commit(path, &format!("file_{}.txt", i), "content", "msg");
         oids.push(oid);
     }
-    
+
     let oid_refs: Vec<&str> = oids.iter().map(|s| s.as_str()).collect();
 
     let start = Instant::now();
     repo.preload_ancestry(&oid_refs).unwrap();
     let duration = start.elapsed();
-    
+
     println!("Preload ancestry for 100 branches took: {:?}", duration);
     // On a typical machine, this should be very fast (<100ms) if efficient.
     // The current implementation takes significantly longer due to O(N^2) behavior.

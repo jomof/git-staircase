@@ -1,7 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{
-    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
-};
+use crate::cli::{Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs};
 use crate::core;
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
@@ -50,9 +48,7 @@ impl Command for PolicyCmd {
         match &self.command {
             PolicySubcommand::Show(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(core::policy_values(
-                    repo, &selector,
-                )?))
+                Ok(Box::new(core::policy_values(repo, &selector)?))
             }
             PolicySubcommand::Set(args) => {
                 let selector = args.selector.resolve(repo)?;

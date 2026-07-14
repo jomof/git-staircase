@@ -10,21 +10,64 @@ fn test_bottleneck_worktree_scan() {
     let repo_path = temp.path();
 
     // Initialize repo
-    Command::new("git").arg("init").current_dir(repo_path).output().unwrap();
-    Command::new("git").arg("config").arg("user.email").arg("test@example.com").current_dir(repo_path).output().unwrap();
-    Command::new("git").arg("config").arg("user.name").arg("Test User").current_dir(repo_path).output().unwrap();
+    Command::new("git")
+        .arg("init")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .arg("config")
+        .arg("user.email")
+        .arg("test@example.com")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .arg("config")
+        .arg("user.name")
+        .arg("Test User")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
 
     // Create commit 1
     fs::write(repo_path.join("file"), "A").unwrap();
-    Command::new("git").arg("add").arg("file").current_dir(repo_path).output().unwrap();
-    Command::new("git").arg("commit").arg("-m").arg("A").current_dir(repo_path).output().unwrap();
-    
+    Command::new("git")
+        .arg("add")
+        .arg("file")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg("A")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+
     // Create commit 2
     fs::write(repo_path.join("file"), "B").unwrap();
-    Command::new("git").arg("add").arg("file").current_dir(repo_path).output().unwrap();
-    Command::new("git").arg("commit").arg("-m").arg("B").current_dir(repo_path).output().unwrap();
+    Command::new("git")
+        .arg("add")
+        .arg("file")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
+    Command::new("git")
+        .arg("commit")
+        .arg("-m")
+        .arg("B")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
 
-    let oid = Command::new("git").arg("rev-parse").arg("HEAD").current_dir(repo_path).output().unwrap();
+    let oid = Command::new("git")
+        .arg("rev-parse")
+        .arg("HEAD")
+        .current_dir(repo_path)
+        .output()
+        .unwrap();
     let oid = String::from_utf8(oid.stdout).unwrap().trim().to_string();
 
     // Adopt a staircase
@@ -46,9 +89,13 @@ fn test_bottleneck_worktree_scan() {
         user_metadata: None,
         lifecycle: None,
     };
-    
+
     git_staircase::core::persistence::write_metadata(&repo, &meta).unwrap();
-    let record = git_staircase::core::persistence::read_record(&repo, &git_staircase::core::refs::StaircaseRefs::state_record(&meta.id)).unwrap();
+    let record = git_staircase::core::persistence::read_record(
+        &repo,
+        &git_staircase::core::refs::StaircaseRefs::state_record(&meta.id),
+    )
+    .unwrap();
     let selector = git_staircase::core::ResolvedSelector {
         staircase: git_staircase::core::ResolvedStaircase::Managed(record.metadata),
         step_index: None,
@@ -66,7 +113,11 @@ fn test_bottleneck_worktree_scan() {
     }
 
     // Refresh selector
-    let record = git_staircase::core::persistence::read_record(&repo, &git_staircase::core::refs::StaircaseRefs::state_record(&meta.id)).unwrap();
+    let record = git_staircase::core::persistence::read_record(
+        &repo,
+        &git_staircase::core::refs::StaircaseRefs::state_record(&meta.id),
+    )
+    .unwrap();
     let selector = git_staircase::core::ResolvedSelector {
         staircase: git_staircase::core::ResolvedStaircase::Managed(record.metadata),
         step_index: None,

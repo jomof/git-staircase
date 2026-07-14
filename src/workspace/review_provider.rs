@@ -529,8 +529,16 @@ use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 impl ToPresentation for UnifiedProviderLanding {
     fn to_presentation(&self) -> Presentation {
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!("Landed {} items via {}", self.landed.len(), self.provider_label)))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["landed".into(), self.landed.len().to_string(), self.provider_label.clone()]))),
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Landed {} items via {}",
+                self.landed.len(),
+                self.provider_label
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "landed".into(),
+                self.landed.len().to_string(),
+                self.provider_label.clone(),
+            ]))),
         ])
     }
 }
@@ -538,24 +546,45 @@ impl ToPresentation for UnifiedProviderLanding {
 impl ToPresentation for UnifiedReviewShow {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![
-            Presentation::Field { label: "Project".into(), value: self.project.clone() },
-            Presentation::Field { label: "Destination Branch".into(), value: self.destination_branch.clone() },
+            Presentation::Field {
+                label: "Project".into(),
+                value: self.project.clone(),
+            },
+            Presentation::Field {
+                label: "Destination Branch".into(),
+                value: self.destination_branch.clone(),
+            },
         ];
         for (k, v) in &self.details {
-            h_children.push(Presentation::Field { label: k.clone(), value: v.clone() });
+            h_children.push(Presentation::Field {
+                label: k.clone(),
+                value: v.clone(),
+            });
         }
         let mut items = vec![];
         for item in &self.items {
-            items.push(Presentation::Plain(format!("  {} {} [{}]", &item.oid[..7.min(item.oid.len())], item.title, item.detail)));
+            items.push(Presentation::Plain(format!(
+                "  {} {} [{}]",
+                &item.oid[..7.min(item.oid.len())],
+                item.title,
+                item.detail
+            )));
         }
-        h_children.push(Presentation::Section { title: "Commits:".into(), children: items });
+        h_children.push(Presentation::Section {
+            title: "Commits:".into(),
+            children: items,
+        });
 
         let mut p_records = vec![
             Presentation::Record(vec!["host".into(), self.host.clone()]),
             Presentation::Record(vec!["project".into(), self.project.clone()]),
         ];
         for item in &self.items {
-            p_records.push(Presentation::Record(vec!["commit".into(), item.oid.clone(), item.detail.clone()]));
+            p_records.push(Presentation::Record(vec![
+                "commit".into(),
+                item.oid.clone(),
+                item.detail.clone(),
+            ]));
         }
 
         Presentation::List(vec![
@@ -571,18 +600,30 @@ impl ToPresentation for UnifiedReviewShow {
 impl ToPresentation for UnifiedReviewStatus {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![
-            Presentation::Field { label: "Host".into(), value: self.host.clone() },
-            Presentation::Field { label: "Project".into(), value: self.project.clone() },
+            Presentation::Field {
+                label: "Host".into(),
+                value: self.host.clone(),
+            },
+            Presentation::Field {
+                label: "Project".into(),
+                value: self.project.clone(),
+            },
         ];
         for (k, v) in &self.details {
-            h_children.push(Presentation::Field { label: k.clone(), value: v.clone() });
+            h_children.push(Presentation::Field {
+                label: k.clone(),
+                value: v.clone(),
+            });
         }
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: format!("{} Review Status: {}", self.provider_label, self.status),
                 children: h_children,
             })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["status".into(), self.status.clone()]))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "status".into(),
+                self.status.clone(),
+            ]))),
         ])
     }
 }
@@ -590,18 +631,36 @@ impl ToPresentation for UnifiedReviewStatus {
 impl ToPresentation for UnifiedReviewPlan {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![
-            Presentation::Field { label: "Target Ref".into(), value: self.target.clone() },
-            Presentation::Field { label: "Mapping Policy".into(), value: self.policy.clone() },
+            Presentation::Field {
+                label: "Target Ref".into(),
+                value: self.target.clone(),
+            },
+            Presentation::Field {
+                label: "Mapping Policy".into(),
+                value: self.policy.clone(),
+            },
         ];
         let mut items = vec![];
         for item in &self.items {
-            items.push(Presentation::Plain(format!("    - {} {} ({})", &item.oid[..7.min(item.oid.len())], item.title, item.detail)));
+            items.push(Presentation::Plain(format!(
+                "    - {} {} ({})",
+                &item.oid[..7.min(item.oid.len())],
+                item.title,
+                item.detail
+            )));
         }
-        h_children.push(Presentation::Section { title: "Commits to push:".into(), children: items });
+        h_children.push(Presentation::Section {
+            title: "Commits to push:".into(),
+            children: items,
+        });
         if !self.warnings.is_empty() {
-             h_children.push(Presentation::Section {
+            h_children.push(Presentation::Section {
                 title: "Warnings:".into(),
-                children: self.warnings.iter().map(|w| Presentation::Plain(format!("    - {}", w))).collect(),
+                children: self
+                    .warnings
+                    .iter()
+                    .map(|w| Presentation::Plain(format!("    - {}", w)))
+                    .collect(),
             });
         }
 
@@ -610,7 +669,11 @@ impl ToPresentation for UnifiedReviewPlan {
             Presentation::Record(vec!["mapping_policy".into(), self.policy.clone()]),
         ];
         for item in &self.items {
-            p_records.push(Presentation::Record(vec!["commit".into(), item.oid.clone(), item.detail.clone()]));
+            p_records.push(Presentation::Record(vec![
+                "commit".into(),
+                item.oid.clone(),
+                item.detail.clone(),
+            ]));
         }
 
         Presentation::List(vec![
@@ -630,7 +693,10 @@ impl ToPresentation for UnifiedReviewUpload {
                 title: format!("{} Upload Complete:", self.provider_label),
                 children: vec![Presentation::Plain(self.summary.clone())],
             })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["result".into(), self.summary.clone()]))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "result".into(),
+                self.summary.clone(),
+            ]))),
         ])
     }
 }
@@ -638,8 +704,14 @@ impl ToPresentation for UnifiedReviewUpload {
 impl ToPresentation for UnifiedReviewReconcile {
     fn to_presentation(&self) -> Presentation {
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!("{} Reconcile Status: {}", self.provider_label, self.status)))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["status".into(), self.status.clone()]))),
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "{} Reconcile Status: {}",
+                self.provider_label, self.status
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "status".into(),
+                self.status.clone(),
+            ]))),
         ])
     }
 }
@@ -647,8 +719,14 @@ impl ToPresentation for UnifiedReviewReconcile {
 impl ToPresentation for UnifiedReviewOpen {
     fn to_presentation(&self) -> Presentation {
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!("{} Review URL: {}", self.provider_label, self.url)))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["url".into(), self.url.clone()]))),
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "{} Review URL: {}",
+                self.provider_label, self.url
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "url".into(),
+                self.url.clone(),
+            ]))),
         ])
     }
 }
@@ -660,14 +738,24 @@ impl ToPresentation for UnifiedReviewMutation {
             h_children.push(Presentation::Plain(format!("  {}", detail)));
         }
         if let (Some(before), Some(after)) = (&self.record_before, &self.record_after) {
-            h_children.push(Presentation::Plain(format!("record revision: {} -> {}", before, after)));
+            h_children.push(Presentation::Plain(format!(
+                "record revision: {} -> {}",
+                before, after
+            )));
         }
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
-                title: format!("{} review {}: {} association(s)", self.provider_label, self.action, self.changed),
+                title: format!(
+                    "{} review {}: {} association(s)",
+                    self.provider_label, self.action, self.changed
+                ),
                 children: h_children,
             })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![self.action.clone(), self.changed.to_string(), self.provider_label.clone()]))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.action.clone(),
+                self.changed.to_string(),
+                self.provider_label.clone(),
+            ]))),
         ])
     }
 }
@@ -675,8 +763,14 @@ impl ToPresentation for UnifiedReviewMutation {
 impl ToPresentation for UnifiedProviderVerification {
     fn to_presentation(&self) -> Presentation {
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!("Provider verification status: {}", self.status)))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec!["status".into(), self.status.clone()]))),
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Provider verification status: {}",
+                self.status
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "status".into(),
+                self.status.clone(),
+            ]))),
         ])
     }
 }

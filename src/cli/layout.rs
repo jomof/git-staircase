@@ -86,9 +86,7 @@ impl Command for LayoutCmd {
         match &self.command {
             LayoutSubcommand::Show(args) | LayoutSubcommand::Check(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(core::layout_state(
-                    repo, &selector,
-                )?))
+                Ok(Box::new(core::layout_state(repo, &selector)?))
             }
             LayoutSubcommand::Set(args) => {
                 if args.primary_branches != "sequential" {
@@ -118,11 +116,7 @@ impl Command for LayoutCmd {
             }
             LayoutSubcommand::Normalize(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(core::normalize(
-                    repo,
-                    &selector,
-                    args.dry_run,
-                )?))
+                Ok(Box::new(core::normalize(repo, &selector, args.dry_run)?))
             }
             LayoutSubcommand::Rename(args) => {
                 let selector = args.selector.resolve(repo)?;
@@ -156,11 +150,7 @@ impl Command for LayoutCmd {
                     return Err(anyhow!("--primary-branches is required"));
                 }
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(core::unset_layout(
-                    repo,
-                    &selector,
-                    args.dry_run,
-                )?))
+                Ok(Box::new(core::unset_layout(repo, &selector, args.dry_run)?))
             }
         }
     }
