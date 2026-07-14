@@ -46,7 +46,8 @@ pub mod workspace;
 
 pub use formatting::*;
 
-#[derive(Clone, Copy, Debug)]
+#[derive(clap::ValueEnum, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
+#[serde(rename_all = "kebab-case")]
 pub enum OutputFormat {
     Human,
     Json,
