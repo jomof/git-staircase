@@ -15,17 +15,30 @@ fn test_mutation_blocked_by_worktree_checkout() {
     commit(dir, "b.txt", "b", "commit b");
     let _b_oid = run_git(dir, &["rev-parse", "HEAD"]);
 
-    let (success, _, stderr) = run_staircase(dir, &["adopt", "my-sc", "--onto", "main", "feature/a", "feature/b"]);
+    let (success, _, stderr) = run_staircase(
+        dir,
+        &["adopt", "my-sc", "--onto", "main", "feature/a", "feature/b"],
+    );
     assert!(success, "adopt failed: {}", stderr);
 
     // Create a second worktree and checkout one of the staircase branches there
     let wt_path = dir.join("wt-secondary");
-    run_git(dir, &["worktree", "add", wt_path.to_str().unwrap(), "feature/a"]);
+    run_git(
+        dir,
+        &["worktree", "add", wt_path.to_str().unwrap(), "feature/a"],
+    );
 
     // Attempt to mutate the staircase (e.g., reorder)
     // This should fail because feature/a is checked out in wt-secondary
     let (success, _stdout, stderr) = run_staircase(dir, &["reorder", "my-sc", "--steps", "2,1"]);
 
-    assert!(!success, "reorder should have failed due to worktree checkout");
-    assert!(stderr.contains("checked out in worktree"), "Error message should mention worktree checkout, but was: {}", stderr);
+    assert!(
+        !success,
+        "reorder should have failed due to worktree checkout"
+    );
+    assert!(
+        stderr.contains("checked out in worktree"),
+        "Error message should mention worktree checkout, but was: {}",
+        stderr
+    );
 }
