@@ -1,31 +1,52 @@
-mod common;
-use common::*;
+#![allow(unused)]
+use git_staircase::GitRepo;
+use std::fs;
+use std::path::PathBuf;
 use std::time::Instant;
+use tempfile::TempDir;
 
 #[test]
-fn test_preload_ancestry_performance() {
-    let ctx = TestContext::new();
-    let path = &ctx.repo.workdir;
+fn test_discovery_performance() {
+    let tmp = TempDir::new().unwrap();
+    let repo_path = tmp.path();
 
-    // Create 200 branches to make it more obvious
-    let mut oids = Vec::new();
-    for i in 0..200 {
-        let branch_name = format!("branch_{}", i);
-        run_git(path, &["checkout", "-b", &branch_name, "main"]);
-        let oid = commit(path, &format!("file_{}.txt", i), "content", "msg");
-        oids.push(oid);
+    let run_git = |args: &[&str]| {
+        let status = std::process::Command::new("git")
+            .current_dir(repo_path)
+            .args(args)
+            .status()
+            .unwrap();
+        assert!(status.success());
+    };
+
+    run_git(&["init", "-b", "main"]);
+    run_git(&["config", "user.email", "test@example.com"]);
+    run_git(&["config", "user.name", "Test"]);
+
+    fs::write(repo_path.join("file"), "content").unwrap();
+    run_git(&["add", "file"]);
+    run_git(&["commit", "-m", "initial"]);
+
+    // Create 100 branches in a chain.
+    for i in 1..=100 {
+        fs::write(repo_path.join("file"), format!("content {}", i)).unwrap();
+        run_git(&["add", "file"]);
+        run_git(&["commit", "-m", &format!("commit {}", i)]);
+        run_git(&["branch", &format!("branch-{}", i)]);
     }
 
-    let oid_refs: Vec<&str> = oids.iter().map(|s| s.as_str()).collect();
+    let repo = GitRepo::new(repo_path.to_path_buf());
 
     let start = Instant::now();
-    ctx.repo.preload_ancestry(&oid_refs).unwrap();
+    let _discoveries =
+        git_staircase::core::discovery::discover(&repo, Some("main"), None, false).unwrap();
     let duration = start.elapsed();
 
-    println!("Preload ancestry for 200 branches took: {:?}", duration);
+    println!("Discovery of 100 branches took {:?}", duration);
+    // If it takes more than 5 seconds for 100 branches, it's definitely a bottleneck
     assert!(
-        duration.as_millis() < 2000,
-        "Preload ancestry is too slow: {:?}",
+        duration.as_secs() < 5,
+        "Discovery took too long: {:?}",
         duration
     );
 }
