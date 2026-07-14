@@ -42,7 +42,7 @@ fn local_repo(change_ids: bool, count: usize) -> LocalRepo {
         } else {
             format!("step {}", index + 1)
         };
-        repo.run(&["commit", "-m", &message]).unwrap();
+        repo.run(&["commit", "--no-verify", "-m", &message]).unwrap();
         oids.push(repo.resolve_commit("HEAD").unwrap());
     }
     LocalRepo {
@@ -72,7 +72,7 @@ fn repo_client(revision: &str, destination: Option<&str>, detached: bool) -> Rep
         .unwrap();
     fs::write(repo.workdir.join("content"), "base\n").unwrap();
     repo.run(&["add", "content"]).unwrap();
-    repo.run(&["commit", "-m", "base"]).unwrap();
+    repo.run(&["commit", "--no-verify", "-m", "base"]).unwrap();
     let oid = repo.resolve_commit("HEAD").unwrap();
     let destination = destination
         .map(|value| format!(r#" dest-branch="{}""#, value))
@@ -341,7 +341,7 @@ fn repo_journey_8_detached_review_checkout_is_not_silently_baseline() {
     client.repo.run(&["checkout", "--detach", "HEAD"]).unwrap();
     fs::write(client.repo.workdir.join("content"), "review\n").unwrap();
     client.repo.run(&["add", "content"]).unwrap();
-    client.repo.run(&["commit", "-m", "review patch"]).unwrap();
+    client.repo.run(&["commit", "--no-verify", "-m", "review patch"]).unwrap();
     let report = observe_repo_workspace(&client.repo).unwrap().unwrap();
     assert!(!report.checkout.eligible_as_anchor);
     assert_eq!(

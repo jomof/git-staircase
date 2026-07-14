@@ -174,6 +174,8 @@ impl GitRepo {
         cmd.current_dir(&self.workdir);
         cmd.env("GIT_TERMINAL_PROMPT", "0");
         cmd.env("GIT_OPTIONAL_LOCKS", "0");
+        cmd.env("GIT_CONFIG_GLOBAL", "/dev/null");
+        cmd.env("GIT_CONFIG_SYSTEM", "/dev/null");
         cmd
     }
 
