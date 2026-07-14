@@ -19,7 +19,7 @@ impl ToPresentation for Summary<StaircaseStatus> {
         let implicit_marker = if s.is_implicit { " (implicit)" } else { "" };
         Presentation::pair(
             Presentation::Plain(format!(
-                "{} [{}] {} {} {} {}",
+                "{} [{}] {} {} {}{}",
                 m.name,
                 m.id,
                 steps_count,
