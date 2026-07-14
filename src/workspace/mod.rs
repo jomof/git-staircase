@@ -9,6 +9,7 @@ pub mod provider_utils;
 #[cfg(test)]
 mod provider_utils_test;
 pub mod repo_provider;
+pub mod presentation;
 pub mod review_provider;
 #[cfg(test)]
 mod review_provider_test;

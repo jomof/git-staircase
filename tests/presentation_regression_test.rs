@@ -1,5 +1,7 @@
 use git_staircase::model::*;
 use git_staircase::presentation::{Presentation, ToPresentation};
+use git_staircase::workspace::review_provider::*;
+use std::collections::HashMap;
 
 #[test]
 fn test_step_presentation() {
@@ -11,13 +13,9 @@ fn test_step_presentation() {
     };
     let presentation = step.to_presentation();
 
-    // Expected Human output: "First Step (abcdef1)"
-    // Expected Porcelain output: ["step1", "First Step", "abcdef1234567890"]
-
     match presentation {
         Presentation::List(items) => {
             assert_eq!(items.len(), 2);
-            // Check Human
             match &items[0] {
                 Presentation::Human(inner) => {
                     assert_eq!(
@@ -27,7 +25,6 @@ fn test_step_presentation() {
                 }
                 _ => panic!("Expected Human presentation"),
             }
-            // Check Porcelain
             match &items[1] {
                 Presentation::Porcelain(inner) => {
                     assert_eq!(
@@ -71,10 +68,28 @@ fn test_staircase_metadata_presentation() {
     };
 
     let presentation = metadata.to_presentation();
-    // We mainly want to ensure this doesn't panic and has the expected structure
     if let Presentation::List(items) = presentation {
         assert_eq!(items.len(), 2);
     } else {
         panic!("Expected List presentation for StaircaseMetadata");
+    }
+}
+
+#[test]
+fn test_unified_review_status_presentation() {
+    let mut details = HashMap::new();
+    details.insert("key".to_string(), "value".to_string());
+    let status = UnifiedReviewStatus {
+        provider_label: "github".to_string(),
+        status: "open".to_string(),
+        host: "github.com".to_string(),
+        project: "owner/repo".to_string(),
+        details,
+    };
+    let presentation = status.to_presentation();
+    if let Presentation::List(items) = presentation {
+         assert!(items.len() >= 1);
+    } else {
+        panic!("Expected List presentation for UnifiedReviewStatus");
     }
 }
