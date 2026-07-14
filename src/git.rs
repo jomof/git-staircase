@@ -759,7 +759,12 @@ impl GitRepo {
         Ok(entries)
     }
 
-    pub fn for_each_ref(&self, pattern: &str, format: &str, points_at: Option<&str>) -> Result<Vec<String>> {
+    pub fn for_each_ref(
+        &self,
+        pattern: &str,
+        format: &str,
+        points_at: Option<&str>,
+    ) -> Result<Vec<String>> {
         let mut cmd = self.command();
         cmd = cmd.arg("for-each-ref").arg(format!("--format={}", format));
         if let Some(oid) = points_at {
@@ -778,7 +783,12 @@ impl GitRepo {
     }
 
     pub fn commit_tree(&self, tree_oid: &str, parents: &[&str], message: &str) -> Result<String> {
-        let mut cmd = self.command().arg("commit-tree").arg(tree_oid).arg("-m").arg(message);
+        let mut cmd = self
+            .command()
+            .arg("commit-tree")
+            .arg(tree_oid)
+            .arg("-m")
+            .arg(message);
         for parent in parents {
             cmd = cmd.arg("-p").arg(*parent);
         }
@@ -798,5 +808,4 @@ impl GitRepo {
     pub fn read_tree_file(&self, rev: &str, path: &str) -> Result<String> {
         self.cat_file(&format!("{}:{}", rev, path))
     }
-
 }

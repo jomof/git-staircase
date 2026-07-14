@@ -9,6 +9,7 @@ pub mod manipulation;
 pub mod metadata;
 pub mod operation;
 pub mod persistence;
+pub mod presentation;
 pub mod refs;
 #[cfg(test)]
 pub mod refs_test;
@@ -19,7 +20,6 @@ pub(crate) mod rewrite;
 pub mod status;
 pub mod unarchive;
 pub mod utils;
-pub mod presentation;
 pub mod verification;
 
 pub use archive::{ArchiveOptions, ArchiveResult, archive_staircase, release_staircase_name};

@@ -14,12 +14,12 @@
  * limitations under the License.
  */
 
-use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use crate::core::draft::MaterializeResult;
 use crate::core::local::{DiscoveryOverride, LayoutState, LocalMutationResult};
 use crate::core::operation::{OperationJournal, OperationResult};
 use crate::core::resolved::ResolvedStaircase;
 use crate::core::verification::DraftVerificationEvidence;
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use crate::record;
 
 impl ToPresentation for MaterializeResult {

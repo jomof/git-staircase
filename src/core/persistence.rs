@@ -309,8 +309,7 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
     if obj_type != "tree" {
         return Err(StaircaseError::Other(format!(
             "record {} must be a tree, found {}",
-            target_oid,
-            obj_type
+            target_oid, obj_type
         )));
     }
 

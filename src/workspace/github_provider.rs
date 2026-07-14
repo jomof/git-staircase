@@ -364,9 +364,15 @@ pub struct GitHubReviewAssociation {
 }
 
 impl ProviderAssociation for GitHubReviewAssociation {
-    fn local_oid(&self) -> &str { &self.local_oid }
-    fn is_retired(&self) -> bool { self.retired }
-    fn synchronization(&self) -> crate::workspace::review_provider::SynchronizationState { self.synchronization }
+    fn local_oid(&self) -> &str {
+        &self.local_oid
+    }
+    fn is_retired(&self) -> bool {
+        self.retired
+    }
+    fn synchronization(&self) -> crate::workspace::review_provider::SynchronizationState {
+        self.synchronization
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1303,7 +1309,12 @@ impl ReviewProvider for GitHubProvider {
         record: Option<&WorkspaceRecord>,
     ) -> Result<Option<Box<dyn ReviewProviderInstance>>> {
         if let Some(route) = probe_github_route(repo, record)? {
-            Ok(Some(Box::new(crate::workspace::stacked_provider::StackedReviewInstance { implementation: GitHubStackedImplementation, route })))
+            Ok(Some(Box::new(
+                crate::workspace::stacked_provider::StackedReviewInstance {
+                    implementation: GitHubStackedImplementation,
+                    route,
+                },
+            )))
         } else {
             Ok(None)
         }
@@ -1316,8 +1327,7 @@ pub(crate) struct GitHubInstance {
 
 #[allow(dead_code)]
 impl GitHubInstance {
-    pub(crate)
-    fn show(
+    pub(crate) fn show(
         &self,
         repo: &GitRepo,
         oids: &[String],
@@ -1895,57 +1905,105 @@ impl ReviewOperationPlan for GitHubReviewOperationPlan {
 }
 
 impl crate::workspace::stacked_provider::StackedReviewItem for GitHubPlannedPublication {
-    fn subject_id(&self) -> &str { &self.step_oid }
-    fn local_oid(&self) -> &str { &self.step_oid }
-    fn title(&self) -> &str { &self.subject }
-    fn detail(&self) -> String { format!("{} <- {}", self.head_branch, self.base_branch) }
+    fn subject_id(&self) -> &str {
+        &self.step_oid
+    }
+    fn local_oid(&self) -> &str {
+        &self.step_oid
+    }
+    fn title(&self) -> &str {
+        &self.subject
+    }
+    fn detail(&self) -> String {
+        format!("{} <- {}", self.head_branch, self.base_branch)
+    }
 }
 
 impl crate::workspace::stacked_provider::StackedReviewPlan for GitHubUploadPlan {
     type Item = GitHubPlannedPublication;
-    fn items(&self) -> &[Self::Item] { &self.publications }
-    fn mapping_policy(&self) -> &str { &self.mapping_policy }
-    fn warnings(&self) -> &[String] { &self.warnings }
+    fn items(&self) -> &[Self::Item] {
+        &self.publications
+    }
+    fn mapping_policy(&self) -> &str {
+        &self.mapping_policy
+    }
+    fn warnings(&self) -> &[String] {
+        &self.warnings
+    }
 }
 
 impl crate::workspace::stacked_provider::StackedReviewAssociation for GitHubReviewAssociation {
-    fn subject_id(&self) -> &str { &self.subject_id }
-    fn local_oid(&self) -> &str { &self.local_oid }
-    fn synchronization(&self) -> crate::workspace::review_provider::SynchronizationState { self.synchronization }
-    fn is_retired(&self) -> bool { self.retired }
+    fn subject_id(&self) -> &str {
+        &self.subject_id
+    }
+    fn local_oid(&self) -> &str {
+        &self.local_oid
+    }
+    fn synchronization(&self) -> crate::workspace::review_provider::SynchronizationState {
+        self.synchronization
+    }
+    fn is_retired(&self) -> bool {
+        self.retired
+    }
 }
 
 impl crate::workspace::stacked_provider::StackedReviewState for GitHubProviderState {
     type Association = GitHubReviewAssociation;
-    fn associations(&self) -> &[Self::Association] { &self.associations }
-    fn reconciliation_required(&self) -> bool { self.reconciliation_required }
+    fn associations(&self) -> &[Self::Association] {
+        &self.associations
+    }
+    fn reconciliation_required(&self) -> bool {
+        self.reconciliation_required
+    }
 }
 
 pub struct GitHubStackedImplementation;
 
-impl crate::workspace::stacked_provider::StackedReviewImplementation for GitHubStackedImplementation {
+impl crate::workspace::stacked_provider::StackedReviewImplementation
+    for GitHubStackedImplementation
+{
     type State = GitHubProviderState;
     type Route = GitHubRoute;
     type Plan = GitHubUploadPlan;
-    
-    fn provider_label(&self) -> &'static str { "GitHub" }
-    fn extension_name(&self) -> &'static str { "git-staircase.github" }
-    
-    fn create_plan(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], mapping: Option<&str>) -> Result<Self::Plan> {
+
+    fn provider_label(&self) -> &'static str {
+        "GitHub"
+    }
+    fn extension_name(&self) -> &'static str {
+        "git-staircase.github"
+    }
+
+    fn create_plan(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        mapping: Option<&str>,
+    ) -> Result<Self::Plan> {
         create_github_upload_plan(repo, route, oids, mapping)
     }
-    
-    fn get_host(&self, route: &GitHubRoute) -> String { route.installation.clone() }
-    fn get_project(&self, route: &GitHubRoute) -> String { route.base_repository.full_name() }
-    fn get_destination_branch(&self, route: &GitHubRoute) -> String { route.destination_branch.clone() }
-    fn get_open_url(&self, route: &GitHubRoute) -> String {
-        format!("https://{}/{}/pulls", route.installation, route.base_repository.full_name())
+
+    fn get_host(&self, route: &GitHubRoute) -> String {
+        route.installation.clone()
     }
-    
+    fn get_project(&self, route: &GitHubRoute) -> String {
+        route.base_repository.full_name()
+    }
+    fn get_destination_branch(&self, route: &GitHubRoute) -> String {
+        route.destination_branch.clone()
+    }
+    fn get_open_url(&self, route: &GitHubRoute) -> String {
+        format!(
+            "https://{}/{}/pulls",
+            route.installation,
+            route.base_repository.full_name()
+        )
+    }
+
     fn render_association_detail(&self, association: &GitHubReviewAssociation) -> String {
         format!("{} <- {}", association.head_branch, association.base_branch)
     }
-    
+
     fn render_state_details(&self, state: &GitHubProviderState) -> HashMap<String, String> {
         let mut details = HashMap::new();
         details.insert("Mapping".into(), state.mapping_policy.clone());
@@ -1955,28 +2013,84 @@ impl crate::workspace::stacked_provider::StackedReviewImplementation for GitHubS
         details
     }
 
-    fn upload(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], destination: Option<&str>, record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedReviewUpload> {
-        let instance = GitHubInstance { route: route.clone() };
+    fn upload(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        destination: Option<&str>,
+        record: Option<&StaircaseRecord>,
+    ) -> Result<crate::workspace::review_provider::UnifiedReviewUpload> {
+        let instance = GitHubInstance {
+            route: route.clone(),
+        };
         instance.upload(repo, oids, destination, record)
     }
-    fn reconcile(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedReviewReconcile> {
-        let instance = GitHubInstance { route: route.clone() };
+    fn reconcile(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<crate::workspace::review_provider::UnifiedReviewReconcile> {
+        let instance = GitHubInstance {
+            route: route.clone(),
+        };
         instance.reconcile(repo, oids, record)
     }
-    fn create(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], mapping: Option<&str>, record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
-        let instance = GitHubInstance { route: route.clone() };
+    fn create(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        mapping: Option<&str>,
+        record: Option<&StaircaseRecord>,
+    ) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
+        let instance = GitHubInstance {
+            route: route.clone(),
+        };
         instance.create(repo, oids, mapping, record)
     }
-    fn attach(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], review: &str, record: Option<&StaircaseRecord>, selected_index: Option<usize>) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
-        let instance = GitHubInstance { route: route.clone() };
+    fn attach(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        review: &str,
+        record: Option<&StaircaseRecord>,
+        selected_index: Option<usize>,
+    ) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
+        let instance = GitHubInstance {
+            route: route.clone(),
+        };
         instance.attach(repo, oids, review, record, selected_index)
     }
-    fn detach(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], review: &str, record: Option<&StaircaseRecord>, selected_index: Option<usize>) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
-        let instance = GitHubInstance { route: route.clone() };
+    fn detach(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        review: &str,
+        record: Option<&StaircaseRecord>,
+        selected_index: Option<usize>,
+    ) -> Result<crate::workspace::review_provider::UnifiedReviewMutation> {
+        let instance = GitHubInstance {
+            route: route.clone(),
+        };
         instance.detach(repo, oids, review, record, selected_index)
     }
-    fn land(&self, repo: &GitRepo, route: &GitHubRoute, oids: &[String], mode: &str, method: Option<&str>, record: Option<&StaircaseRecord>) -> Result<crate::workspace::review_provider::UnifiedProviderLanding> {
-        let instance = GitHubInstance { route: route.clone() };
+    fn land(
+        &self,
+        repo: &GitRepo,
+        route: &GitHubRoute,
+        oids: &[String],
+        mode: &str,
+        method: Option<&str>,
+        record: Option<&StaircaseRecord>,
+    ) -> Result<crate::workspace::review_provider::UnifiedProviderLanding> {
+        let instance = GitHubInstance {
+            route: route.clone(),
+        };
         instance.land(repo, oids, mode, method, record)
     }
 }

@@ -88,7 +88,7 @@ fn test_unified_review_status_presentation() {
     };
     let presentation = status.to_presentation();
     if let Presentation::List(items) = presentation {
-         assert!(items.len() >= 1);
+        assert!(items.len() >= 1);
     } else {
         panic!("Expected List presentation for UnifiedReviewStatus");
     }

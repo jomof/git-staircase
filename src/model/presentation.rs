@@ -14,8 +14,8 @@
  * limitations under the License.
  */
 
-use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use crate::model::*;
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 
 impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {

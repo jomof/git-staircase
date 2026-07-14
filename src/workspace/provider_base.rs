@@ -2,9 +2,8 @@ use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::review_provider::{
-    OperationJournal, ProviderTransport, TransportRequest, TransportResponse,
+    OperationJournal, ProviderTransport, SynchronizationState, TransportRequest, TransportResponse,
     UnifiedProviderLanding, UnifiedProviderVerification, publish_provider_extension_cas,
-    SynchronizationState
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;

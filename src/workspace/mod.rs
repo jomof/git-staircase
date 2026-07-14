@@ -3,18 +3,18 @@ pub mod doctor;
 pub mod gerrit_provider;
 pub mod github_provider;
 pub mod model;
+pub mod presentation;
 pub mod provider;
 pub mod provider_base;
 pub mod provider_utils;
 #[cfg(test)]
 mod provider_utils_test;
 pub mod repo_provider;
-pub mod presentation;
 pub mod review_provider;
 #[cfg(test)]
 mod review_provider_test;
-pub mod storage;
 pub mod stacked_provider;
+pub mod storage;
 
 pub use bootstrap::{BootstrapOptions, BootstrapResult, bootstrap};
 pub use doctor::{WorkspaceDoctorReport, doctor};
