@@ -78,3 +78,15 @@ impl<T: ToPresentation> ToPresentation for Vec<T> {
 }
 
 pub trait UsePresentation: ToPresentation {}
+
+pub mod cli;
+pub mod core;
+pub mod model;
+pub mod workspace;
+
+#[macro_export]
+macro_rules! present_pair {
+    ($h:expr, $p:expr) => {
+        $crate::presentation::Presentation::pair($h, $p)
+    };
+}

@@ -20,12 +20,11 @@ use crate::core::operation::{OperationJournal, OperationResult};
 use crate::core::resolved::ResolvedStaircase;
 use crate::core::verification::DraftVerificationEvidence;
 use crate::presentation::{Presentation, ToPresentation, UsePresentation};
-use crate::record;
 
 impl ToPresentation for MaterializeResult {
     fn to_presentation(&self) -> Presentation {
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
+        Presentation::pair(
+            Presentation::Plain(format!(
                 "Materialized draft as commit {} on step '{}' of staircase '{}'",
                 if self.commit_oid.len() >= 7 {
                     &self.commit_oid[..7]
@@ -34,14 +33,14 @@ impl ToPresentation for MaterializeResult {
                 },
                 self.step_name,
                 self.staircase_name
-            )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            )),
+            Presentation::Record(vec![
                 "materialized".to_string(),
                 self.staircase_name.clone(),
                 self.step_name.clone(),
                 self.commit_oid.clone(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
@@ -69,17 +68,17 @@ impl ToPresentation for LocalMutationResult {
             children.push(Presentation::Plain("(dry run)".to_string()));
         }
 
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: format!("Operation '{}' completed successfully:", self.kind),
                 children,
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            },
+            Presentation::Record(vec![
                 self.kind.clone(),
                 self.staircase_name.clone(),
                 self.record_oid.clone().unwrap_or_default(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
@@ -95,8 +94,8 @@ impl ToPresentation for LayoutState {
                     .to_string(),
             ]);
         }
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: format!("Layout state for staircase {}:", self.staircase_id),
                 children: vec![
                     Presentation::Field {
@@ -116,13 +115,13 @@ impl ToPresentation for LayoutState {
                         rows: branches,
                     },
                 ],
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            },
+            Presentation::Record(vec![
                 "layout".to_string(),
                 self.staircase_id.clone(),
                 self.state.clone(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 

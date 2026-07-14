@@ -10,7 +10,6 @@ pub mod manipulation;
 pub mod metadata;
 pub mod operation;
 pub mod persistence;
-pub mod presentation;
 pub mod refs;
 #[cfg(test)]
 pub mod refs_test;

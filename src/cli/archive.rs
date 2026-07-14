@@ -1,6 +1,4 @@
-use crate::cli::{
-    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
-};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core::{self, ArchiveOptions, ArchiveResult};
 use crate::git::GitRepo;
 use anyhow::Result;
@@ -53,64 +51,9 @@ pub struct ArchiveOutput {
     pub result: ArchiveResult,
 }
 
-impl ToPresentation for ArchiveOutput {
-    fn to_presentation(&self) -> Presentation {
-        let mut h_children = vec![];
-        if !self.result.moved_branches.is_empty() {
-            h_children.push(Presentation::Section {
-                title: "Moved owned branches from refs/heads/:".into(),
-                children: self
-                    .result
-                    .moved_branches
-                    .iter()
-                    .map(|b| Presentation::Plain(format!("  {}", b)))
-                    .collect(),
-            });
-        }
-        for warn in &self.result.unowned_warnings {
-            h_children.push(Presentation::Plain(warn.clone()));
-        }
-
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
-                title: if self.result.is_dry_run {
-                    "Dry run: planned archive operations:".into()
-                } else {
-                    format!(
-                        "Archived staircase '{}' ({})",
-                        self.result.canonical_name, self.result.archived_staircase_id
-                    )
-                },
-                children: h_children,
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
-                "archived".into(),
-                self.result.canonical_name.clone(),
-                self.result.archived_staircase_id.clone(),
-                self.result.archive_event_id.clone(),
-            ]))),
-        ])
-    }
-}
-
 #[derive(Serialize, Debug, Clone)]
 pub struct ReleaseNameOutput {
     pub record_oid: String,
-}
-
-impl ToPresentation for ReleaseNameOutput {
-    fn to_presentation(&self) -> Presentation {
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
-                "Released canonical name reservation (record OID: {})",
-                self.record_oid
-            )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
-                "name_released".into(),
-                self.record_oid.clone(),
-            ]))),
-        ])
-    }
 }
 
 impl Command for ArchiveCmd {

@@ -19,18 +19,10 @@ use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 
 impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
-                "{} ({})",
-                self.name,
-                &self.cut[..7]
-            )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
-                self.id.clone(),
-                self.name.clone(),
-                self.cut.clone(),
-            ]))),
-        ])
+        Presentation::pair(
+            Presentation::Plain(format!("{} ({})", self.name, &self.cut[..7])),
+            Presentation::Record(vec![self.id.clone(), self.name.clone(), self.cut.clone()]),
+        )
     }
 }
 
@@ -108,16 +100,13 @@ impl ToPresentation for StaircaseMetadata {
             children: steps_children,
         });
 
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: String::new(),
                 children: h_children,
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
-                self.name.clone(),
-                self.id.clone(),
-            ]))),
-        ])
+            },
+            Presentation::Record(vec![self.name.clone(), self.id.clone()]),
+        )
     }
 }
 
@@ -149,16 +138,16 @@ impl ToPresentation for StaircaseStatus {
         if let Some(ref results) = self.verification_results {
             let mut v_children = vec![];
             for result in results {
-                v_children.push(Presentation::List(vec![
-                    Presentation::Human(Box::new(Presentation::Field {
+                v_children.push(Presentation::pair(
+                    Presentation::Field {
                         label: result.step_name.clone(),
                         value: if result.success {
                             "PASS".to_string()
                         } else {
                             "FAIL".to_string()
                         },
-                    })),
-                    Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                    },
+                    Presentation::Record(vec![
                         "verify".to_string(),
                         result.step_name.clone(),
                         if result.success {
@@ -167,8 +156,8 @@ impl ToPresentation for StaircaseStatus {
                             "fail".to_string()
                         },
                         result.cut.clone(),
-                    ]))),
-                ]));
+                    ]),
+                ));
             }
             children.push(Presentation::Section {
                 title: "verification:".to_string(),
@@ -203,16 +192,16 @@ impl ToPresentation for StaircaseStatus {
             });
         }
 
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: format!(
                     "{}{}",
                     self.metadata.name,
                     if self.is_implicit { " (implicit)" } else { "" }
                 ),
                 children,
-            })),
-            Presentation::Porcelain(Box::new(Presentation::List(vec![
+            },
+            Presentation::List(vec![
                 Presentation::Record(vec![
                     self.metadata.name.clone(),
                     self.metadata.id.clone(),
@@ -222,8 +211,8 @@ impl ToPresentation for StaircaseStatus {
                     name: Some("step".to_string()),
                     rows: steps_rows,
                 },
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
@@ -275,18 +264,18 @@ impl ToPresentation for StaircaseFamily {
             children: steps_children,
         });
 
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: format!("Name: {}", self.name),
                 children,
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            },
+            Presentation::Record(vec![
                 self.name.clone(),
                 self.id.clone(),
                 "family".to_string(),
                 self.steps.len().to_string(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
@@ -312,16 +301,16 @@ impl ToPresentation for VerificationResult {
                 children: vec![Presentation::Plain(self.stderr.clone())],
             });
         }
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: format!(
                     "Step {}: {}",
                     self.step_name,
                     if self.success { "PASSED" } else { "FAILED" }
                 ),
                 children,
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            },
+            Presentation::Record(vec![
                 self.step_name.clone(),
                 if self.success {
                     "pass".to_string()
@@ -329,8 +318,8 @@ impl ToPresentation for VerificationResult {
                     "fail".to_string()
                 },
                 self.cut.clone(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
@@ -396,20 +385,20 @@ fn get_worktree_draft_presentation_fields(draft: &WorktreeDraft) -> Vec<Presenta
 
 impl ToPresentation for WorktreeDraft {
     fn to_presentation(&self) -> Presentation {
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Section {
+        Presentation::pair(
+            Presentation::Section {
                 title: "current worktree draft:".to_string(),
                 children: get_worktree_draft_presentation_fields(self),
-            })),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            },
+            Presentation::Record(vec![
                 "draft".to_string(),
                 self.basis.clone(),
                 self.classification.to_string(),
                 self.staged_paths.len().to_string(),
                 self.unstaged_paths.len().to_string(),
                 self.untracked_paths.len().to_string(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
@@ -426,8 +415,8 @@ impl ToPresentation for DraftAttachment {
             DraftIntent::Unassigned => "unassigned",
             DraftIntent::RewriteStep(_) => "rewrite-step",
         };
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
+        Presentation::pair(
+            Presentation::Plain(format!(
                 "Attached to {} with intent '{}' (expected basis: {})",
                 attached_to.trim(),
                 intent_str,
@@ -436,22 +425,22 @@ impl ToPresentation for DraftAttachment {
                 } else {
                     &self.expected_basis
                 }
-            )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            )),
+            Presentation::Record(vec![
                 "attached".to_string(),
                 self.staircase_name.as_deref().unwrap_or("").to_string(),
                 self.step_name.as_deref().unwrap_or("").to_string(),
                 intent_str.to_string(),
                 self.expected_basis.clone(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 
 impl ToPresentation for DraftSnapshot {
     fn to_presentation(&self) -> Presentation {
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
+        Presentation::pair(
+            Presentation::Plain(format!(
                 "Created snapshot {} (basis: {})",
                 self.id,
                 if self.basis.len() >= 7 {
@@ -459,13 +448,13 @@ impl ToPresentation for DraftSnapshot {
                 } else {
                     &self.basis
                 }
-            )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+            )),
+            Presentation::Record(vec![
                 "snapshot".to_string(),
                 self.id.clone(),
                 self.basis.clone(),
-            ]))),
-        ])
+            ]),
+        )
     }
 }
 

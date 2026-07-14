@@ -451,4 +451,3 @@ pub struct StaircaseRecord {
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub archive_manifest: Option<ArchiveManifest>,
 }
-pub mod presentation;

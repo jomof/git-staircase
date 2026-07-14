@@ -29,3 +29,5 @@ pub fn parse_step_spec(spec: &str) -> anyhow::Result<(String, usize)> {
         .map_err(|e| anyhow::anyhow!("Failed to parse step number \"{}\": {}", num_str, e))?;
     Ok((name.to_string(), num))
 }
+#[cfg(test)]
+mod presentation_test;

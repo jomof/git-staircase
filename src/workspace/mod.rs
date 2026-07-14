@@ -3,7 +3,6 @@ pub mod doctor;
 pub mod gerrit_provider;
 pub mod github_provider;
 pub mod model;
-pub mod presentation;
 pub mod provider;
 pub mod provider_base;
 pub mod provider_utils;
