@@ -1,10 +1,11 @@
-use anyhow::{Context, Result, anyhow};
-use clap::{Args, Parser, Subcommand, error::ErrorKind};
+use anyhow::{anyhow, Context, Result};
+use clap::{error::ErrorKind, Args, Parser, Subcommand};
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
-use git_staircase::cli::{self, Command, OutputFormat};
-use git_staircase::workspace::{BootstrapOptions, bootstrap};
+use git_staircase::cli::{self, Command, OutputFormat, Presentation};
+use git_staircase::core;
+use git_staircase::workspace::{bootstrap, BootstrapOptions};
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]
@@ -270,8 +271,8 @@ fn run(cli: Cli) -> Result<()> {
     let repo_root = find_repo_root()?;
     let repo = GitRepo::new(repo_root);
     if cli.command.requires_clear_operation() {
-        git_staircase::core::ensure_no_active(&repo)?;
-        if let Some((operation, owner)) = git_staircase::core::external_git_operation(&repo)? {
+        core::ensure_no_active(&repo)?;
+        if let Some((operation, owner)) = core::external_git_operation(&repo)? {
             return Err(StaircaseError::ExternalOperation { operation, owner }.into());
         }
     }
@@ -300,14 +301,6 @@ fn run(cli: Cli) -> Result<()> {
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
 
-fn escape_machine_field(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
-
 fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
     let typed = error
         .chain()
@@ -316,6 +309,8 @@ fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
     let status = typed.map_or(1, |error| error.exit_class().status());
     let message = typed.map_or_else(|| error.to_string(), ToString::to_string);
     let details = typed.map_or(serde_json::Value::Null, StaircaseError::details);
+
+    let presentation = Presentation::error(code, &message, status, details.clone());
 
     match format {
         OutputFormat::Json => {
@@ -334,15 +329,10 @@ fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
             );
         }
         OutputFormat::Porcelain => {
-            eprintln!("error\t{}\t{}", code, escape_machine_field(&message));
+            eprint!("{}", cli::render_porcelain(&presentation));
         }
         OutputFormat::Human => {
-            eprintln!("error [{}]: {}", code, message);
-            if !details.is_null() {
-                if let Ok(rendered) = serde_json::to_string_pretty(&details) {
-                    eprintln!("{}", rendered);
-                }
-            }
+            eprint!("{}", cli::render_human(&presentation, 0));
         }
     }
     status

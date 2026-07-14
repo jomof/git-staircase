@@ -19,6 +19,12 @@ pub enum Presentation {
     List(Vec<Presentation>),
     Human(Box<Presentation>),
     Porcelain(Box<Presentation>),
+    Error {
+        code: String,
+        message: String,
+        exit_status: i32,
+        details: serde_json::Value,
+    },
 }
 
 impl Presentation {
@@ -52,6 +58,20 @@ impl Presentation {
         Self::Table {
             name: name.into(),
             rows,
+        }
+    }
+
+    pub fn error(
+        code: impl Into<String>,
+        message: impl Into<String>,
+        exit_status: i32,
+        details: serde_json::Value,
+    ) -> Self {
+        Self::Error {
+            code: code.into(),
+            message: message.into(),
+            exit_status,
+            details,
         }
     }
 
