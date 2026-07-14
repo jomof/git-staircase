@@ -21,6 +21,8 @@ pub struct UnarchiveOptions {
     pub branches_mode: UnarchiveBranchesMode,
     pub adopt_existing_branches: bool,
     pub reattach_worktrees: bool,
+    pub adopt: bool,
+    pub accept_current_context: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
@@ -35,6 +37,10 @@ pub fn unarchive_staircase(
     selector: &ResolvedSelector,
     options: &UnarchiveOptions,
 ) -> Result<UnarchiveResult> {
+    if let crate::core::ResolvedStaircase::ImplicitArchive(ref snap) = selector.staircase {
+        return unarchive_implicit_archive_snapshot(repo, snap, options);
+    }
+
     let meta = selector.staircase.metadata();
     let current_ref = StaircaseRefs::record(
         &meta.id,
@@ -241,4 +247,121 @@ pub fn unarchive_staircase(
         canonical_name: target_name,
         restored_branches: restored_branches.into_iter().map(|(b, _)| b).collect(),
     })
+}
+
+fn unarchive_implicit_archive_snapshot(
+    repo: &GitRepo,
+    snap: &crate::model::ImplicitArchiveSnapshot,
+    options: &UnarchiveOptions,
+) -> Result<UnarchiveResult> {
+    let mut restored_branches = Vec::new();
+
+    if options.branches_mode != UnarchiveBranchesMode::None {
+        for (idx, cut) in snap.descriptor.ordered_cuts.iter().enumerate() {
+            let branch_name = if let Some(ref base) = options.branch_base {
+                if snap.descriptor.ordered_cuts.len() > 1 {
+                    format!("{}-{}", base, idx + 1)
+                } else {
+                    base.clone()
+                }
+            } else if let Some(owned) = snap.manifest.owned_refs.get(idx) {
+                owned
+                    .original_refname
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(&owned.original_refname)
+                    .to_string()
+            } else {
+                format!("{}-{}", snap.descriptor.canonical_display_name, idx + 1)
+            };
+
+            let dest_ref = format!("refs/heads/{}", branch_name);
+
+            if let Ok(Some(existing_oid)) = repo.resolve_ref_opt(&dest_ref) {
+                if existing_oid == *cut {
+                    if !options.adopt_existing_branches {
+                        return Err(StaircaseError::Other(format!(
+                            "branch '{}' exists at step cut {}; adoption requires --adopt-existing-branches",
+                            dest_ref, existing_oid
+                        )));
+                    }
+                } else {
+                    return Err(StaircaseError::Other(format!(
+                        "cannot restore {}: branch exists at different OID ({}, expected {})",
+                        dest_ref, existing_oid, cut
+                    )));
+                }
+            }
+
+            restored_branches.push((branch_name, cut.clone()));
+        }
+    }
+
+    if options.adopt {
+        let mut meta = snap.metadata.clone();
+        if let Some(ref new_name) = options.new_name {
+            meta.name = new_name.clone();
+        }
+        for (branch_name, cut_oid) in &restored_branches {
+            repo.run(&["branch", branch_name, cut_oid])?;
+        }
+        delete_implicit_archive_refs(repo, &snap.archive_id)?;
+
+        let adopted = crate::core::resolved::adopt(repo, &meta)?;
+        return Ok(UnarchiveResult {
+            restored_staircase_id: adopted.id,
+            canonical_name: adopted.name,
+            restored_branches: restored_branches.into_iter().map(|(b, _)| b).collect(),
+        });
+    }
+
+    for (branch_name, cut_oid) in &restored_branches {
+        repo.run(&["branch", branch_name, cut_oid])?;
+    }
+
+    for bc in &snap.manifest.branch_configs {
+        for entry in &bc.entries {
+            let _ = repo.run(&["config", &entry.key, &entry.value]);
+        }
+    }
+
+    delete_implicit_archive_refs(repo, &snap.archive_id)?;
+
+    Ok(UnarchiveResult {
+        restored_staircase_id: snap.archive_id.clone(),
+        canonical_name: snap.descriptor.canonical_display_name.clone(),
+        restored_branches: restored_branches.into_iter().map(|(b, _)| b).collect(),
+    })
+}
+
+fn delete_implicit_archive_refs(repo: &GitRepo, archive_id: &str) -> Result<()> {
+    let mut commands = Vec::new();
+    let record_ref = StaircaseRefs::implicit_archive_record(archive_id);
+    if let Some(oid) = repo.resolve_ref_opt(&record_ref)? {
+        commands.push(format!("delete {} {}", record_ref, oid));
+    }
+
+    let cut_prefix = format!("{}{}/cuts/", StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, archive_id);
+    if let Ok(lines) = repo.for_each_ref(&cut_prefix, "%(refname) %(objectname)", None) {
+        for line in lines {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 2 {
+                commands.push(format!("delete {} {}", parts[0], parts[1]));
+            }
+        }
+    }
+
+    let owned_prefix = format!("{}{}/owned/", StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, archive_id);
+    if let Ok(lines) = repo.for_each_ref(&owned_prefix, "%(refname) %(objectname)", None) {
+        for line in lines {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 2 {
+                commands.push(format!("delete {} {}", parts[0], parts[1]));
+            }
+        }
+    }
+
+    if !commands.is_empty() {
+        repo.update_refs_transaction(&commands)?;
+    }
+    Ok(())
 }

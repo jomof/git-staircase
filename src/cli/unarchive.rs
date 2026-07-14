@@ -31,6 +31,14 @@ pub struct UnarchiveCmd {
     /// Reattach eligible worktrees
     #[arg(long)]
     pub reattach_worktrees: bool,
+
+    /// Adopt restored staircase into managed state
+    #[arg(long)]
+    pub adopt: bool,
+
+    /// Accept changed integration context when restoring implicit archive
+    #[arg(long)]
+    pub accept_current_context: bool,
 }
 
 #[derive(Serialize, Debug, Clone)]
@@ -92,6 +100,8 @@ impl Command for UnarchiveCmd {
             branches_mode,
             adopt_existing_branches: self.adopt_existing_branches,
             reattach_worktrees: self.reattach_worktrees,
+            adopt: self.adopt,
+            accept_current_context: self.accept_current_context,
         };
 
         let res = core::unarchive_staircase(repo, &sel, &options)?;

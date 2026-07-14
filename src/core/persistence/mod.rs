@@ -8,10 +8,50 @@ use crate::git::GitRepo;
 use crate::model::StaircaseMetadata;
 
 pub use record::{
-    read_metadata, read_metadata_from_oid, read_record, write_metadata, write_record,
+    list_implicit_archive_snapshots, read_implicit_archive_snapshot, read_metadata,
+    read_metadata_from_oid, read_record, write_implicit_archive_snapshot, write_metadata,
+    write_record,
 };
 pub use structure::{parse_descriptor, parse_structure, serialize_descriptor, serialize_structure};
 pub use verification::{read_verification, record_verification};
+
+pub fn list_archived_structural_keys(repo: &GitRepo) -> Result<std::collections::HashSet<String>> {
+    let mut keys = std::collections::HashSet::new();
+
+    if let Ok(snapshots) = record::list_implicit_archive_snapshots(repo) {
+        for snap in snapshots {
+            keys.insert(snap.descriptor.originating_structural_key);
+        }
+    }
+
+    if let Ok(lines) = repo.for_each_ref(ARCHIVE_PREFIX, "%(refname)", None) {
+        for line in lines {
+            let refname = line.trim();
+            if refname.starts_with(StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX) {
+                continue;
+            }
+            if refname.ends_with("/record") {
+                if let Ok(rec) = record::read_record(repo, refname) {
+                    if let Some(manifest) = rec.archive_manifest {
+                        if let Some(key) = manifest.originating_structural_key {
+                            keys.insert(key);
+                        } else if let Ok(integration) = repo.resolve_commit(&rec.metadata.target) {
+                            if let Ok(key) = crate::core::discovery::compute_implicit_id(
+                                repo,
+                                &integration,
+                                &rec.metadata.steps,
+                            ) {
+                                keys.insert(key);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(keys)
+}
 
 pub fn list_staircases(repo: &GitRepo) -> Result<Vec<StaircaseMetadata>> {
     list_staircases_filtered(repo, true, false)
@@ -69,7 +109,16 @@ pub fn list_staircases_filtered(
         let lines = repo.for_each_ref(ARCHIVE_PREFIX, "%(refname)", None)?;
         for line in lines {
             let refname = line.trim();
-            if refname.ends_with("/record") {
+            if refname.starts_with(StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX) {
+                if refname.ends_with("/record") {
+                    if let Ok(snap) = read_implicit_archive_snapshot(repo, refname) {
+                        if !seen_ids.contains(&snap.archive_id) {
+                            seen_ids.insert(snap.archive_id.clone());
+                            staircases.push(snap.metadata);
+                        }
+                    }
+                }
+            } else if refname.ends_with("/record") {
                 let parts: Vec<&str> = refname
                     .strip_prefix(ARCHIVE_PREFIX)
                     .unwrap()

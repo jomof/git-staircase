@@ -101,4 +101,28 @@ impl StaircaseRefs {
     pub fn revision_verification(rev: &str) -> String {
         format!("{}by-revision/{}/verification", PUBLIC_PREFIX, rev)
     }
+
+    pub const IMPLICIT_ARCHIVE_PREFIX: &str = "refs/staircase-archive/implicit/";
+
+    pub fn implicit_archive_record(archive_id: &str) -> String {
+        format!("{}{}/record", Self::IMPLICIT_ARCHIVE_PREFIX, archive_id)
+    }
+
+    pub fn implicit_archive_cut(archive_id: &str, ordinal: usize) -> String {
+        format!(
+            "{}{}/cuts/{:04}",
+            Self::IMPLICIT_ARCHIVE_PREFIX,
+            archive_id,
+            ordinal
+        )
+    }
+
+    pub fn implicit_archive_owned(archive_id: &str, ref_entry_id: &str) -> String {
+        format!(
+            "{}{}/owned/{}",
+            Self::IMPLICIT_ARCHIVE_PREFIX,
+            archive_id,
+            ref_entry_id
+        )
+    }
 }

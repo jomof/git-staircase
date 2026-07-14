@@ -6,8 +6,8 @@ use crate::core::refs::StaircaseRefs;
 use crate::error::{Result, StaircaseError};
 use crate::git::{GitRepo, TreeEntry};
 use crate::model::{
-    ArchiveManifest, LifecycleState, StaircaseLifecycle, StaircaseMetadata, StaircaseRecord,
-    StaircaseUserMetadata,
+    ArchiveManifest, ImplicitArchiveLifecycle, ImplicitArchiveSnapshot, ImplicitSnapshotDescriptor,
+    LifecycleState, StaircaseLifecycle, StaircaseMetadata, StaircaseRecord, StaircaseUserMetadata,
 };
 
 pub fn write_record(
@@ -439,4 +439,195 @@ pub fn read_metadata_from_oid(repo: &GitRepo, oid: &str) -> Result<StaircaseMeta
         }
     }
     Ok(meta)
+}
+
+pub fn write_implicit_archive_snapshot(
+    repo: &GitRepo,
+    descriptor: &ImplicitSnapshotDescriptor,
+    lifecycle: &ImplicitArchiveLifecycle,
+    manifest: &ArchiveManifest,
+) -> Result<ImplicitArchiveSnapshot> {
+    let kind_oid = repo.write_blob("implicit-snapshot\n")?;
+    let descriptor_oid = super::write_versioned_json(
+        repo,
+        "git-staircase-implicit-snapshot 1",
+        descriptor,
+    )?;
+    let lifecycle_oid = super::write_versioned_json(
+        repo,
+        "git-staircase-implicit-lifecycle 1",
+        lifecycle,
+    )?;
+    let manifest_oid =
+        super::write_versioned_json(repo, "git-staircase-archive-manifest 1", manifest)?;
+
+    let entries = vec![
+        TreeEntry::blob(&manifest_oid, "archive-manifest"),
+        TreeEntry::blob(&kind_oid, "kind"),
+        TreeEntry::blob(&lifecycle_oid, "lifecycle"),
+        TreeEntry::blob(&descriptor_oid, "snapshot"),
+    ];
+
+    let record_oid = repo.write_tree(&entries)?;
+    let record_ref = StaircaseRefs::implicit_archive_record(&descriptor.archive_id);
+
+    let mut commands = vec![format!("create {} {}", record_ref, record_oid)];
+
+    for (idx, cut_oid) in descriptor.ordered_cuts.iter().enumerate() {
+        let cut_ref = StaircaseRefs::implicit_archive_cut(&descriptor.archive_id, idx + 1);
+        commands.push(format!("create {} {}", cut_ref, cut_oid));
+    }
+
+    for owned in &manifest.owned_refs {
+        let owned_ref =
+            StaircaseRefs::implicit_archive_owned(&descriptor.archive_id, &owned.ref_id);
+        commands.push(format!("create {} {}", owned_ref, owned.original_oid));
+    }
+
+    let mut plan = crate::core::operation::MutationPlan::new(
+        "implicit-archive-record",
+        Some(descriptor.archive_id.clone()),
+    );
+    for cmd in &commands {
+        let fields: Vec<_> = cmd.split_whitespace().collect();
+        if let ["create", r, new] = fields.as_slice() {
+            plan.update((*r).to_string(), None, Some((*new).to_string()));
+        }
+    }
+    plan.publish(repo, false)?;
+
+    let mut metadata = StaircaseMetadata {
+        landing_policy: None,
+        id: descriptor.archive_id.clone(),
+        verification_policy: None,
+        name: descriptor.canonical_display_name.clone(),
+        target: descriptor.integration_context.clone(),
+        steps: descriptor
+            .ordered_cuts
+            .iter()
+            .enumerate()
+            .map(|(i, cut)| crate::model::Step {
+                id: String::new(),
+                name: format!("step-{}", i + 1),
+                cut: cut.clone(),
+                branch: None,
+            })
+            .collect(),
+        primary_branch_layout: None,
+        branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: Some(StaircaseLifecycle {
+            state: LifecycleState::Archived,
+            archive_reason: lifecycle.reason.clone(),
+            name_reserved: lifecycle.name_reservation,
+            events: vec![],
+        }),
+    };
+    metadata.user_metadata = Some(StaircaseUserMetadata::default());
+
+    Ok(ImplicitArchiveSnapshot {
+        archive_id: descriptor.archive_id.clone(),
+        record_oid,
+        descriptor: descriptor.clone(),
+        lifecycle: lifecycle.clone(),
+        manifest: manifest.clone(),
+        metadata,
+    })
+}
+
+pub fn read_implicit_archive_snapshot(
+    repo: &GitRepo,
+    target: &str,
+) -> Result<ImplicitArchiveSnapshot> {
+    let target_ref = if target.starts_with("refs/") {
+        target.to_string()
+    } else if target.starts_with("archive@") {
+        let aid = target.strip_prefix("archive@").unwrap();
+        StaircaseRefs::implicit_archive_record(aid)
+    } else {
+        StaircaseRefs::implicit_archive_record(target)
+    };
+
+    let target_oid = repo
+        .resolve_ref_opt(&target_ref)?
+        .unwrap_or_else(|| target.to_string());
+
+    let obj_type = repo.get_object_type(&target_oid)?;
+    if obj_type != "tree" {
+        return Err(StaircaseError::Other(format!(
+            "implicit archive record {} must be a tree, found {}",
+            target_oid, obj_type
+        )));
+    }
+
+    let mut entries = std::collections::BTreeMap::new();
+    for entry in repo.ls_tree(&target_oid)? {
+        entries.insert(entry.name, entry.oid);
+    }
+
+    let descriptor_oid = required_entry(&entries, "snapshot", &target_oid)?;
+    let lifecycle_oid = required_entry(&entries, "lifecycle", &target_oid)?;
+    let manifest_oid = required_entry(&entries, "archive-manifest", &target_oid)?;
+
+    let descriptor: ImplicitSnapshotDescriptor =
+        super::read_versioned_json(repo, &descriptor_oid, "git-staircase-implicit-snapshot 1")?;
+    let lifecycle: ImplicitArchiveLifecycle =
+        super::read_versioned_json(repo, &lifecycle_oid, "git-staircase-implicit-lifecycle 1")?;
+    let manifest: ArchiveManifest =
+        super::read_versioned_json(repo, &manifest_oid, "git-staircase-archive-manifest 1")?;
+
+    let mut metadata = StaircaseMetadata {
+        landing_policy: None,
+        id: descriptor.archive_id.clone(),
+        verification_policy: None,
+        name: descriptor.canonical_display_name.clone(),
+        target: descriptor.integration_context.clone(),
+        steps: descriptor
+            .ordered_cuts
+            .iter()
+            .enumerate()
+            .map(|(i, cut)| crate::model::Step {
+                id: String::new(),
+                name: format!("step-{}", i + 1),
+                cut: cut.clone(),
+                branch: None,
+            })
+            .collect(),
+        primary_branch_layout: None,
+        branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: Some(StaircaseLifecycle {
+            state: LifecycleState::Archived,
+            archive_reason: lifecycle.reason.clone(),
+            name_reserved: lifecycle.name_reservation,
+            events: vec![],
+        }),
+    };
+    metadata.user_metadata = Some(StaircaseUserMetadata::default());
+
+    Ok(ImplicitArchiveSnapshot {
+        archive_id: descriptor.archive_id.clone(),
+        record_oid: target_oid,
+        descriptor,
+        lifecycle,
+        manifest,
+        metadata,
+    })
+}
+
+pub fn list_implicit_archive_snapshots(repo: &GitRepo) -> Result<Vec<ImplicitArchiveSnapshot>> {
+    let mut snapshots = Vec::new();
+    if let Ok(lines) =
+        repo.for_each_ref(StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, "%(refname)", None)
+    {
+        for line in lines {
+            let refname = line.trim();
+            if refname.ends_with("/record") {
+                if let Ok(snap) = read_implicit_archive_snapshot(repo, refname) {
+                    snapshots.push(snap);
+                }
+            }
+        }
+    }
+    Ok(snapshots)
 }

@@ -175,9 +175,25 @@ use crate::cli::archive::{ArchiveOutput, ReleaseNameOutput};
 impl ToPresentation for ArchiveOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
+
+        if self.result.archive_kind == "implicit-snapshot" {
+            if let Some(ref aid) = self.result.archive_id {
+                h_children.push(Presentation::Plain(format!("  archive ID: {}", aid)));
+            }
+            if let Some(ref key) = self.result.originating_structural_key {
+                h_children.push(Presentation::Plain(format!("  originating structural key: {}", key)));
+            }
+            h_children.push(Presentation::Plain(format!("  adopted: {}", if self.result.adopted { "yes" } else { "no" })));
+        } else if self.result.adopted {
+            if let Some(ref lid) = self.result.lineage_id {
+                h_children.push(Presentation::Plain(format!("  lineage: {}", lid)));
+            }
+            h_children.push(Presentation::Plain("  archive kind: managed lineage".into()));
+        }
+
         if !self.result.moved_branches.is_empty() {
             h_children.push(Presentation::Section {
-                title: "Moved owned branches from refs/heads/:".into(),
+                title: "archived branches:".into(),
                 children: self
                     .result
                     .moved_branches
@@ -186,27 +202,32 @@ impl ToPresentation for ArchiveOutput {
                     .collect(),
             });
         }
+
         for warn in &self.result.unowned_warnings {
             h_children.push(Presentation::Plain(warn.clone()));
         }
 
+        let title = if self.result.is_dry_run {
+            format!("Dry run: planned archive for staircase '{}':", self.result.canonical_name)
+        } else if self.result.archive_kind == "implicit-snapshot" {
+            format!("Archived implicit staircase '{}'.", self.result.canonical_name)
+        } else if self.result.adopted {
+            format!("Adopted & archived implicit staircase '{}'.", self.result.canonical_name)
+        } else {
+            format!("Archived managed staircase '{}'.", self.result.canonical_name)
+        };
+
+        let rec_id = self.result.archive_id.clone().or_else(|| self.result.lineage_id.clone()).unwrap_or_default();
+
         Presentation::pair(
             Presentation::Section {
-                title: if self.result.is_dry_run {
-                    "Dry run: planned archive operations:".into()
-                } else {
-                    format!(
-                        "Archived staircase '{}' ({})",
-                        self.result.canonical_name, self.result.archived_staircase_id
-                    )
-                },
+                title,
                 children: h_children,
             },
             Presentation::Record(vec![
                 "archived".into(),
                 self.result.canonical_name.clone(),
-                self.result.archived_staircase_id.clone(),
-                self.result.archive_event_id.clone(),
+                rec_id,
             ]),
         )
     }

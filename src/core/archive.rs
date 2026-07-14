@@ -17,15 +17,31 @@ pub struct ArchiveOptions {
     pub snapshot_drafts: bool,
     pub detach_dirty_worktrees: bool,
     pub leave_worktrees: bool,
+    pub adopt: bool,
+    pub no_adopt: bool,
+    pub reserve_name: bool,
 }
 
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct ArchiveResult {
-    pub archived_staircase_id: String,
+    pub command: String,
+    pub source_representation: String,
+    pub archive_kind: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub archive_id: Option<String>,
+    pub archive_record_oid: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub originating_structural_key: Option<String>,
+    pub adopted: bool,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub adoption_reason: Option<String>,
+    pub lineage_id: Option<String>,
+    pub stable_step_ids: bool,
     pub canonical_name: String,
-    pub archive_event_id: String,
     pub moved_branches: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub unowned_warnings: Vec<String>,
+    pub suppression_installed: bool,
     pub is_dry_run: bool,
 }
 
@@ -47,7 +63,18 @@ pub fn archive_staircase(
         ));
     }
 
-    let meta = selector.staircase.metadata();
+    let is_implicit = !selector.is_managed();
+
+    if is_implicit && !options.adopt {
+        return archive_implicit_staircase_direct(repo, selector, options);
+    }
+
+    let meta = if is_implicit && options.adopt {
+        crate::core::resolved::adopt(repo, selector.metadata())?
+    } else {
+        selector.metadata().clone()
+    };
+
     let current_ref = StaircaseRefs::record(
         &meta.id,
         meta.lifecycle
@@ -59,16 +86,24 @@ pub fn archive_staircase(
 
     if current_record.lifecycle.state == LifecycleState::Archived {
         return Ok(ArchiveResult {
-            archived_staircase_id: meta.id.clone(),
+            command: "archive".to_string(),
+            source_representation: if is_implicit { "implicit" } else { "managed" }.to_string(),
+            archive_kind: "managed-lineage".to_string(),
+            archive_id: None,
+            archive_record_oid: current_record.record_oid.clone(),
+            originating_structural_key: None,
+            adopted: is_implicit && options.adopt,
+            adoption_reason: if is_implicit && options.adopt {
+                Some("explicit-before-archive".to_string())
+            } else {
+                None
+            },
+            lineage_id: Some(meta.id.clone()),
+            stable_step_ids: true,
             canonical_name: meta.name.clone(),
-            archive_event_id: current_record
-                .lifecycle
-                .events
-                .last()
-                .map(|e| e.event_id.clone())
-                .unwrap_or_default(),
             moved_branches: Vec::new(),
             unowned_warnings: Vec::new(),
+            suppression_installed: true,
             is_dry_run: options.dry_run,
         });
     }
@@ -171,23 +206,23 @@ pub fn archive_staircase(
         let mut archive_owned_refs = Vec::new();
         for (idx, full_ref) in owned_branches.iter().enumerate() {
             let ref_id = format!("owned-{}", idx + 1);
-            let oid =
-                repo.resolve_ref_opt(full_ref)?
-                    .ok_or_else(|| StaircaseError::RefCollision {
-                        reference: full_ref.clone(),
-                        expected: meta
-                            .steps
-                            .iter()
-                            .find(|step| {
-                                step.branch.as_ref().is_some_and(|branch| {
-                                    branch == full_ref
-                                        || format!("refs/heads/{}", branch) == *full_ref
-                                })
+            let oid = repo
+                .resolve_ref_opt(full_ref)?
+                .ok_or_else(|| StaircaseError::RefCollision {
+                    reference: full_ref.clone(),
+                    expected: meta
+                        .steps
+                        .iter()
+                        .find(|step| {
+                            step.branch.as_ref().is_some_and(|branch| {
+                                branch == full_ref
+                                    || format!("refs/heads/{}", branch) == *full_ref
                             })
-                            .map(|step| step.cut.clone())
-                            .unwrap_or_else(|| "<owned-cut>".into()),
-                        actual: "<missing>".into(),
-                    })?;
+                        })
+                        .map(|step| step.cut.clone())
+                        .unwrap_or_else(|| "<owned-cut>".into()),
+                    actual: "<missing>".into(),
+                })?;
             archive_owned_refs.push(ArchivedOwnedRef {
                 ref_id: ref_id.clone(),
                 original_refname: full_ref.clone(),
@@ -234,6 +269,7 @@ pub fn archive_staircase(
             draft_disposition: None,
             provider_disposition: None,
             name_reservation: true,
+            originating_structural_key: None,
         };
 
         let mut updated_lifecycle = current_record.lifecycle.clone();
@@ -279,18 +315,31 @@ pub fn archive_staircase(
 
         if options.dry_run {
             return Ok(ArchiveResult {
-                archived_staircase_id: meta.id.clone(),
+                command: "archive".to_string(),
+                source_representation: if is_implicit { "implicit" } else { "managed" }.to_string(),
+                archive_kind: "managed-lineage".to_string(),
+                archive_id: None,
+                archive_record_oid: String::new(),
+                originating_structural_key: None,
+                adopted: is_implicit && options.adopt,
+                adoption_reason: if is_implicit && options.adopt {
+                    Some("explicit-before-archive".to_string())
+                } else {
+                    None
+                },
+                lineage_id: Some(meta.id.clone()),
+                stable_step_ids: true,
                 canonical_name: meta.name.clone(),
-                archive_event_id: event_id,
                 moved_branches: owned_branches.clone(),
                 unowned_warnings,
+                suppression_installed: true,
                 is_dry_run: true,
             });
         }
 
         let record = persistence::write_record(
             repo,
-            meta,
+            &meta,
             &current_record.user_metadata,
             &updated_lifecycle,
             Some(&archive_manifest),
@@ -362,11 +411,24 @@ pub fn archive_staircase(
         }
 
         Ok(ArchiveResult {
-            archived_staircase_id: meta.id.clone(),
+            command: "archive".to_string(),
+            source_representation: if is_implicit { "implicit" } else { "managed" }.to_string(),
+            archive_kind: "managed-lineage".to_string(),
+            archive_id: None,
+            archive_record_oid: record.record_oid,
+            originating_structural_key: None,
+            adopted: is_implicit && options.adopt,
+            adoption_reason: if is_implicit && options.adopt {
+                Some("explicit-before-archive".to_string())
+            } else {
+                None
+            },
+            lineage_id: Some(meta.id.clone()),
+            stable_step_ids: true,
             canonical_name: meta.name.clone(),
-            archive_event_id: event_id,
             moved_branches: owned_branches,
             unowned_warnings,
+            suppression_installed: true,
             is_dry_run: false,
         })
     })();
@@ -379,6 +441,273 @@ pub fn archive_staircase(
     }
 
     result
+}
+
+fn archive_implicit_staircase_direct(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    options: &ArchiveOptions,
+) -> Result<ArchiveResult> {
+    let meta = selector.metadata();
+    let archive_id = uuid::Uuid::new_v4().to_string();
+    let structural_key = meta.id.clone();
+
+    let mut owned_branches = Vec::new();
+    for step in &meta.steps {
+        if let Some(ref b) = step.branch {
+            let full_ref = if b.starts_with("refs/") {
+                b.clone()
+            } else {
+                format!("refs/heads/{}", b)
+            };
+            if !owned_branches.contains(&full_ref) {
+                owned_branches.push(full_ref);
+            }
+        }
+    }
+
+    let mut branch_configs = Vec::new();
+    for full_ref in &owned_branches {
+        let branch_name = full_ref.strip_prefix("refs/heads/").unwrap_or(full_ref);
+        let mut entries = Vec::new();
+        if let Ok(stdout) = repo.run(&[
+            "config",
+            "--get-regexp",
+            &format!("^branch\\.{}\\.", branch_name),
+        ]) {
+            for line in stdout.lines() {
+                let parts: Vec<&str> = line.splitn(2, ' ').collect();
+                if parts.len() == 2 {
+                    entries.push(BranchConfigEntry {
+                        key: parts[0].to_string(),
+                        value: parts[1].to_string(),
+                    });
+                }
+            }
+        }
+        branch_configs.push(BranchConfigSnapshot {
+            branch_name: branch_name.to_string(),
+            entries,
+        });
+    }
+
+    let mut unowned_warnings = Vec::new();
+    let cut_oids: Vec<String> = meta.steps.iter().map(|s| s.cut.clone()).collect();
+
+    if let Ok(stdout) = repo.run(&[
+        "for-each-ref",
+        "--format=%(refname) %(objectname)",
+        "refs/heads/",
+    ]) {
+        for line in stdout.lines() {
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if parts.len() == 2 {
+                let refname = parts[0];
+                let oid = parts[1];
+                if !owned_branches.contains(&refname.to_string())
+                    && cut_oids.contains(&oid.to_string())
+                {
+                    unowned_warnings.push(format!(
+                        "warning: unowned branch {} still points to archived cut {}",
+                        refname, oid
+                    ));
+                }
+            }
+        }
+    }
+
+    let mut detached_worktrees = Vec::new();
+    for worktree in repo.worktrees()? {
+        let Some(branch) = worktree.branch.as_ref() else {
+            continue;
+        };
+        if !owned_branches.contains(branch) {
+            continue;
+        }
+        if options.leave_worktrees {
+            return Err(StaircaseError::UnsupportedTopology {
+                operation: "archive".into(),
+                reason: format!(
+                    "worktree {} is attached to owned branch {}; it cannot be left attached while that branch is archived",
+                    worktree.path.display(),
+                    branch
+                ),
+            });
+        }
+        let worktree_repo = GitRepo::new(worktree.path.clone());
+        let draft = crate::core::draft::get_worktree_draft(&worktree_repo)?;
+        let is_clean = draft.classification == DraftClassification::Clean;
+        if !is_clean && !options.detach_dirty_worktrees && !options.snapshot_drafts {
+            return Err(StaircaseError::Other(format!(
+                "worktree {} attached to branch '{}' is dirty; use --detach-dirty-worktrees or --snapshot-drafts",
+                worktree.path.display(),
+                branch
+            )));
+        }
+        if options.snapshot_drafts && !options.dry_run {
+            crate::core::draft::create_snapshot(&worktree_repo, Some("archive"))?;
+        }
+        let step_cut = meta
+            .steps
+            .iter()
+            .find(|step| {
+                step.branch.as_ref().is_some_and(|candidate| {
+                    candidate == branch || format!("refs/heads/{}", candidate) == *branch
+                })
+            })
+            .map(|step| step.cut.clone())
+            .ok_or_else(|| {
+                StaircaseError::InvalidStructure(format!(
+                    "owned worktree branch {} has no matching step",
+                    branch
+                ))
+            })?;
+        if !options.dry_run {
+            detached_worktrees.push((worktree.path.clone(), branch.clone()));
+            worktree_repo.run(&["checkout", "--detach", &step_cut])?;
+        }
+    }
+
+    if options.dry_run {
+        return Ok(ArchiveResult {
+            command: "archive".to_string(),
+            source_representation: "implicit".to_string(),
+            archive_kind: "implicit-snapshot".to_string(),
+            archive_id: Some(archive_id),
+            archive_record_oid: String::new(),
+            originating_structural_key: Some(structural_key),
+            adopted: false,
+            adoption_reason: None,
+            lineage_id: None,
+            stable_step_ids: false,
+            canonical_name: meta.name.clone(),
+            moved_branches: owned_branches,
+            unowned_warnings,
+            suppression_installed: true,
+            is_dry_run: true,
+        });
+    }
+
+    let event_id = format!("evt-archive-{}", uuid::Uuid::new_v4().simple());
+    let timestamp = current_timestamp();
+
+    let mut archive_owned_refs = Vec::new();
+    for (idx, full_ref) in owned_branches.iter().enumerate() {
+        let ref_id = format!("owned-{}", idx + 1);
+        let oid = repo
+            .resolve_ref_opt(full_ref)?
+            .ok_or_else(|| StaircaseError::RefCollision {
+                reference: full_ref.clone(),
+                expected: meta
+                    .steps
+                    .iter()
+                    .find(|step| {
+                        step.branch.as_ref().is_some_and(|branch| {
+                            branch == full_ref || format!("refs/heads/{}", branch) == *full_ref
+                        })
+                    })
+                    .map(|step| step.cut.clone())
+                    .unwrap_or_else(|| "<owned-cut>".into()),
+                actual: "<missing>".into(),
+            })?;
+        archive_owned_refs.push(ArchivedOwnedRef {
+            ref_id: ref_id.clone(),
+            original_refname: full_ref.clone(),
+            object_type: "commit".to_string(),
+            original_oid: oid,
+            archive_refname: StaircaseRefs::implicit_archive_owned(&archive_id, &ref_id),
+            ownership_class: "primary".to_string(),
+            visibility_class: "hidden".to_string(),
+            restoration_policy: "restore-or-rename".to_string(),
+        });
+    }
+
+    let mut expected_source_oids = HashMap::new();
+    let mut archive_retention_refs = HashMap::new();
+    for (idx, step) in meta.steps.iter().enumerate() {
+        let ordinal_key = format!("{:04}", idx + 1);
+        expected_source_oids.insert(ordinal_key.clone(), step.cut.clone());
+        archive_retention_refs.insert(
+            ordinal_key.clone(),
+            StaircaseRefs::implicit_archive_cut(&archive_id, idx + 1),
+        );
+    }
+
+    let archive_manifest = ArchiveManifest {
+        archive_event_id: event_id.clone(),
+        lineage_id: String::new(),
+        archive_time: timestamp.clone(),
+        actor: None,
+        reason: options.reason.clone(),
+        previous_record_oid: String::new(),
+        canonical_name: meta.name.clone(),
+        branch_layout_profile: meta.primary_branch_layout.clone(),
+        branch_layout_base: meta.branch_layout_base.clone(),
+        owned_refs: archive_owned_refs,
+        expected_source_oids,
+        archive_retention_refs,
+        branch_configs: branch_configs.clone(),
+        worktree_attachments: Vec::new(),
+        draft_disposition: None,
+        provider_disposition: None,
+        name_reservation: options.reserve_name,
+        originating_structural_key: Some(structural_key.clone()),
+    };
+
+    let descriptor = crate::model::ImplicitSnapshotDescriptor {
+        schema_version: "1".to_string(),
+        representation_kind: "implicit-snapshot".to_string(),
+        archive_id: archive_id.clone(),
+        originating_structural_key: structural_key.clone(),
+        integration_context: meta.target.clone(),
+        ordered_cuts: cut_oids,
+        step_count: meta.steps.len(),
+        canonical_display_name: meta.name.clone(),
+        aliases: unowned_warnings.clone(),
+        materializing_refs: owned_branches.clone(),
+    };
+
+    let lifecycle = crate::model::ImplicitArchiveLifecycle {
+        state: "archived".to_string(),
+        archive_id: archive_id.clone(),
+        archive_event_id: event_id,
+        archive_time: timestamp,
+        actor: None,
+        reason: options.reason.clone(),
+        source_representation: "implicit".to_string(),
+        name_reservation: options.reserve_name,
+    };
+
+    let snapshot = persistence::write_implicit_archive_snapshot(
+        repo,
+        &descriptor,
+        &lifecycle,
+        &archive_manifest,
+    )?;
+
+    for full_ref in &owned_branches {
+        let b_name = full_ref.strip_prefix("refs/heads/").unwrap_or(full_ref);
+        let _ = repo.run(&["branch", "-D", b_name]);
+        let _ = repo.run(&["config", "--remove-section", &format!("branch.{}", b_name)]);
+    }
+
+    Ok(ArchiveResult {
+        command: "archive".to_string(),
+        source_representation: "implicit".to_string(),
+        archive_kind: "implicit-snapshot".to_string(),
+        archive_id: Some(archive_id),
+        archive_record_oid: snapshot.record_oid,
+        originating_structural_key: Some(structural_key),
+        adopted: false,
+        adoption_reason: None,
+        lineage_id: None,
+        stable_step_ids: false,
+        canonical_name: meta.name.clone(),
+        moved_branches: owned_branches,
+        unowned_warnings,
+        suppression_installed: true,
+        is_dry_run: false,
+    })
 }
 
 pub fn release_staircase_name(repo: &GitRepo, selector: &ResolvedSelector) -> Result<String> {

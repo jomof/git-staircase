@@ -21,6 +21,9 @@ pub fn resolve_staircase_internal(
     // Interpretation 1: Managed
     resolve_managed(repo, name, &mut resolved_staircases)?;
 
+    // Interpretation: Implicit Archive Snapshot
+    resolve_implicit_archive(repo, name, &mut resolved_staircases)?;
+
     let onto_final = match onto {
         Some(o) => repo
             .resolve_symbolic_full_name(o)
@@ -82,6 +85,32 @@ fn resolve_managed(
                 if !resolved_staircases.contains_key(&s.id) {
                     resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s));
                 }
+            }
+        }
+    }
+    Ok(())
+}
+
+fn resolve_implicit_archive(
+    repo: &GitRepo,
+    name: &str,
+    resolved_staircases: &mut BTreeMap<String, ResolvedStaircase>,
+) -> Result<()> {
+    if let Ok(snapshots) = persistence::list_implicit_archive_snapshots(repo) {
+        for snap in snapshots {
+            let archive_id = &snap.archive_id;
+            let display_name = &snap.descriptor.canonical_display_name;
+            let archive_sel = format!("archive@{}", archive_id);
+
+            if name == archive_sel
+                || name == archive_id
+                || name == display_name
+                || archive_id.starts_with(name)
+            {
+                resolved_staircases.insert(
+                    format!("archive:{}", archive_id),
+                    ResolvedStaircase::ImplicitArchive(snap),
+                );
             }
         }
     }

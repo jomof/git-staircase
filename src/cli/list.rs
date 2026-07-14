@@ -25,6 +25,10 @@ pub struct List {
     pub onto: Option<String>,
     #[arg(long)]
     pub strict: bool,
+    #[arg(long)]
+    pub include_archived_materializations: bool,
+    #[arg(long)]
+    pub diagnostics: bool,
 }
 
 impl super::Command for List {
@@ -37,6 +41,8 @@ impl super::Command for List {
             stale: self.stale,
             archived: self.archived,
             all: self.all,
+            include_archived_materializations: self.include_archived_materializations,
+            diagnostics: self.diagnostics,
             onto: self.onto.clone(),
         };
 

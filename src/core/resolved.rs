@@ -1,7 +1,9 @@
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
+use crate::model::{
+    ImplicitArchiveSnapshot, StaircaseFamily, StaircaseMetadata, Step,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -13,6 +15,7 @@ pub enum ResolvedStaircase {
     Managed(StaircaseMetadata),
     Implicit(StaircaseMetadata),
     ImplicitFamily(StaircaseFamily),
+    ImplicitArchive(ImplicitArchiveSnapshot),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -41,6 +44,7 @@ impl ResolvedStaircase {
             ResolvedStaircase::Managed(s) => s,
             ResolvedStaircase::Implicit(s) => s,
             ResolvedStaircase::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
+            ResolvedStaircase::ImplicitArchive(snap) => &snap.metadata,
         }
     }
 
