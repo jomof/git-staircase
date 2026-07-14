@@ -4,6 +4,9 @@ pub mod gerrit_provider;
 pub mod github_provider;
 pub mod model;
 pub mod provider;
+pub mod provider_utils;
+#[cfg(test)]
+mod provider_utils_test;
 pub mod repo_provider;
 pub mod review_provider;
 #[cfg(test)]
@@ -23,6 +26,7 @@ pub use model::{
     ProviderDescriptor, TypedEvidence, WorkspaceCandidate, WorkspaceHint, WorkspaceRecord,
 };
 pub use provider::{discover_installed_providers, expand_profile};
+pub use provider_utils::{GitUrlInfo, parse_git_url};
 pub use repo_provider::{
     ProductionRepoMetadataSource, RepoCheckoutEvidence, RepoDiscoveryReport, RepoForallInvocation,
     RepoForallMetadata, RepoMetadataSource, RepoProjectMapping, RepoRefresh,

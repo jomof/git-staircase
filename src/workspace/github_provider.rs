@@ -2,6 +2,7 @@ use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
+use crate::workspace::parse_git_url;
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, SynchronizationState, TransportRequest,
@@ -48,49 +49,18 @@ impl GitHubRepoLocator {
 }
 
 pub fn parse_github_remote_url(url: &str) -> Option<GitHubRepoLocator> {
-    let s = url.trim();
-
-    // Standard URL format: https://, http://, ssh://, git://
-    for scheme in &["https://", "http://", "ssh://", "git://"] {
-        if let Some(stripped) = s.strip_prefix(scheme) {
-            let parts: Vec<&str> = stripped.split('/').collect();
-            if parts.len() >= 3 {
-                let host = parts[0].split('@').last().unwrap_or(parts[0]);
-                let owner = parts[1];
-                let mut repo_name = parts[2];
-                if let Some(pos) = repo_name.find('?') {
-                    repo_name = &repo_name[..pos];
-                }
-                let repo_clean = repo_name.strip_suffix(".git").unwrap_or(repo_name);
-                if host.eq_ignore_ascii_case("github.com") || host.contains("github") {
-                    return Some(GitHubRepoLocator {
-                        installation: host.to_ascii_lowercase(),
-                        owner: owner.to_string(),
-                        repository: repo_clean.to_string(),
-                    });
-                }
-            }
+    if let Some(info) = parse_git_url(url) {
+        if (info.host.eq_ignore_ascii_case("github.com") || info.host.contains("github"))
+            && info.owner.is_some()
+            && info.repository.is_some()
+        {
+            return Some(GitHubRepoLocator {
+                installation: info.host.to_ascii_lowercase(),
+                owner: info.owner.unwrap(),
+                repository: info.repository.unwrap(),
+            });
         }
     }
-
-    // SCP-like format: git@github.com:owner/repo.git
-    if let Some((user_host, path)) = s.split_once(':') {
-        let host = user_host.split('@').last().unwrap_or(user_host);
-        if host.eq_ignore_ascii_case("github.com") || host.contains("github") {
-            let path_clean = path.trim_start_matches('/');
-            let parts: Vec<&str> = path_clean.split('/').collect();
-            if parts.len() >= 2 {
-                let owner = parts[0];
-                let repo_name = parts[1].strip_suffix(".git").unwrap_or(parts[1]);
-                return Some(GitHubRepoLocator {
-                    installation: host.to_ascii_lowercase(),
-                    owner: owner.to_string(),
-                    repository: repo_name.to_string(),
-                });
-            }
-        }
-    }
-
     None
 }
 

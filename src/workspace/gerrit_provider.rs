@@ -2,6 +2,7 @@ use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
+use crate::workspace::parse_git_url;
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, SynchronizationState, TransportRequest,
@@ -277,26 +278,7 @@ pub fn probe_gerrit_route(
 }
 
 fn extract_host_from_git_url(url: &str) -> Option<String> {
-    let s = url.trim();
-    if let Some(stripped) = s
-        .strip_prefix("https://")
-        .or_else(|| s.strip_prefix("http://"))
-        .or_else(|| s.strip_prefix("ssh://"))
-        .or_else(|| s.strip_prefix("sso://"))
-        .or_else(|| s.strip_prefix("rpc://"))
-    {
-        let host_part = stripped.split('/').next()?;
-        let host = host_part.split('@').last()?.split(':').next()?;
-        if !host.is_empty() {
-            return Some(host.to_string());
-        }
-    } else if let Some((user_host, _path)) = s.split_once(':') {
-        let host = user_host.split('@').last()?;
-        if !host.is_empty() {
-            return Some(host.to_string());
-        }
-    }
-    None
+    parse_git_url(url).map(|info| info.host)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
