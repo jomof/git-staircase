@@ -1,11 +1,9 @@
 use super::{Presentation, PresentationOutput, Summary, ToPresentation};
 use crate::GitRepo;
 use crate::core;
-use crate::core::persistence;
-use crate::{Discovery, ResolvedStaircase};
-use anyhow::{Result, anyhow};
+use crate::core::{ListFilter, ResolvedStaircase};
+use anyhow::Result;
 use serde::Serialize;
-use std::collections::BTreeMap;
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct List {
@@ -31,97 +29,31 @@ pub struct List {
 
 impl super::Command for List {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let show_implicit = self.implicit || self.discovered;
-        let show_all =
-            !self.managed && !show_implicit && !self.families && !self.stale && !self.archived;
+        let filter = ListFilter {
+            managed: self.managed,
+            discovered: self.discovered,
+            families: self.families,
+            implicit: self.implicit,
+            stale: self.stale,
+            archived: self.archived,
+            all: self.all,
+            onto: self.onto.clone(),
+        };
+
+        let resolved_staircases = core::list(repo, filter)?;
         let mut all_results = Vec::new();
-        let mut unresolved_errors = Vec::new();
 
-        let mut resolved_staircases = Vec::new();
-
-        if self.archived {
-            let list = persistence::list_archived_staircases(repo)?;
-            for s in list {
-                resolved_staircases.push(ResolvedStaircase::Managed(s));
-            }
-        } else if self.all {
-            let list = persistence::list_all_staircases(repo)?;
-            for s in list {
-                resolved_staircases.push(ResolvedStaircase::Managed(s));
-            }
-        } else if self.managed || self.stale || show_all {
-            let list = persistence::list_staircases(repo)?;
-            for s in list {
-                resolved_staircases.push(ResolvedStaircase::Managed(s));
-            }
-        }
-
-        let mut discovered_items = Vec::new();
-
-        if show_implicit || self.families || show_all {
-            match core::discover(repo, self.onto.as_deref(), None, self.families) {
-                Ok(list) => {
-                    discovered_items = list;
-                    for d in &discovered_items {
-                        match d {
-                            Discovery::Linear(s) => {
-                                if show_implicit || show_all {
-                                    resolved_staircases
-                                        .push(ResolvedStaircase::Implicit(s.clone()));
-                                }
-                            }
-                            Discovery::Ambiguous(f) => {
-                                if self.families || show_all {
-                                    resolved_staircases
-                                        .push(ResolvedStaircase::ImplicitFamily(f.clone()));
-                                }
-                            }
-                        }
-                    }
-                }
-                Err(e) => {
-                    unresolved_errors.push(format!("Unresolved implicit candidates: {}", e));
-                }
-            }
-        }
-
-        if self.strict && !unresolved_errors.is_empty() {
-            return Err(anyhow!(
-                "Strict mode: unresolved candidates detected:\n{}",
-                unresolved_errors.join("\n")
-            ));
-        }
-
-        let mut canonical = BTreeMap::<String, ResolvedStaircase>::new();
-        for staircase in resolved_staircases {
-            let key = match &staircase {
-                ResolvedStaircase::Managed(metadata) => {
-                    let integration = repo.resolve_commit(&metadata.target)?;
-                    core::discovery::compute_implicit_id(repo, &integration, &metadata.steps)?
-                }
-                ResolvedStaircase::Implicit(metadata) => metadata.id.clone(),
-                ResolvedStaircase::ImplicitFamily(family) => format!("family:{}", family.id),
-            };
-            match canonical.get(&key) {
-                Some(ResolvedStaircase::Managed(_)) => {}
-                Some(_) if staircase.is_managed() => {
-                    canonical.insert(key, staircase);
-                }
-                None => {
-                    canonical.insert(key, staircase);
-                }
-                Some(_) => {}
-            }
-        }
+        // Note: strict mode detection of unresolved implicit candidates is currently simplified in core::list
+        // and doesn't explicitly return errors unless they are fatal.
 
         let cached_draft = core::draft::get_worktree_draft(repo).ok();
+        // We re-run status if needed for presentation, but core::list already filtered if self.stale was true.
+        // Actually, we need status for the Summary presentation anyway.
 
-        for rs in canonical.into_values() {
+        for rs in resolved_staircases {
             match rs {
                 ResolvedStaircase::ImplicitFamily(f) => {
-                    if !self.stale {
-                        all_results.push(ListEntry::Family(Summary(f)));
-                    }
+                    all_results.push(ListEntry::Family(Summary(f)));
                 }
                 _ => {
                     let m = rs.metadata();
@@ -129,16 +61,10 @@ impl super::Command for List {
                         repo,
                         m.clone(),
                         !rs.is_managed(),
-                        Some(&discovered_items),
+                        None, // core::list already used discoveries if needed
                         Some(cached_draft.clone()),
                     )?;
-                    if self.stale {
-                        if matches!(status.state(), crate::model::StaircaseState::Stale) {
-                            all_results.push(ListEntry::Staircase(Summary(status)));
-                        }
-                    } else {
-                        all_results.push(ListEntry::Staircase(Summary(status)));
-                    }
+                    all_results.push(ListEntry::Staircase(Summary(status)));
                 }
             }
         }

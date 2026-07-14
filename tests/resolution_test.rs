@@ -203,3 +203,57 @@ fn test_selector_args_ambiguity() {
     assert!(result.is_err());
     assert!(result.unwrap_err().to_string().contains("ambiguous"));
 }
+
+#[test]
+fn test_core_list_managed() {
+    let (_tmp, repo) = setup_repo();
+    let path = &repo.workdir;
+
+    run_git(path, &["checkout", "-b", "feat-1"]);
+    let c1 = commit(path, "feat1.txt", "1", "feat 1");
+
+    let sc = StaircaseMetadata {
+        landing_policy: None,
+        id: "my-id".to_string(),
+        name: "my-sc".to_string(),
+        target: "main".to_string(),
+        steps: vec![Step {
+            id: String::new(),
+            name: "feat-1".to_string(),
+            cut: c1.clone(),
+            branch: Some("feat-1".to_string()),
+        }],
+        verification_policy: None,
+        primary_branch_layout: None,
+        branch_layout_base: None,
+        user_metadata: None,
+        lifecycle: None,
+    };
+    core::adopt(&repo, &sc).unwrap();
+
+    let filter = core::ListFilter {
+        managed: true,
+        ..Default::default()
+    };
+    let results = core::list(&repo, filter).unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(results[0].is_managed());
+    assert_eq!(results[0].metadata().id, "my-id");
+}
+
+#[test]
+fn test_core_list_implicit() {
+    let (_tmp, repo) = setup_repo();
+    let path = &repo.workdir;
+
+    run_git(path, &["checkout", "-b", "feat-1"]);
+    let _c1 = commit(path, "feat1.txt", "1", "feat 1");
+
+    let filter = core::ListFilter {
+        implicit: true,
+        ..Default::default()
+    };
+    let results = core::list(&repo, filter).unwrap();
+    assert_eq!(results.len(), 1);
+    assert!(!results[0].is_managed());
+}
