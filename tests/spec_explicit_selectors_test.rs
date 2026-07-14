@@ -1,7 +1,7 @@
 mod common;
 use common::*;
 use git_staircase::ResolvedStaircase;
-use git_staircase::cli::StaircaseSelectorArgs;
+use git_staircase::cli::{BaseStaircaseSelectorArgs, StaircaseSelectorArgs};
 use git_staircase::core;
 
 #[test]
@@ -31,14 +31,16 @@ fn test_explicit_selectors_resolve_ambiguity() {
 
     // 3. Verify that bare 'auth' is ambiguous
     let args_bare = StaircaseSelectorArgs {
-        name: Some("auth".to_string()),
+        base: BaseStaircaseSelectorArgs {
+            name: Some("auth".to_string()),
+            onto: Some("main".to_string()),
+            id: None,
+            record: None,
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: None,
-        record: None,
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
 
     let result = args_bare.resolve(&repo);
@@ -47,14 +49,16 @@ fn test_explicit_selectors_resolve_ambiguity() {
 
     // 4. Test --name auth
     let args_name = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: Some("main".to_string()),
+            id: None,
+            record: None,
+            explicit_name: Some("auth".to_string()),
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: None,
-        record: None,
-        explicit_name: Some("auth".to_string()),
-        r#ref: None,
-        structural_key: None,
     };
     let rs = args_name.resolve(&repo).expect("Should resolve by --name");
     assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
@@ -62,14 +66,16 @@ fn test_explicit_selectors_resolve_ambiguity() {
 
     // 5. Test --id <uuid>
     let args_id = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: Some("main".to_string()),
+            id: Some(lineage_id.clone()),
+            record: None,
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: Some(lineage_id.clone()),
-        record: None,
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
     let rs = args_id.resolve(&repo).expect("Should resolve by --id");
     assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
@@ -77,14 +83,16 @@ fn test_explicit_selectors_resolve_ambiguity() {
 
     // 6. Test --ref refs/staircases/auth
     let args_ref = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: Some("main".to_string()),
+            id: None,
+            record: None,
+            explicit_name: None,
+            r#ref: Some("refs/staircases/auth".to_string()),
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: None,
-        record: None,
-        explicit_name: None,
-        r#ref: Some("refs/staircases/auth".to_string()),
-        structural_key: None,
     };
     let rs = args_ref.resolve(&repo).expect("Should resolve by --ref");
     assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
@@ -92,14 +100,16 @@ fn test_explicit_selectors_resolve_ambiguity() {
 
     // 7. Test --record <oid>
     let args_rev = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: Some("main".to_string()),
+            id: None,
+            record: Some(revision_oid.clone()),
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: None,
-        record: Some(revision_oid.clone()),
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
     let rs = args_rev.resolve(&repo).expect("Should resolve by --record");
     assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));

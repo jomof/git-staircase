@@ -1,6 +1,6 @@
 mod common;
 use common::*;
-use git_staircase::cli::StaircaseSelectorArgs;
+use git_staircase::cli::{BaseStaircaseSelectorArgs, StaircaseSelectorArgs};
 use git_staircase::core;
 use git_staircase::model::{StaircaseMetadata, Step};
 
@@ -13,14 +13,16 @@ fn test_selector_args_resolve_name() {
     let c1 = commit(path, "feat1.txt", "1", "feat 1");
 
     let args = StaircaseSelectorArgs {
-        name: Some("feat-1".to_string()),
+        base: BaseStaircaseSelectorArgs {
+            name: Some("feat-1".to_string()),
+            onto: Some("main".to_string()),
+            id: None,
+            record: None,
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: None,
-        record: None,
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
 
     let rs = args.resolve(&repo).unwrap();
@@ -40,14 +42,16 @@ fn test_selector_args_resolve_explicit_steps() {
     let c2 = commit(path, "feat2.txt", "2", "feat 2");
 
     let args = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: Some("main".to_string()),
+            id: None,
+            record: None,
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: Some(vec!["feat-1".to_string(), "feat-2".to_string()]),
-        onto: Some("main".to_string()),
-        id: None,
-        record: None,
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
 
     let rs = args.resolve(&repo).unwrap();
@@ -86,14 +90,16 @@ fn test_selector_args_resolve_id() {
     core::adopt(&repo, &sc).unwrap();
 
     let args = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: None,
+            id: Some("my-id".to_string()),
+            record: None,
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: None,
-        id: Some("my-id".to_string()),
-        record: None,
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
 
     let rs = args.resolve(&repo).unwrap();
@@ -130,14 +136,16 @@ fn test_selector_args_resolve_explicit_name() {
     core::adopt(&repo, &sc).unwrap();
 
     let args = StaircaseSelectorArgs {
-        name: None,
+        base: BaseStaircaseSelectorArgs {
+            name: None,
+            onto: None,
+            id: None,
+            record: None,
+            explicit_name: Some("my-sc".to_string()),
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: None,
-        id: None,
-        record: None,
-        explicit_name: Some("my-sc".to_string()),
-        r#ref: None,
-        structural_key: None,
     };
 
     let rs = args.resolve(&repo).unwrap();
@@ -179,14 +187,16 @@ fn test_selector_args_ambiguity() {
     let _c2 = commit(path, "f2.txt", "2", "c2");
 
     let args = StaircaseSelectorArgs {
-        name: Some("my-sc".to_string()),
+        base: BaseStaircaseSelectorArgs {
+            name: Some("my-sc".to_string()),
+            onto: Some("main".to_string()),
+            id: None,
+            record: None,
+            explicit_name: None,
+            r#ref: None,
+            structural_key: None,
+        },
         steps: None,
-        onto: Some("main".to_string()),
-        id: None,
-        record: None,
-        explicit_name: None,
-        r#ref: None,
-        structural_key: None,
     };
 
     let result = args.resolve(&repo);

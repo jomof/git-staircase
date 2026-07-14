@@ -73,12 +73,9 @@ pub enum OutputFormat {
 }
 
 #[derive(Args, Clone, Debug)]
-pub struct StaircaseSelectorArgs {
+pub struct BaseStaircaseSelectorArgs {
     /// Name of the staircase to operate on. Can also be a branch name within a staircase.
     pub name: Option<String>,
-    /// Explicit list of branch names (root to tip) for an unmanaged staircase.
-    #[arg(long, value_delimiter = ',', num_args = 0..)]
-    pub steps: Option<Vec<String>>,
     /// The target branch the staircase is based on (e.g., 'main').
     #[arg(long)]
     pub onto: Option<String>,
@@ -99,61 +96,15 @@ pub struct StaircaseSelectorArgs {
     pub structural_key: Option<String>,
 }
 
-#[derive(Args, Clone, Debug)]
-pub struct RequiredStaircaseSelector {
-    /// Canonical staircase selector.
-    pub selector: String,
-}
-
-impl RequiredStaircaseSelector {
-    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
-        core::resolve_staircase(repo, &self.selector, None)?
-            .ok_or_else(|| StaircaseError::NotFound(self.selector.clone()).into())
-    }
-}
-
-#[derive(Args, Clone, Debug)]
-pub struct NonStepsStaircaseSelectorArgs {
-    pub name: Option<String>,
-    #[arg(long)]
-    pub onto: Option<String>,
-    #[arg(long)]
-    pub id: Option<String>,
-    #[arg(long)]
-    pub record: Option<String>,
-    #[arg(long("name"))]
-    pub explicit_name: Option<String>,
-    #[arg(long("ref"))]
-    pub r#ref: Option<String>,
-    #[arg(long)]
-    pub structural_key: Option<String>,
-}
-
-impl NonStepsStaircaseSelectorArgs {
-    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
-        StaircaseSelectorArgs {
-            name: self.name.clone(),
-            steps: None,
-            onto: self.onto.clone(),
-            id: self.id.clone(),
-            record: self.record.clone(),
-            explicit_name: self.explicit_name.clone(),
-            r#ref: self.r#ref.clone(),
-            structural_key: self.structural_key.clone(),
-        }
-        .resolve(repo)
-    }
-}
-
-impl StaircaseSelectorArgs {
-    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
+impl BaseStaircaseSelectorArgs {
+    pub fn resolve(&self, repo: &GitRepo, steps: Option<&[String]>) -> Result<ResolvedSelector> {
         let selector_count = [
             self.id.is_some(),
             self.record.is_some(),
             self.explicit_name.is_some(),
             self.r#ref.is_some(),
             self.structural_key.is_some(),
-            self.steps.as_ref().is_some_and(|steps| !steps.is_empty()),
+            steps.as_ref().is_some_and(|steps| !steps.is_empty()),
             self.name.is_some(),
         ]
         .into_iter()
@@ -196,7 +147,7 @@ impl StaircaseSelectorArgs {
             });
         }
 
-        if let Some(s) = &self.steps {
+        if let Some(s) = steps {
             if !s.is_empty() {
                 return Ok(ResolvedSelector {
                     staircase: core::resolve_explicit_staircase(repo, s, self.onto.as_deref())?,
@@ -210,6 +161,46 @@ impl StaircaseSelectorArgs {
             .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --record, --structural-key) must be provided"))?;
         core::resolve_staircase(repo, name, self.onto.as_deref())?
             .ok_or_else(|| StaircaseError::NotFound(name.clone()).into())
+    }
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct StaircaseSelectorArgs {
+    #[command(flatten)]
+    pub base: BaseStaircaseSelectorArgs,
+    /// Explicit list of branch names (root to tip) for an unmanaged staircase.
+    #[arg(long, value_delimiter = ',', num_args = 0..)]
+    pub steps: Option<Vec<String>>,
+}
+
+impl StaircaseSelectorArgs {
+    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
+        self.base.resolve(repo, self.steps.as_deref())
+    }
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct RequiredStaircaseSelector {
+    /// Canonical staircase selector.
+    pub selector: String,
+}
+
+impl RequiredStaircaseSelector {
+    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
+        core::resolve_staircase(repo, &self.selector, None)?
+            .ok_or_else(|| StaircaseError::NotFound(self.selector.clone()).into())
+    }
+}
+
+#[derive(Args, Clone, Debug)]
+pub struct NonStepsStaircaseSelectorArgs {
+    #[command(flatten)]
+    pub base: BaseStaircaseSelectorArgs,
+}
+
+impl NonStepsStaircaseSelectorArgs {
+    pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
+        self.base.resolve(repo, None)
     }
 }
 

@@ -18,6 +18,7 @@ impl super::Command for Rebase {
         let rs = self.staircase.resolve(repo)?;
         let target = self
             .staircase
+            .base
             .onto
             .as_deref()
             .unwrap_or(&rs.metadata().target);

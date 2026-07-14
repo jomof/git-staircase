@@ -54,11 +54,12 @@ impl super::Command for Reorder {
             )?;
         }
 
-        let updated_rs =
-            core::resolve_staircase(repo, &rs.metadata().name, self.staircase.onto.as_deref())?
-                .ok_or_else(|| {
-                    anyhow!("Staircase '{}' not found after reorder", rs.metadata().name)
-                })?;
+        let updated_rs = core::resolve_staircase(
+            repo,
+            &rs.metadata().name,
+            self.staircase.base.onto.as_deref(),
+        )?
+        .ok_or_else(|| anyhow!("Staircase '{}' not found after reorder", rs.metadata().name))?;
         let status = core::get_status_metadata(
             repo,
             updated_rs.metadata().clone(),
