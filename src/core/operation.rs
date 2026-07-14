@@ -1,5 +1,8 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
+use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::PermissionsExt;
+
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, BTreeSet};
@@ -27,6 +30,9 @@ pub struct DraftRecovery {
     pub head_oid: String,
     pub head_ref: Option<String>,
     pub index_tree_oid: Option<String>,
+    pub index_snapshot: Option<String>,
+    #[serde(default)]
+    pub dirty_files: Vec<crate::model::DraftFileSnapshot>,
     pub unstaged_patch: String,
     pub untracked_paths: Vec<String>,
     #[serde(default)]
@@ -482,7 +488,13 @@ fn capture_draft(repo: &GitRepo) -> Result<Option<DraftRecovery>> {
         Some(oid) => oid,
         None => return Ok(None),
     };
-    let index_tree_oid = repo.run(&["write-tree"]).ok();
+    let (index_tree_oid, index_snapshot, dirty_files) = match repo.run(&["write-tree"]) {
+        Ok(oid) => (Some(oid.trim().to_string()), None, Vec::new()),
+        Err(_) => {
+            let (snapshot, files) = capture_conflicted_state(repo)?;
+            (None, snapshot, files)
+        }
+    };
     let unstaged_patch = repo
         .command()
         .args(["diff", "--binary", "--no-ext-diff"])
@@ -501,6 +513,8 @@ fn capture_draft(repo: &GitRepo) -> Result<Option<DraftRecovery>> {
         head_oid,
         head_ref: repo.current_branch()?,
         index_tree_oid,
+        index_snapshot,
+        dirty_files,
         unstaged_patch,
         untracked_paths: untracked
             .split('\0')
@@ -523,9 +537,15 @@ pub(crate) fn restore_draft(repo: &GitRepo, draft: Option<&DraftRecovery>) -> Re
     if let Some(tree) = &draft.index_tree_oid {
         repo.run(&["read-tree", tree])?;
         repo.run(&["checkout-index", "-a", "-f"])?;
-        if !draft.unstaged_patch.is_empty() {
-            repo.run_with_stdin(&["apply", "--binary"], &draft.unstaged_patch)?;
-        }
+    } else if let Some(snapshot) = &draft.index_snapshot {
+        repo.run(&["read-tree", "--empty"])?;
+        repo.run_with_stdin(&["update-index", "--index-info"], snapshot)?;
+    }
+    if !draft.dirty_files.is_empty() {
+        restore_dirty_files(repo, &draft.dirty_files)?;
+    }
+    if !draft.unstaged_patch.is_empty() {
+        let _ = repo.run_with_stdin(&["apply", "--binary"], &draft.unstaged_patch);
     }
     crate::core::draft::restore_untracked_files(repo, &draft.untracked_files)?;
     let attachment_path = repo.git_dir()?.join("staircase-draft.json");
@@ -752,4 +772,80 @@ impl Drop for RepositoryLock {
     fn drop(&mut self) {
         let _ = fs::remove_file(&self.path);
     }
+}
+
+fn capture_conflicted_state(
+    repo: &GitRepo,
+) -> Result<(Option<String>, Vec<crate::model::DraftFileSnapshot>)> {
+    let index_snapshot = repo.run(&["ls-files", "-s"]).ok();
+    let mut paths = std::collections::BTreeSet::new();
+    let modified = repo
+        .command()
+        .args(["ls-files", "-m", "-z"])
+        .trim(false)
+        .run()
+        .unwrap_or_default();
+    for path in modified.split('\0').filter(|p| !p.is_empty()) {
+        paths.insert(path.to_string());
+    }
+    let unmerged = repo
+        .command()
+        .args(["ls-files", "-u", "-z"])
+        .trim(false)
+        .run()
+        .unwrap_or_default();
+    for line in unmerged.split('\0').filter(|p| !p.is_empty()) {
+        if let Some(path) = line.split('\t').last() {
+            paths.insert(path.to_string());
+        }
+    }
+    let mut files = Vec::new();
+    for path in paths {
+        let absolute = repo.workdir.join(&path);
+        if !absolute.exists() {
+            continue;
+        }
+        let metadata = fs::symlink_metadata(&absolute)?;
+        let (kind, content) = if metadata.file_type().is_symlink() {
+            (
+                "symlink".to_string(),
+                fs::read_link(&absolute)?.into_os_string().into_vec(),
+            )
+        } else if metadata.is_file() {
+            ("regular".to_string(), fs::read(&absolute)?)
+        } else {
+            continue;
+        };
+        files.push(crate::model::DraftFileSnapshot {
+            path: path.to_string(),
+            kind,
+            mode: metadata.permissions().mode(),
+            content_hex: crate::core::draft::hex_encode(&content),
+        });
+    }
+    Ok((index_snapshot, files))
+}
+
+fn restore_dirty_files(repo: &GitRepo, files: &[crate::model::DraftFileSnapshot]) -> Result<()> {
+    for file in files {
+        let absolute = repo.workdir.join(&file.path);
+        if let Some(parent) = absolute.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = crate::core::draft::hex_decode(&file.content_hex)?;
+        match file.kind.as_str() {
+            "regular" => {
+                fs::write(&absolute, content)?;
+                use std::os::unix::fs::PermissionsExt;
+                fs::set_permissions(&absolute, fs::Permissions::from_mode(file.mode))?;
+            }
+            "symlink" => {
+                let _ = fs::remove_file(&absolute);
+                use std::os::unix::ffi::OsStringExt;
+                std::os::unix::fs::symlink(std::ffi::OsString::from_vec(content), &absolute)?;
+            }
+            _ => {}
+        }
+    }
+    Ok(())
 }

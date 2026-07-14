@@ -1,8 +1,8 @@
 use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
-use crate::workspace::review_provider::ProviderTransport;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
+use crate::workspace::review_provider::ProviderTransport;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -1432,7 +1432,12 @@ pub struct GitHubInstance {
 }
 
 impl ReviewProviderInstance for GitHubInstance {
-    fn show(&self, repo: &GitRepo, oids: &[String], _record: Option<&StaircaseRecord>) -> Result<UnifiedReviewShow> {
+    fn show(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        _record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewShow> {
         let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
         let mut details = HashMap::new();
         details.insert("Mapping Policy".to_string(), plan.mapping_policy.clone());
@@ -1457,7 +1462,12 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
-    fn status(&self, _repo: &GitRepo, oids: &[String], record: Option<&StaircaseRecord>) -> Result<UnifiedReviewStatus> {
+    fn status(
+        &self,
+        _repo: &GitRepo,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewStatus> {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
@@ -1528,13 +1538,24 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
-    fn upload(&self, repo: &GitRepo, oids: &[String], _destination: Option<&str>, record: Option<&StaircaseRecord>) -> Result<UnifiedReviewUpload> {
+    fn upload(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        _destination: Option<&str>,
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewUpload> {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
-                let machine = GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                let machine =
+                    GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
                 let metadata = &record.metadata;
-                let subjects = metadata.steps.iter().map(|step| step.id.clone()).collect::<Vec<_>>();
+                let subjects = metadata
+                    .steps
+                    .iter()
+                    .map(|step| step.id.clone())
+                    .collect::<Vec<_>>();
                 let plan = machine.plan(
                     &state.route,
                     &metadata.id,
@@ -1587,11 +1608,17 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
-    fn reconcile(&self, repo: &GitRepo, oids: &[String], record: Option<&StaircaseRecord>) -> Result<UnifiedReviewReconcile> {
+    fn reconcile(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewReconcile> {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
-                let machine = GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                let machine =
+                    GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
                 let mut observations = Vec::new();
                 for association in &state.associations {
                     let Some(identity) = &association.pull_request else {
@@ -1609,7 +1636,9 @@ impl ReviewProviderInstance for GitHubInstance {
                     };
                     let response = machine.transport.execute(repo, &request)?;
                     if response.uncertain {
-                        return Err(crate::error::StaircaseError::Other("GitHub reconciliation query outcome is uncertain".into()));
+                        return Err(crate::error::StaircaseError::Other(
+                            "GitHub reconciliation query outcome is uncertain".into(),
+                        ));
                     }
                     if response.success {
                         if let Some(observation) =
@@ -1653,7 +1682,12 @@ impl ReviewProviderInstance for GitHubInstance {
         Ok(oids.iter().map(|_| None).collect())
     }
 
-    fn open(&self, _repo: &GitRepo, _oids: &[String], _record: Option<&StaircaseRecord>) -> Result<UnifiedReviewOpen> {
+    fn open(
+        &self,
+        _repo: &GitRepo,
+        _oids: &[String],
+        _record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewOpen> {
         let url = format!(
             "https://{}/{}/pulls",
             self.route.installation,
@@ -1665,14 +1699,29 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
-    fn create(&self, repo: &GitRepo, oids: &[String], mapping: Option<&str>, record: Option<&StaircaseRecord>) -> Result<UnifiedReviewMutation> {
+    fn create(
+        &self,
+        repo: &GitRepo,
+        oids: &[String],
+        mapping: Option<&str>,
+        record: Option<&StaircaseRecord>,
+    ) -> Result<UnifiedReviewMutation> {
         if let Some(record) = record {
             let metadata = &record.metadata;
-            let subjects = metadata.steps.iter().map(|step| step.id.clone()).collect::<Vec<_>>();
-            let workspace = crate::workspace::bootstrap::bootstrap(repo, &crate::workspace::bootstrap::BootstrapOptions::default())?;
-            let route = probe_github_route(repo, Some(&workspace.record))?
-                .ok_or_else(|| crate::error::StaircaseError::Other("GitHub route is incomplete".into()))?;
-            let machine = GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+            let subjects = metadata
+                .steps
+                .iter()
+                .map(|step| step.id.clone())
+                .collect::<Vec<_>>();
+            let workspace = crate::workspace::bootstrap::bootstrap(
+                repo,
+                &crate::workspace::bootstrap::BootstrapOptions::default(),
+            )?;
+            let route = probe_github_route(repo, Some(&workspace.record))?.ok_or_else(|| {
+                crate::error::StaircaseError::Other("GitHub route is incomplete".into())
+            })?;
+            let machine =
+                GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
             let existing = record
                 .user_metadata
                 .extensions
@@ -1691,8 +1740,7 @@ impl ReviewProviderInstance for GitHubInstance {
             )?;
             let state = machine.prepare_state(&plan, existing)?;
             let result = machine.publish(repo, &plan, state, true)?;
-            let changed =
-                result.branches_published + result.pull_requests_created + result.unknown;
+            let changed = result.branches_published + result.pull_requests_created + result.unknown;
             let next = machine.persist(repo, &record, &result.state)?;
             return Ok(UnifiedReviewMutation {
                 provider_label: "GitHub".into(),
@@ -1741,7 +1789,14 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
-    fn attach(&self, repo: &GitRepo, _oids: &[String], review: &str, record: Option<&StaircaseRecord>, selected_index: Option<usize>) -> Result<UnifiedReviewMutation> {
+    fn attach(
+        &self,
+        repo: &GitRepo,
+        _oids: &[String],
+        review: &str,
+        record: Option<&StaircaseRecord>,
+        selected_index: Option<usize>,
+    ) -> Result<UnifiedReviewMutation> {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
@@ -1751,12 +1806,19 @@ impl ReviewProviderInstance for GitHubInstance {
                     .get(subject_index)
                     .or_else(|| state.associations.first())
                     .map(|association| association.subject_id.clone())
-                    .ok_or_else(|| crate::error::StaircaseError::Other("selected step has no GitHub association".into()))?;
+                    .ok_or_else(|| {
+                        crate::error::StaircaseError::Other(
+                            "selected step has no GitHub association".into(),
+                        )
+                    })?;
                 let (repository, number) = parse_github_review_selector(review)?;
                 if repository != state.route.base_repository.full_name() {
-                    return Err(crate::error::StaircaseError::Other("GitHub review selector base repository does not match route".into()));
+                    return Err(crate::error::StaircaseError::Other(
+                        "GitHub review selector base repository does not match route".into(),
+                    ));
                 }
-                let machine = GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                let machine =
+                    GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
                 let request = crate::workspace::review_provider::TransportRequest::Api {
                     tool: "gh".into(),
                     method: "GET".into(),
@@ -1766,10 +1828,17 @@ impl ReviewProviderInstance for GitHubInstance {
                 };
                 let response = machine.transport.execute(repo, &request)?;
                 if !response.success || response.uncertain {
-                    return Err(crate::error::StaircaseError::Other("GitHub attachment validation failed or is uncertain".into()));
+                    return Err(crate::error::StaircaseError::Other(
+                        "GitHub attachment validation failed or is uncertain".into(),
+                    ));
                 }
-                let remote = parse_github_api_pull(&state.route.installation, &response.observations)
-                        .ok_or_else(|| crate::error::StaircaseError::Other("GitHub returned malformed pull-request metadata".into()))?;
+                let remote =
+                    parse_github_api_pull(&state.route.installation, &response.observations)
+                        .ok_or_else(|| {
+                            crate::error::StaircaseError::Other(
+                                "GitHub returned malformed pull-request metadata".into(),
+                            )
+                        })?;
                 let state = machine.attach(state, &subject_id, remote)?;
                 let next = machine.persist(repo, &record, &state)?;
                 return Ok(UnifiedReviewMutation {
@@ -1778,7 +1847,10 @@ impl ReviewProviderInstance for GitHubInstance {
                     changed: 1,
                     record_before: Some(record.record_oid.clone()),
                     record_after: Some(next.record_oid),
-                    details: vec![format!("validated and attached GitHub pull-request {}", review)],
+                    details: vec![format!(
+                        "validated and attached GitHub pull-request {}",
+                        review
+                    )],
                 });
             }
         }
@@ -1797,7 +1869,14 @@ impl ReviewProviderInstance for GitHubInstance {
         })
     }
 
-    fn detach(&self, repo: &GitRepo, _oids: &[String], review: &str, record: Option<&StaircaseRecord>, selected_index: Option<usize>) -> Result<UnifiedReviewMutation> {
+    fn detach(
+        &self,
+        repo: &GitRepo,
+        _oids: &[String],
+        review: &str,
+        record: Option<&StaircaseRecord>,
+        selected_index: Option<usize>,
+    ) -> Result<UnifiedReviewMutation> {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
@@ -1807,8 +1886,13 @@ impl ReviewProviderInstance for GitHubInstance {
                     .get(subject_index)
                     .or_else(|| state.associations.first())
                     .map(|association| association.subject_id.clone())
-                    .ok_or_else(|| crate::error::StaircaseError::Other("selected step has no GitHub association".into()))?;
-                let machine = GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                    .ok_or_else(|| {
+                        crate::error::StaircaseError::Other(
+                            "selected step has no GitHub association".into(),
+                        )
+                    })?;
+                let machine =
+                    GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
                 let state = machine.detach(state, &subject_id)?;
                 let next = machine.persist(repo, &record, &state)?;
                 return Ok(UnifiedReviewMutation {
@@ -1896,12 +1980,14 @@ fn parse_github_review_selector(selector: &str) -> Result<(String, u64)> {
             }
         };
         let number = number.parse::<u64>().map_err(|_| {
-            crate::error::StaircaseError::Other("GitHub selector pull request number must be an integer".into())
+            crate::error::StaircaseError::Other(
+                "GitHub selector pull request number must be an integer".into(),
+            )
         })?;
         Ok((repository, number))
     } else {
         Err(crate::error::StaircaseError::Other(
-            "GitHub selector must be repository#number".into()
+            "GitHub selector must be repository#number".into(),
         ))
     }
 }

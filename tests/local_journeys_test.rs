@@ -470,6 +470,8 @@ fn abort_restores_exact_index_and_unstaged_worktree_content() {
             head_oid: head,
             head_ref: Some("refs/heads/main".into()),
             index_tree_oid: Some(index_tree.clone()),
+            index_snapshot: None,
+            dirty_files: Vec::new(),
             unstaged_patch: patch,
             untracked_paths: Vec::new(),
             untracked_files: Vec::new(),
