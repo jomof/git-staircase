@@ -148,20 +148,14 @@ fn publish_record(
 
     if let Some(expected) = expected_record_oid {
         let old = old_record.as_ref().expect("expected record was read");
-        let old_ref = match old.lifecycle.state {
-            LifecycleState::Active => StaircaseRefs::state_record(&old.metadata.id),
-            LifecycleState::Archived => StaircaseRefs::archive_record(&old.metadata.id),
-        };
+        let old_ref = StaircaseRefs::record(&old.metadata.id, old.lifecycle.state);
         assert_ref(repo, &old_ref, expected)?;
         if old.lifecycle.state == LifecycleState::Active && !old.metadata.name.is_empty() {
             assert_ref(repo, &StaircaseRefs::public(&old.metadata.name), expected)?;
         }
     }
 
-    let new_record_ref = match lifecycle.state {
-        LifecycleState::Active => StaircaseRefs::state_record(&metadata.id),
-        LifecycleState::Archived => StaircaseRefs::archive_record(&metadata.id),
-    };
+    let new_record_ref = StaircaseRefs::record(&metadata.id, lifecycle.state);
 
     match old_record.as_ref() {
         None => commands.push(format!("create {} {}", new_record_ref, new_record_oid)),
@@ -170,22 +164,16 @@ fn publish_record(
             new_record_ref, new_record_oid, old.record_oid
         )),
         Some(old) => {
-            let old_ref = match old.lifecycle.state {
-                LifecycleState::Active => StaircaseRefs::state_record(&old.metadata.id),
-                LifecycleState::Archived => StaircaseRefs::archive_record(&old.metadata.id),
-            };
+            let old_ref = StaircaseRefs::record(&old.metadata.id, old.lifecycle.state);
             commands.push(format!("delete {} {}", old_ref, old.record_oid));
             commands.push(format!("create {} {}", new_record_ref, new_record_oid));
         }
     }
 
-    let old_public = old_record
-        .as_ref()
-        .filter(|record| record.lifecycle.state == LifecycleState::Active)
-        .filter(|record| !record.metadata.name.is_empty())
-        .map(|record| StaircaseRefs::public(&record.metadata.name));
-    let new_public = (lifecycle.state == LifecycleState::Active && !metadata.name.is_empty())
-        .then(|| StaircaseRefs::public(&metadata.name));
+    let old_public = old_record.as_ref().and_then(|record| {
+        StaircaseRefs::public_optional(Some(&record.metadata.name), record.lifecycle.state)
+    });
+    let new_public = StaircaseRefs::public_optional(Some(&metadata.name), lifecycle.state);
     match (old_public.as_deref(), new_public.as_deref()) {
         (None, Some(new_ref)) => {
             commands.push(format!("create {} {}", new_ref, new_record_oid));
@@ -238,11 +226,15 @@ fn publish_record(
     let new_archived = lifecycle.state == LifecycleState::Archived;
 
     for key in old_steps.keys() {
-        let old_ref = if old_archived {
-            StaircaseRefs::archive_step(&metadata.id, key)
-        } else {
-            StaircaseRefs::state_step(&metadata.id, key)
-        };
+        let old_ref = StaircaseRefs::step(
+            &metadata.id,
+            key,
+            if old_archived {
+                LifecycleState::Archived
+            } else {
+                LifecycleState::Active
+            },
+        );
         if old_archived != new_archived || !new_steps.contains_key(key) {
             if let Some(actual) = repo.resolve_ref_opt(&old_ref)? {
                 commands.push(format!("delete {} {}", old_ref, actual));
@@ -250,11 +242,15 @@ fn publish_record(
         }
     }
     for (key, oid) in &new_steps {
-        let new_ref = if new_archived {
-            StaircaseRefs::archive_step(&metadata.id, key)
-        } else {
-            StaircaseRefs::state_step(&metadata.id, key)
-        };
+        let new_ref = StaircaseRefs::step(
+            &metadata.id,
+            key,
+            if new_archived {
+                LifecycleState::Archived
+            } else {
+                LifecycleState::Active
+            },
+        );
         if let Some(actual) = repo.resolve_ref_opt(&new_ref)? {
             commands.push(format!("update {} {} {}", new_ref, oid, actual));
         } else {
@@ -428,10 +424,7 @@ pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<St
     }
     let user_metadata = metadata.user_metadata.clone().unwrap_or_default();
     let lifecycle = metadata.lifecycle.clone().unwrap_or_default();
-    let current_ref = match lifecycle.state {
-        LifecycleState::Active => StaircaseRefs::state_record(&metadata.id),
-        LifecycleState::Archived => StaircaseRefs::archive_record(&metadata.id),
-    };
+    let current_ref = StaircaseRefs::record(&metadata.id, lifecycle.state);
     let expected = repo.resolve_ref_opt(&current_ref)?;
     let record = write_record(
         repo,

@@ -209,4 +209,3 @@ impl<'a> Drop for CheckoutGuard<'a> {
         let _ = self.repo.run(&["checkout", &self.original_ref]);
     }
 }
-

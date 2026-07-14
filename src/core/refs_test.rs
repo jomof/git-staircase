@@ -1,4 +1,5 @@
 use crate::core::refs::StaircaseRefs;
+use crate::model::LifecycleState;
 
 #[test]
 fn test_public_ref() {
@@ -55,5 +56,47 @@ fn test_verification_refs() {
     assert_eq!(
         StaircaseRefs::revision_verification("abc1234"),
         "refs/staircases/by-revision/abc1234/verification"
+    );
+}
+
+#[test]
+fn test_refs_manager_active() {
+    let id = "uuid-active";
+    let name = "my-staircase";
+    let step_id = "step-1";
+
+    assert_eq!(
+        StaircaseRefs::record(id, LifecycleState::Active),
+        "refs/staircase-state/uuid-active/record"
+    );
+    assert_eq!(
+        StaircaseRefs::step(id, step_id, LifecycleState::Active),
+        "refs/staircase-state/uuid-active/steps/step-1"
+    );
+    assert_eq!(
+        StaircaseRefs::public_optional(Some(name), LifecycleState::Active),
+        Some("refs/staircases/my-staircase".to_string())
+    );
+}
+
+#[test]
+fn test_refs_manager_archived() {
+    let id = "uuid-archived";
+    let name = "old-staircase";
+    let step_id = "step-2";
+
+    assert_eq!(
+        StaircaseRefs::record(id, LifecycleState::Archived),
+        "refs/staircase-archive/uuid-archived/record"
+    );
+    assert_eq!(
+        StaircaseRefs::step(id, step_id, LifecycleState::Archived),
+        "refs/staircase-archive/uuid-archived/steps/step-2"
+    );
+    // Public ref should NOT exist for archived staircases unless specifically managed otherwise,
+    // but the current logic seems to delete it.
+    assert_eq!(
+        StaircaseRefs::public_optional(Some(name), LifecycleState::Archived),
+        None
     );
 }

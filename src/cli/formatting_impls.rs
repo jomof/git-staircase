@@ -14,14 +14,14 @@
  * limitations under the License.
  */
 
-use crate::model::*;
 use crate::core::draft::MaterializeResult;
-use crate::core::local::{LocalMutationResult, LayoutState, DiscoveryOverride};
-use crate::core::operation::{OperationResult, OperationJournal};
+use crate::core::local::{DiscoveryOverride, LayoutState, LocalMutationResult};
+use crate::core::operation::{OperationJournal, OperationResult};
 use crate::core::resolved::ResolvedStaircase;
 use crate::core::verification::DraftVerificationEvidence;
-use crate::workspace::review_provider::*;
+use crate::model::*;
 use crate::presentation::{Presentation, ToPresentation, UsePresentation};
+use crate::workspace::review_provider::*;
 
 // --- model.rs implementations ---
 

@@ -14,6 +14,8 @@
  * limitations under the License.
  */
 
+use crate::model::LifecycleState;
+
 pub const PUBLIC_PREFIX: &str = "refs/staircases/";
 pub const STATE_PREFIX: &str = "refs/staircase-state/";
 pub const ARCHIVE_PREFIX: &str = "refs/staircase-archive/";
@@ -23,6 +25,27 @@ pub struct StaircaseRefs;
 impl StaircaseRefs {
     pub fn public(name: &str) -> String {
         format!("{}{}", PUBLIC_PREFIX, name)
+    }
+
+    pub fn public_optional(name: Option<&str>, state: LifecycleState) -> Option<String> {
+        match (state, name) {
+            (LifecycleState::Active, Some(name)) if !name.is_empty() => Some(Self::public(name)),
+            _ => None,
+        }
+    }
+
+    pub fn record(id: &str, state: LifecycleState) -> String {
+        match state {
+            LifecycleState::Active => Self::state_record(id),
+            LifecycleState::Archived => Self::archive_record(id),
+        }
+    }
+
+    pub fn step(id: &str, step_key: &str, state: LifecycleState) -> String {
+        match state {
+            LifecycleState::Active => Self::state_step(id, step_key),
+            LifecycleState::Archived => Self::archive_step(id, step_key),
+        }
     }
 
     pub fn state_record(id: &str) -> String {

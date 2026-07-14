@@ -334,4 +334,3 @@ fn sequential_branch_name(index: usize, total: usize, base: &str) -> String {
         format!("{}-{}", base, index + 1)
     }
 }
-

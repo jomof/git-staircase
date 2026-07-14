@@ -15,6 +15,7 @@ pub mod discovery;
 pub mod draft;
 pub mod drop;
 pub mod formatting;
+pub mod formatting_impls;
 pub mod graph;
 pub mod id;
 pub mod join;
@@ -43,7 +44,6 @@ pub mod transport;
 pub mod unarchive;
 pub mod verify;
 pub mod workspace;
-pub mod formatting_impls;
 
 pub use formatting::*;
 

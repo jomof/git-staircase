@@ -849,4 +849,3 @@ fn restore_dirty_files(repo: &GitRepo, files: &[crate::model::DraftFileSnapshot]
     }
     Ok(())
 }
-

@@ -1,9 +1,9 @@
 use super::persistence;
-use super::refs::StaircaseRefs;
+use super::refs::{ARCHIVE_PREFIX, STATE_PREFIX, StaircaseRefs};
 use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{LandingPolicy, Step};
+use crate::model::{LandingPolicy, LifecycleState, StaircaseMetadata, Step};
 use std::collections::HashSet;
 use uuid::Uuid;
 
@@ -40,7 +40,7 @@ fn check_active(staircase: &ResolvedStaircase) -> Result<()> {
         .metadata()
         .lifecycle
         .as_ref()
-        .map(|l| l.state == crate::model::LifecycleState::Archived)
+        .map(|l| l.state == LifecycleState::Archived)
         .unwrap_or(false)
     {
         return Err(StaircaseError::Other(
@@ -209,7 +209,10 @@ pub fn join(
         staircase: managed,
         step_index: None,
     };
-    let record = persistence::read_record(repo, &StaircaseRefs::state_record(&desired.id))?;
+    let record = persistence::read_record(
+        repo,
+        &StaircaseRefs::record(&desired.id, LifecycleState::Active),
+    )?;
     let extras = if options.ref_action == JoinRefAction::Keep {
         removed_step
             .branch
@@ -643,7 +646,7 @@ pub fn rebase_with_dry_run(
 
 fn ensure_rewrite_supported(
     repo: &GitRepo,
-    metadata: &crate::model::StaircaseMetadata,
+    metadata: &StaircaseMetadata,
     operation: &str,
 ) -> Result<()> {
     let mut predecessor = recorded_target(repo, metadata)?;
@@ -667,10 +670,7 @@ fn ensure_rewrite_supported(
     Ok(())
 }
 
-fn step_commit_groups(
-    repo: &GitRepo,
-    metadata: &crate::model::StaircaseMetadata,
-) -> Result<Vec<Vec<String>>> {
+fn step_commit_groups(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Vec<Vec<String>>> {
     let mut predecessor = recorded_target(repo, metadata)?;
     let mut groups = Vec::new();
     for step in &metadata.steps {
@@ -689,7 +689,7 @@ fn step_commit_groups(
     Ok(groups)
 }
 
-fn recorded_target(repo: &GitRepo, metadata: &crate::model::StaircaseMetadata) -> Result<String> {
+fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
     metadata
         .user_metadata
         .as_ref()
@@ -706,7 +706,7 @@ fn recorded_target(repo: &GitRepo, metadata: &crate::model::StaircaseMetadata) -
 fn publish_metadata_common(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
-    mut metadata: crate::model::StaircaseMetadata,
+    mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
     let managed = if staircase.is_managed() {
@@ -737,8 +737,8 @@ pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
     let metadata = persistence::read_metadata(repo, id)?;
     let mut plan = super::operation::MutationPlan::new("delete", Some(metadata.id.clone()));
     for prefix in [
-        format!("refs/staircases/state/{}/", metadata.id),
-        format!("refs/staircases/archive/{}/", metadata.id),
+        format!("{}{}/", STATE_PREFIX, metadata.id),
+        format!("{}{}/", ARCHIVE_PREFIX, metadata.id),
     ] {
         let output = repo.run(&["for-each-ref", "--format=%(refname) %(objectname)", &prefix])?;
         for line in output.lines() {
@@ -877,7 +877,10 @@ pub fn land_through(
         staircase: managed,
         step_index: None,
     };
-    let record = persistence::read_record(repo, &StaircaseRefs::state_record(&desired.id))?;
+    let record = persistence::read_record(
+        repo,
+        &StaircaseRefs::record(&desired.id, LifecycleState::Active),
+    )?;
     let mut user_metadata = record.user_metadata;
     user_metadata.extensions.insert(
         "git-staircase.internal.integration-anchor".into(),

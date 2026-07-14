@@ -523,4 +523,3 @@ pub trait ReviewProviderInstance {
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderLanding>;
 }
-

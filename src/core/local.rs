@@ -498,7 +498,7 @@ pub(crate) fn publish_record_parts_extra(
         .unwrap_or_else(|| old.record_oid.clone());
     let mut plan = MutationPlan::new(kind, Some(metadata.id.clone()))
         .expected_record(Some(old.record_oid.clone()));
-    let record_ref = StaircaseRefs::state_record(&metadata.id);
+    let record_ref = StaircaseRefs::record(&metadata.id, LifecycleState::Active);
     plan.update(
         record_ref.clone(),
         Some(old.record_oid.clone()),
@@ -527,7 +527,7 @@ pub(crate) fn publish_record_parts_extra(
     for (id, old_step) in &old_steps {
         if !new_steps.contains_key(id) {
             plan.update(
-                StaircaseRefs::state_step(&metadata.id, id),
+                StaircaseRefs::step(&metadata.id, id, LifecycleState::Active),
                 Some(old_step.cut.clone()),
                 None,
             );
@@ -535,7 +535,7 @@ pub(crate) fn publish_record_parts_extra(
     }
     for (id, step) in &new_steps {
         plan.update(
-            StaircaseRefs::state_step(&metadata.id, id),
+            StaircaseRefs::step(&metadata.id, id, LifecycleState::Active),
             old_steps.get(id).map(|old_step| old_step.cut.clone()),
             Some(step.cut.clone()),
         );
@@ -705,9 +705,9 @@ fn current_record_for_metadata(
         .as_ref()
         .is_some_and(|lifecycle| lifecycle.state == LifecycleState::Archived)
     {
-        StaircaseRefs::archive_record(&metadata.id)
+        StaircaseRefs::record(&metadata.id, LifecycleState::Archived)
     } else {
-        StaircaseRefs::state_record(&metadata.id)
+        StaircaseRefs::record(&metadata.id, LifecycleState::Active)
     };
     persistence::read_record(repo, &reference)
 }
@@ -897,4 +897,3 @@ fn result(
         changed_refs,
     }
 }
-

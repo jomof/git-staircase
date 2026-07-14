@@ -7,7 +7,7 @@ use crate::core::refs::StaircaseRefs;
 use crate::core::resolved::{ResolvedStaircase, adopt};
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{StaircaseLifecycle, StaircaseMetadata, StaircaseUserMetadata};
+use crate::model::{LifecycleState, StaircaseLifecycle, StaircaseMetadata, StaircaseUserMetadata};
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, BTreeSet};
 
@@ -94,7 +94,7 @@ pub(crate) fn replay(
             new.id = old.id.clone();
         }
     }
-    let record_ref = StaircaseRefs::state_record(&desired.id);
+    let record_ref = StaircaseRefs::record(&desired.id, LifecycleState::Active);
     let old_record_oid = repo.resolve_ref(&record_ref)?;
     let mut old_record = persistence::read_record(repo, &old_record_oid)?;
     old_record.metadata.name = managed.metadata().name.clone();
@@ -272,7 +272,7 @@ fn lease_plan(
     lease(
         repo,
         &mut plan,
-        StaircaseRefs::state_record(&old.id),
+        StaircaseRefs::record(&old.id, LifecycleState::Active),
         Some(old_record_oid.into()),
     )?;
     let public = StaircaseRefs::public(&old.name);
@@ -286,7 +286,7 @@ fn lease_plan(
         .map(|step| step.id.clone())
         .collect();
     for id in step_ids {
-        let reference = StaircaseRefs::state_step(&old.id, &id);
+        let reference = StaircaseRefs::step(&old.id, &id, LifecycleState::Active);
         let actual = repo.resolve_ref_opt(&reference)?;
         plan.update(reference, actual.clone(), actual);
     }
@@ -366,7 +366,7 @@ fn publication_plan(
         Ok(())
     };
     update(
-        StaircaseRefs::state_record(&state.desired.id),
+        StaircaseRefs::record(&state.desired.id, LifecycleState::Active),
         Some(new_record_oid.into()),
     )?;
     let public = StaircaseRefs::public(&state.original.name);
@@ -391,7 +391,7 @@ fn publication_plan(
         .collect::<BTreeSet<_>>()
     {
         update(
-            StaircaseRefs::state_step(&state.desired.id, id),
+            StaircaseRefs::step(&state.desired.id, id, LifecycleState::Active),
             new_steps.get(id).map(|step| step.cut.clone()),
         )?;
     }

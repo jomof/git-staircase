@@ -36,16 +36,13 @@ pub fn unarchive_staircase(
     options: &UnarchiveOptions,
 ) -> Result<UnarchiveResult> {
     let meta = selector.staircase.metadata();
-    let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
-    let current_ref = if meta
-        .lifecycle
-        .as_ref()
-        .is_some_and(|lifecycle| lifecycle.state == LifecycleState::Active)
-    {
-        StaircaseRefs::state_record(&meta.id)
-    } else {
-        archive_record_ref
-    };
+    let current_ref = StaircaseRefs::record(
+        &meta.id,
+        meta.lifecycle
+            .as_ref()
+            .map(|l| l.state)
+            .unwrap_or(LifecycleState::Archived),
+    );
     let record = persistence::read_record(repo, &current_ref)?;
 
     if record.lifecycle.state == LifecycleState::Active {
@@ -179,12 +176,12 @@ pub fn unarchive_staircase(
     let mut plan = crate::core::operation::MutationPlan::new("unarchive", Some(meta.id.clone()))
         .expected_record(Some(record.record_oid.clone()));
     plan.update(
-        StaircaseRefs::archive_record(&meta.id),
+        StaircaseRefs::record(&meta.id, LifecycleState::Archived),
         Some(record.record_oid.clone()),
         None,
     );
     plan.update(
-        StaircaseRefs::state_record(&meta.id),
+        StaircaseRefs::record(&meta.id, LifecycleState::Active),
         None,
         Some(active_record.record_oid.clone()),
     );
@@ -200,12 +197,12 @@ pub fn unarchive_staircase(
             &step.id
         };
         plan.update(
-            StaircaseRefs::archive_step(&meta.id, key),
+            StaircaseRefs::step(&meta.id, key, LifecycleState::Archived),
             Some(step.cut.clone()),
             None,
         );
         plan.update(
-            StaircaseRefs::state_step(&meta.id, key),
+            StaircaseRefs::step(&meta.id, key, LifecycleState::Active),
             None,
             Some(step.cut.clone()),
         );

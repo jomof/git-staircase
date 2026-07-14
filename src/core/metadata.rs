@@ -5,7 +5,8 @@ use crate::core::utils::current_timestamp;
 use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::{
-    StaircaseLink, StaircaseMetadata, StaircaseRecord, StaircaseUserMetadata, StepMetadata,
+    LifecycleState, StaircaseLink, StaircaseMetadata, StaircaseRecord, StaircaseUserMetadata,
+    StepMetadata,
 };
 
 pub fn get_user_metadata(
@@ -13,15 +14,13 @@ pub fn get_user_metadata(
     selector: &ResolvedSelector,
 ) -> Result<StaircaseUserMetadata> {
     let meta = selector.staircase.metadata();
-    let record_ref = if meta
-        .lifecycle
-        .as_ref()
-        .is_some_and(|lifecycle| lifecycle.state == crate::model::LifecycleState::Archived)
-    {
-        StaircaseRefs::archive_record(&meta.id)
-    } else {
-        StaircaseRefs::state_record(&meta.id)
-    };
+    let record_ref = StaircaseRefs::record(
+        &meta.id,
+        meta.lifecycle
+            .as_ref()
+            .map(|l| l.state)
+            .unwrap_or(LifecycleState::Active),
+    );
     let record = persistence::read_record(repo, &record_ref)?;
 
     Ok(record.user_metadata)
@@ -80,15 +79,13 @@ pub fn update_user_metadata_expected(
 
 fn read_selected_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
     let meta = selector.staircase.metadata();
-    let record_ref = if meta
-        .lifecycle
-        .as_ref()
-        .is_some_and(|lifecycle| lifecycle.state == crate::model::LifecycleState::Archived)
-    {
-        StaircaseRefs::archive_record(&meta.id)
-    } else {
-        StaircaseRefs::state_record(&meta.id)
-    };
+    let record_ref = StaircaseRefs::record(
+        &meta.id,
+        meta.lifecycle
+            .as_ref()
+            .map(|l| l.state)
+            .unwrap_or(LifecycleState::Active),
+    );
     persistence::read_record(repo, &record_ref)
 }
 

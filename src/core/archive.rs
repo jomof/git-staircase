@@ -5,8 +5,8 @@ use crate::core::utils::current_timestamp;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
-    ArchiveManifest, ArchivedOwnedRef, BranchConfigEntry, BranchConfigSnapshot, LifecycleEvent,
-    LifecycleState,
+    ArchiveManifest, ArchivedOwnedRef, BranchConfigEntry, BranchConfigSnapshot,
+    DraftClassification, LifecycleEvent, LifecycleState,
 };
 use std::collections::HashMap;
 
@@ -48,15 +48,13 @@ pub fn archive_staircase(
     }
 
     let meta = selector.staircase.metadata();
-    let current_ref = if meta
-        .lifecycle
-        .as_ref()
-        .is_some_and(|lifecycle| lifecycle.state == LifecycleState::Archived)
-    {
-        StaircaseRefs::archive_record(&meta.id)
-    } else {
-        StaircaseRefs::state_record(&meta.id)
-    };
+    let current_ref = StaircaseRefs::record(
+        &meta.id,
+        meta.lifecycle
+            .as_ref()
+            .map(|l| l.state)
+            .unwrap_or(LifecycleState::Active),
+    );
     let current_record = persistence::read_record(repo, &current_ref)?;
 
     if current_record.lifecycle.state == LifecycleState::Archived {
@@ -133,7 +131,7 @@ pub fn archive_staircase(
         }
         let worktree_repo = GitRepo::new(worktree.path.clone());
         let draft = crate::core::draft::get_worktree_draft(&worktree_repo)?;
-        let is_clean = draft.classification == crate::model::DraftClassification::Clean;
+        let is_clean = draft.classification == DraftClassification::Clean;
         if !is_clean && !options.detach_dirty_worktrees && !options.snapshot_drafts {
             return Err(StaircaseError::Other(format!(
                 "worktree {} attached to branch '{}' is dirty; use --detach-dirty-worktrees or --snapshot-drafts",
@@ -210,7 +208,7 @@ pub fn archive_staircase(
         expected_source_oids.insert(step_key.to_string(), step.cut.clone());
         archive_retention_refs.insert(
             step_key.to_string(),
-            StaircaseRefs::archive_step(&meta.id, step_key),
+            StaircaseRefs::step(&meta.id, step_key, LifecycleState::Archived),
         );
     }
 
@@ -303,12 +301,12 @@ pub fn archive_staircase(
     let mut plan = crate::core::operation::MutationPlan::new("archive", Some(meta.id.clone()))
         .expected_record(Some(current_record.record_oid.clone()));
     plan.update(
-        StaircaseRefs::state_record(&meta.id),
+        StaircaseRefs::record(&meta.id, LifecycleState::Active),
         Some(current_record.record_oid.clone()),
         None,
     );
     plan.update(
-        StaircaseRefs::archive_record(&meta.id),
+        StaircaseRefs::record(&meta.id, LifecycleState::Archived),
         None,
         Some(record.record_oid.clone()),
     );
@@ -324,12 +322,12 @@ pub fn archive_staircase(
             &step.id
         };
         plan.update(
-            StaircaseRefs::state_step(&meta.id, key),
+            StaircaseRefs::step(&meta.id, key, LifecycleState::Active),
             Some(step.cut.clone()),
             None,
         );
         plan.update(
-            StaircaseRefs::archive_step(&meta.id, key),
+            StaircaseRefs::step(&meta.id, key, LifecycleState::Archived),
             None,
             Some(step.cut.clone()),
         );
@@ -371,7 +369,7 @@ pub fn archive_staircase(
 
 pub fn release_staircase_name(repo: &GitRepo, selector: &ResolvedSelector) -> Result<String> {
     let meta = selector.staircase.metadata();
-    let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
+    let archive_record_ref = StaircaseRefs::record(&meta.id, LifecycleState::Archived);
 
     let mut record = persistence::read_record(repo, &archive_record_ref)?;
 

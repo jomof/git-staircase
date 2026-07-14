@@ -777,4 +777,3 @@ pub(crate) fn hex_decode(value: &str) -> Result<Vec<u8>> {
         })
         .collect()
 }
-

@@ -1,8 +1,8 @@
-use std::collections::BTreeMap;
-use serde_json::Value;
 pub use crate::model::{StaircaseFamily, StaircaseStatus, Step};
 pub use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use serde::Serialize;
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub trait ToHuman {
     fn to_human(&self) -> String;
