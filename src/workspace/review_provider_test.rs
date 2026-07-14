@@ -1,7 +1,7 @@
 #[cfg(test)]
 mod tests {
     use crate::workspace::review_provider::{
-        prepare_review_state, ReviewAssociation, ReviewOperationPlan, ReviewPlanItem,
+        ReviewAssociation, ReviewOperationPlan, ReviewPlanItem, prepare_review_state,
     };
     use serde::{Deserialize, Serialize};
 
@@ -148,15 +148,27 @@ mod tests {
         .unwrap();
 
         assert_eq!(state.associations.len(), 3);
-        
-        let s1 = state.associations.iter().find(|a| a.subject_id == "s1").unwrap();
+
+        let s1 = state
+            .associations
+            .iter()
+            .find(|a| a.subject_id == "s1")
+            .unwrap();
         assert_eq!(s1.local_oid, "new_oid1");
         assert!(!s1.retired);
 
-        let s2 = state.associations.iter().find(|a| a.subject_id == "s2").unwrap();
+        let s2 = state
+            .associations
+            .iter()
+            .find(|a| a.subject_id == "s2")
+            .unwrap();
         assert!(s2.retired);
 
-        let s3 = state.associations.iter().find(|a| a.subject_id == "s3").unwrap();
+        let s3 = state
+            .associations
+            .iter()
+            .find(|a| a.subject_id == "s3")
+            .unwrap();
         assert_eq!(s3.local_oid, "oid3");
         assert!(!s3.retired);
     }

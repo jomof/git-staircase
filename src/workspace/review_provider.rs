@@ -541,7 +541,6 @@ pub trait ReviewOperationPlan: Serialize + for<'de> Deserialize<'de> + Clone + S
     fn items(&self) -> &[Self::Item];
 }
 
-
 pub fn prepare_review_state<S, P, A, I>(
     plan: &P,
     existing: Option<S>,
@@ -563,8 +562,7 @@ where
         None => return create_state(plan),
     };
 
-    let active_subjects: HashSet<&str> =
-        plan.items().iter().map(|i| i.subject_id()).collect();
+    let active_subjects: HashSet<&str> = plan.items().iter().map(|i| i.subject_id()).collect();
 
     let associations = get_associations_mut(&mut state);
     for assoc in associations.iter_mut().filter(|a| !a.is_retired()) {

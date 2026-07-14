@@ -13,6 +13,7 @@
  * See the License for the specific language governing permissions and
  * limitations under the License.
  */
+use crate::record;
 
 use crate::core::draft::MaterializeResult;
 use crate::core::local::{DiscoveryOverride, LayoutState, LocalMutationResult};
@@ -620,7 +621,7 @@ impl ToPresentation for LayoutState {
 
 impl ToPresentation for DiscoveryOverride {
     fn to_presentation(&self) -> Presentation {
-        Presentation::Record(vec![self.id.clone(), self.kind.clone(), self.value.clone()])
+        record![self.id.clone(), self.kind.clone(), self.value.clone()]
     }
 }
 
@@ -757,8 +758,8 @@ impl ToPresentation for UnifiedReviewShow {
         });
 
         let mut p_records = vec![
-            Presentation::Record(vec!["host".into(), self.host.clone()]),
-            Presentation::Record(vec!["project".into(), self.project.clone()]),
+            record!["host".into(), self.host.clone()],
+            record!["project".into(), self.project.clone()],
         ];
         for item in &self.items {
             p_records.push(Presentation::Record(vec![
@@ -846,8 +847,8 @@ impl ToPresentation for UnifiedReviewPlan {
         }
 
         let mut p_records = vec![
-            Presentation::Record(vec!["push_ref".into(), self.target.clone()]),
-            Presentation::Record(vec!["mapping_policy".into(), self.policy.clone()]),
+            record!["push_ref".into(), self.target.clone()],
+            record!["mapping_policy".into(), self.policy.clone()],
         ];
         for item in &self.items {
             p_records.push(Presentation::Record(vec![

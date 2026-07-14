@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq, Clone)]
 pub enum Presentation {
     Empty,
     Plain(String),
@@ -18,6 +19,52 @@ pub enum Presentation {
     List(Vec<Presentation>),
     Human(Box<Presentation>),
     Porcelain(Box<Presentation>),
+}
+
+impl Presentation {
+    pub fn human(inner: Presentation) -> Self {
+        Self::Human(Box::new(inner))
+    }
+
+    pub fn porcelain(inner: Presentation) -> Self {
+        Self::Porcelain(Box::new(inner))
+    }
+
+    pub fn pair(h: Presentation, p: Presentation) -> Self {
+        Self::List(vec![Self::human(h), Self::porcelain(p)])
+    }
+
+    pub fn field(label: impl Into<String>, value: impl Into<String>) -> Self {
+        Self::Field {
+            label: label.into(),
+            value: value.into(),
+        }
+    }
+
+    pub fn section(title: impl Into<String>, children: Vec<Presentation>) -> Self {
+        Self::Section {
+            title: title.into(),
+            children,
+        }
+    }
+
+    pub fn table(name: impl Into<Option<String>>, rows: Vec<Vec<String>>) -> Self {
+        Self::Table {
+            name: name.into(),
+            rows,
+        }
+    }
+
+    pub fn record<S: Into<String>>(fields: Vec<S>) -> Self {
+        Self::Record(fields.into_iter().map(|f| f.into()).collect())
+    }
+}
+
+#[macro_export]
+macro_rules! record {
+    ($($x:expr),* $(,)?) => {
+        $crate::presentation::Presentation::record(vec![$($x),*])
+    };
 }
 
 pub trait ToPresentation {

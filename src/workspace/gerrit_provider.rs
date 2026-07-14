@@ -3,9 +3,9 @@ use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::review_provider::{
-    prepare_review_state, OperationJournal, ProductionTransport, ProviderTransport,
-    ReviewAssociation, ReviewOperationPlan, ReviewPlanItem, SynchronizationState,
-    TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
+    OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
+    ReviewOperationPlan, ReviewPlanItem, SynchronizationState, TransportRequest,
+    UnifiedProviderLanding, UnifiedProviderVerification, prepare_review_state,
     publish_provider_extension_cas,
 };
 use serde::{Deserialize, Serialize};
@@ -639,8 +639,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                     confirmed: None,
                     last_observed_patch_set: None,
                     last_observed_revision: None,
-                    synchronization:
-                        SynchronizationState::NotUploaded,
+                    synchronization: SynchronizationState::NotUploaded,
                     provider_status: None,
                     retired: false,
                 })
@@ -803,8 +802,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                     .iter_mut()
                     .filter(|association| !association.retired)
                 {
-                    association.synchronization =
-                        SynchronizationState::UploadUnknown;
+                    association.synchronization = SynchronizationState::UploadUnknown;
                 }
                 let journal = OperationJournal::for_repo(repo)?;
                 let entry = journal.record(
@@ -835,8 +833,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                 .iter_mut()
                 .filter(|association| !association.retired)
             {
-                association.synchronization =
-                    SynchronizationState::UploadUnknown;
+                association.synchronization = SynchronizationState::UploadUnknown;
             }
             let journal = OperationJournal::for_repo(repo)?;
             let entry = journal.record(
@@ -923,8 +920,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                 apply_remote_change(association, remote);
                 accepted += 1;
             } else {
-                association.synchronization =
-                    SynchronizationState::UploadUnknown;
+                association.synchronization = SynchronizationState::UploadUnknown;
                 unknown += 1;
             }
         }
@@ -976,11 +972,9 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             if matches.len() == 1 {
                 apply_remote_change(association, matches[0]);
             } else if matches.len() > 1 {
-                association.synchronization =
-                    SynchronizationState::IdentityAmbiguous;
+                association.synchronization = SynchronizationState::IdentityAmbiguous;
             } else {
-                association.synchronization =
-                    SynchronizationState::Unknown;
+                association.synchronization = SynchronizationState::Unknown;
             }
         }
         state.reconciliation_required = state
@@ -1190,11 +1184,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
 fn classify_gerrit_item(
     planned: &GerritPlannedCommit,
     association: Option<&GerritReviewAssociation>,
-) -> (
-    SynchronizationState,
-    String,
-    Option<String>,
-) {
+) -> (SynchronizationState, String, Option<String>) {
     if planned.change_id.is_none() || planned.change_id_status != "valid" {
         return (
             SynchronizationState::NotCreated,
@@ -1203,11 +1193,7 @@ fn classify_gerrit_item(
         );
     }
     let Some(association) = association else {
-        return (
-            SynchronizationState::NotCreated,
-            "create".into(),
-            None,
-        );
+        return (SynchronizationState::NotCreated, "create".into(), None);
     };
     if matches!(
         association.synchronization,
@@ -1233,30 +1219,20 @@ fn classify_gerrit_item(
         association.last_observed_revision.as_deref(),
         association.confirmed.as_ref(),
     ) {
-        (Some(remote), Some(_)) if remote == planned.oid => (
-            SynchronizationState::Current,
-            "no-op".into(),
-            None,
-        ),
+        (Some(remote), Some(_)) if remote == planned.oid => {
+            (SynchronizationState::Current, "no-op".into(), None)
+        }
         (Some(_), Some(confirmed))
             if association.last_observed_patch_set == Some(confirmed.patch_set) =>
         {
-            (
-                SynchronizationState::LocalNewer,
-                "update".into(),
-                None,
-            )
+            (SynchronizationState::LocalNewer, "update".into(), None)
         }
         (Some(_), Some(_)) => (
             SynchronizationState::RemoteNewer,
             "blocked".into(),
             Some("remote-newer: reconcile before upload".into()),
         ),
-        _ => (
-            SynchronizationState::NotUploaded,
-            "create".into(),
-            None,
-        ),
+        _ => (SynchronizationState::NotUploaded, "create".into(), None),
     }
 }
 
@@ -1374,9 +1350,9 @@ pub fn parse_gerrit_api_change(value: &serde_json::Value) -> Option<GerritRemote
 }
 
 use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance,
-    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
-    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
+    ReviewProvider, ReviewProviderInstance, UnifiedReviewItem, UnifiedReviewMutation,
+    UnifiedReviewOpen, UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow,
+    UnifiedReviewStatus, UnifiedReviewUpload,
 };
 
 pub struct GerritProvider;
@@ -1454,8 +1430,7 @@ impl ReviewProviderInstance for GerritInstance {
                     status: if state.reconciliation_required {
                         "reconciliation-required".into()
                     } else if state.associations.iter().all(|association| {
-                        association.synchronization
-                            == SynchronizationState::Current
+                        association.synchronization == SynchronizationState::Current
                     }) {
                         "current".into()
                     } else {
@@ -1532,8 +1507,7 @@ impl ReviewProviderInstance for GerritInstance {
                     state.route.upload_ref =
                         format!("refs/for/{}", destination.trim_start_matches("refs/heads/"));
                 }
-                let machine =
-                    GerritStateMachine::new(ProductionTransport);
+                let machine = GerritStateMachine::new(ProductionTransport);
                 let metadata = &record.metadata;
                 let subjects = metadata
                     .steps
@@ -1571,8 +1545,7 @@ impl ReviewProviderInstance for GerritInstance {
             active_route.destination_branch = format!("refs/heads/{}", dest);
             active_route.upload_ref = format!("refs/for/{}", dest);
         }
-        let machine =
-            GerritStateMachine::new(ProductionTransport);
+        let machine = GerritStateMachine::new(ProductionTransport);
         let subject_ids: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
@@ -1599,8 +1572,7 @@ impl ReviewProviderInstance for GerritInstance {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.gerrit") {
                 let state: GerritProviderState = serde_json::from_value(value.clone())?;
-                let machine =
-                    GerritStateMachine::new(ProductionTransport);
+                let machine = GerritStateMachine::new(ProductionTransport);
                 let mut observations = Vec::new();
                 for association in &state.associations {
                     let selector = association
@@ -1702,8 +1674,7 @@ impl ReviewProviderInstance for GerritInstance {
             let route = probe_gerrit_route(repo, Some(&workspace.record))?.ok_or_else(|| {
                 crate::error::StaircaseError::Other("Gerrit route is incomplete".into())
             })?;
-            let machine =
-                GerritStateMachine::new(ProductionTransport);
+            let machine = GerritStateMachine::new(ProductionTransport);
             let existing = record
                 .user_metadata
                 .extensions
@@ -1736,8 +1707,7 @@ impl ReviewProviderInstance for GerritInstance {
                 details: vec!["pending review keys recorded; remote publication required".into()],
             });
         }
-        let machine =
-            GerritStateMachine::new(ProductionTransport);
+        let machine = GerritStateMachine::new(ProductionTransport);
         let subjects: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
@@ -1780,8 +1750,7 @@ impl ReviewProviderInstance for GerritInstance {
                             "selected step has no Gerrit association".into(),
                         )
                     })?;
-                let machine =
-                    GerritStateMachine::new(ProductionTransport);
+                let machine = GerritStateMachine::new(ProductionTransport);
                 if review.is_empty()
                     || !review.chars().all(|character| {
                         character.is_ascii_alphanumeric() || "~._-".contains(character)
@@ -1860,8 +1829,7 @@ impl ReviewProviderInstance for GerritInstance {
                             "selected step has no Gerrit association".into(),
                         )
                     })?;
-                let machine =
-                    GerritStateMachine::new(ProductionTransport);
+                let machine = GerritStateMachine::new(ProductionTransport);
                 let state = machine.detach(state, &subject_id)?;
                 let next = machine.persist(repo, &record, &state)?;
                 return Ok(UnifiedReviewMutation {

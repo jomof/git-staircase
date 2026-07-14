@@ -3,9 +3,9 @@ use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::review_provider::{
-    prepare_review_state, OperationJournal, ProductionTransport, ProviderTransport,
-    ReviewAssociation, ReviewOperationPlan, ReviewPlanItem, SynchronizationState,
-    TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
+    OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
+    ReviewOperationPlan, ReviewPlanItem, SynchronizationState, TransportRequest,
+    UnifiedProviderLanding, UnifiedProviderVerification, prepare_review_state,
     publish_provider_extension_cas,
 };
 use serde::{Deserialize, Serialize};
@@ -603,8 +603,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                     pull_request: None,
                     expected_remote_head_oid: item.expected_remote_head_oid.clone(),
                     last_observed_head_oid: item.expected_remote_head_oid.clone(),
-                    synchronization:
-                        SynchronizationState::NotCreated,
+                    synchronization: SynchronizationState::NotCreated,
                     state: "open".into(),
                     draft: false,
                     retired: false,
@@ -777,8 +776,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
             {
                 association.expected_remote_head_oid = Some(item.local_oid.clone());
                 association.last_observed_head_oid = Some(item.local_oid.clone());
-                association.synchronization =
-                    SynchronizationState::Current;
+                association.synchronization = SynchronizationState::Current;
             }
         }
         if create_missing_pull_requests {
@@ -803,10 +801,8 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                     Ok(response) => response,
                     Err(error) => {
                         state.reconciliation_required = true;
-                        association.synchronization =
-                            SynchronizationState::UploadUnknown;
-                        let journal =
-                            OperationJournal::for_repo(repo)?;
+                        association.synchronization = SynchronizationState::UploadUnknown;
+                        let journal = OperationJournal::for_repo(repo)?;
                         let entry = journal.record(
                             "github",
                             "create-pull-request",
@@ -826,10 +822,8 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                 };
                 if response.uncertain {
                     state.reconciliation_required = true;
-                    association.synchronization =
-                        SynchronizationState::UploadUnknown;
-                    let journal =
-                        OperationJournal::for_repo(repo)?;
+                    association.synchronization = SynchronizationState::UploadUnknown;
+                    let journal = OperationJournal::for_repo(repo)?;
                     let entry = journal.record(
                         "github",
                         "create-pull-request",
@@ -869,8 +863,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                     pull_requests_created += 1;
                 } else {
                     state.reconciliation_required = true;
-                    association.synchronization =
-                        SynchronizationState::UploadUnknown;
+                    association.synchronization = SynchronizationState::UploadUnknown;
                 }
             }
         }
@@ -879,8 +872,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
             .iter()
             .filter(|association| {
                 !association.retired
-                    && association.synchronization
-                        == SynchronizationState::UploadUnknown
+                    && association.synchronization == SynchronizationState::UploadUnknown
             })
             .count();
         Ok(GitHubMutationResult {
@@ -910,8 +902,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
     ) -> Result<GitHubMutationResult> {
         state.reconciliation_required = true;
         for association in &mut state.associations {
-            association.synchronization =
-                SynchronizationState::UploadUnknown;
+            association.synchronization = SynchronizationState::UploadUnknown;
         }
         let journal = OperationJournal::for_repo(repo)?;
         let entry = journal.record(
@@ -952,11 +943,9 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
             if observations.len() == 1 {
                 apply_github_observation(association, observations[0]);
             } else if observations.len() > 1 {
-                association.synchronization =
-                    SynchronizationState::IdentityAmbiguous;
+                association.synchronization = SynchronizationState::IdentityAmbiguous;
             } else {
-                association.synchronization =
-                    SynchronizationState::Unknown;
+                association.synchronization = SynchronizationState::Unknown;
             }
         }
         state.reconciliation_required = state
@@ -1264,39 +1253,23 @@ fn normalize_branch(branch: &str) -> String {
 fn classify_github_item(
     local_oid: &str,
     association: Option<&GitHubReviewAssociation>,
-) -> (
-    SynchronizationState,
-    String,
-    Option<String>,
-) {
+) -> (SynchronizationState, String, Option<String>) {
     let Some(association) = association else {
-        return (
-            SynchronizationState::NotCreated,
-            "create".into(),
-            None,
-        );
+        return (SynchronizationState::NotCreated, "create".into(), None);
     };
     match association.last_observed_head_oid.as_deref() {
-        Some(remote) if remote == local_oid => (
-            SynchronizationState::Current,
-            "no-op".into(),
-            None,
-        ),
-        Some(remote) if association.expected_remote_head_oid.as_deref() == Some(remote) => (
-            SynchronizationState::LocalNewer,
-            "update".into(),
-            None,
-        ),
+        Some(remote) if remote == local_oid => {
+            (SynchronizationState::Current, "no-op".into(), None)
+        }
+        Some(remote) if association.expected_remote_head_oid.as_deref() == Some(remote) => {
+            (SynchronizationState::LocalNewer, "update".into(), None)
+        }
         Some(_) => (
             SynchronizationState::RemoteNewer,
             "blocked".into(),
             Some("remote-newer: reconcile the GitHub head branch".into()),
         ),
-        None => (
-            SynchronizationState::NotUploaded,
-            "publish".into(),
-            None,
-        ),
+        None => (SynchronizationState::NotUploaded, "publish".into(), None),
     }
 }
 
@@ -1372,11 +1345,7 @@ pub fn parse_github_api_pull(
     })
 }
 
-fn github_landing_blocked(
-    mode: &str,
-    blocked: String,
-    detail: &str,
-) -> UnifiedProviderLanding {
+fn github_landing_blocked(mode: &str, blocked: String, detail: &str) -> UnifiedProviderLanding {
     UnifiedProviderLanding {
         provider_label: "GitHub".into(),
         mode: mode.into(),
@@ -1389,9 +1358,9 @@ fn github_landing_blocked(
 }
 
 use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance,
-    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
-    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
+    ReviewProvider, ReviewProviderInstance, UnifiedReviewItem, UnifiedReviewMutation,
+    UnifiedReviewOpen, UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow,
+    UnifiedReviewStatus, UnifiedReviewUpload,
 };
 pub struct GitHubProvider;
 
@@ -1467,8 +1436,7 @@ impl ReviewProviderInstance for GitHubInstance {
                     status: if state.reconciliation_required {
                         "reconciliation-required".into()
                     } else if state.associations.iter().all(|association| {
-                        association.synchronization
-                            == SynchronizationState::Current
+                        association.synchronization == SynchronizationState::Current
                     }) {
                         "current".into()
                     } else {
@@ -1534,8 +1502,7 @@ impl ReviewProviderInstance for GitHubInstance {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
-                let machine =
-                    GitHubStateMachine::new(ProductionTransport);
+                let machine = GitHubStateMachine::new(ProductionTransport);
                 let metadata = &record.metadata;
                 let subjects = metadata
                     .steps
@@ -1568,8 +1535,7 @@ impl ReviewProviderInstance for GitHubInstance {
                 });
             }
         }
-        let machine =
-            GitHubStateMachine::new(ProductionTransport);
+        let machine = GitHubStateMachine::new(ProductionTransport);
         let subject_ids: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
@@ -1603,8 +1569,7 @@ impl ReviewProviderInstance for GitHubInstance {
         if let Some(record) = record {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
                 let state: GitHubProviderState = serde_json::from_value(value.clone())?;
-                let machine =
-                    GitHubStateMachine::new(ProductionTransport);
+                let machine = GitHubStateMachine::new(ProductionTransport);
                 let mut observations = Vec::new();
                 for association in &state.associations {
                     let Some(identity) = &association.pull_request else {
@@ -1706,8 +1671,7 @@ impl ReviewProviderInstance for GitHubInstance {
             let route = probe_github_route(repo, Some(&workspace.record))?.ok_or_else(|| {
                 crate::error::StaircaseError::Other("GitHub route is incomplete".into())
             })?;
-            let machine =
-                GitHubStateMachine::new(ProductionTransport);
+            let machine = GitHubStateMachine::new(ProductionTransport);
             let existing = record
                 .user_metadata
                 .extensions
@@ -1741,8 +1705,7 @@ impl ReviewProviderInstance for GitHubInstance {
                 ],
             });
         }
-        let machine =
-            GitHubStateMachine::new(ProductionTransport);
+        let machine = GitHubStateMachine::new(ProductionTransport);
         let subject_ids: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
@@ -1803,8 +1766,7 @@ impl ReviewProviderInstance for GitHubInstance {
                         "GitHub review selector base repository does not match route".into(),
                     ));
                 }
-                let machine =
-                    GitHubStateMachine::new(ProductionTransport);
+                let machine = GitHubStateMachine::new(ProductionTransport);
                 let request = TransportRequest::Api {
                     tool: "gh".into(),
                     method: "GET".into(),
@@ -1877,8 +1839,7 @@ impl ReviewProviderInstance for GitHubInstance {
                             "selected step has no GitHub association".into(),
                         )
                     })?;
-                let machine =
-                    GitHubStateMachine::new(ProductionTransport);
+                let machine = GitHubStateMachine::new(ProductionTransport);
                 let state = machine.detach(state, &subject_id)?;
                 let next = machine.persist(repo, &record, &state)?;
                 return Ok(UnifiedReviewMutation {
