@@ -2,6 +2,7 @@ use crate::error::Result;
 use crate::git::GitRepo;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use serde::{Deserialize, Serialize};
+use std::collections::HashMap;
 
 pub fn get_github_descriptor() -> ProviderDescriptor {
     ProviderDescriptor {
@@ -9,14 +10,19 @@ pub fn get_github_descriptor() -> ProviderDescriptor {
         name: "github".to_string(),
         version: env!("CARGO_PKG_VERSION").to_string(),
         capabilities: vec![
+            Capability::RepositoryRouting,
             Capability::Review,
+            Capability::ReviewIdentity,
             Capability::Verification,
-            Capability::Transport,
+            Capability::ReviewTransport,
+            Capability::Landing,
         ],
         probe: ProbeDescriptor {
             passive: true,
             network: false,
+            authenticates: false,
             mutates_workspace: false,
+            executes_repository_hooks: false,
         },
     }
 }
@@ -51,7 +57,7 @@ pub fn parse_github_remote_url(url: &str) -> Option<GitHubRepoLocator> {
                 let repo_clean = repo_name.strip_suffix(".git").unwrap_or(repo_name);
                 if host.eq_ignore_ascii_case("github.com") || host.contains("github") {
                     return Some(GitHubRepoLocator {
-                        installation: host.to_string(),
+                        installation: host.to_ascii_lowercase(),
                         owner: owner.to_string(),
                         repository: repo_clean.to_string(),
                     });
@@ -70,7 +76,7 @@ pub fn parse_github_remote_url(url: &str) -> Option<GitHubRepoLocator> {
                 let owner = parts[0];
                 let repo_name = parts[1].strip_suffix(".git").unwrap_or(parts[1]);
                 return Some(GitHubRepoLocator {
-                    installation: host.to_string(),
+                    installation: host.to_ascii_lowercase(),
                     owner: owner.to_string(),
                     repository: repo_name.to_string(),
                 });
@@ -88,6 +94,69 @@ pub struct GitHubRoute {
     pub head_repository: Option<GitHubRepoLocator>,
     pub destination_branch: String,
     pub remote_name: String,
+}
+
+#[derive(Debug, Clone, Default, Serialize, Deserialize)]
+pub struct GitHubRouteOverrides {
+    pub installation: Option<String>,
+    pub base_repository: Option<GitHubRepoLocator>,
+    pub head_repository: Option<GitHubRepoLocator>,
+    pub destination_branch: Option<String>,
+    pub remote_name: Option<String>,
+}
+
+pub fn resolve_github_route(
+    repo: &GitRepo,
+    record: Option<&WorkspaceRecord>,
+    overrides: &GitHubRouteOverrides,
+) -> Result<GitHubRoute> {
+    let discovered = probe_github_route(repo, record)?;
+    let base_repository = overrides
+        .base_repository
+        .clone()
+        .or_else(|| {
+            discovered
+                .as_ref()
+                .map(|route| route.base_repository.clone())
+        })
+        .ok_or_else(|| {
+            crate::error::StaircaseError::Other("github.route-incomplete: base repository".into())
+        })?;
+    let installation = overrides
+        .installation
+        .clone()
+        .unwrap_or_else(|| base_repository.installation.clone())
+        .to_ascii_lowercase();
+    let destination_branch = overrides
+        .destination_branch
+        .clone()
+        .or_else(|| {
+            discovered
+                .as_ref()
+                .map(|route| route.destination_branch.clone())
+        })
+        .ok_or_else(|| {
+            crate::error::StaircaseError::Other("github.route-incomplete: base branch".into())
+        })?;
+    Ok(GitHubRoute {
+        installation,
+        base_repository,
+        head_repository: overrides.head_repository.clone().or_else(|| {
+            discovered
+                .as_ref()
+                .and_then(|route| route.head_repository.clone())
+        }),
+        destination_branch: if destination_branch.starts_with("refs/heads/") {
+            destination_branch
+        } else {
+            format!("refs/heads/{}", destination_branch)
+        },
+        remote_name: overrides
+            .remote_name
+            .clone()
+            .or_else(|| discovered.map(|route| route.remote_name))
+            .unwrap_or_else(|| "origin".into()),
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -192,10 +261,26 @@ pub fn create_github_upload_plan(
     mapping_policy: Option<&str>,
 ) -> Result<GitHubUploadPlan> {
     let policy = mapping_policy.unwrap_or("aggregate").to_string();
+    if !matches!(policy.as_str(), "aggregate" | "stacked" | "cumulative") {
+        return Err(crate::error::StaircaseError::Other(format!(
+            "unsupported GitHub review mapping '{}'; expected aggregate, stacked, or cumulative",
+            policy
+        )));
+    }
     let mut publications = Vec::new();
     let warnings = Vec::new();
 
     if policy == "stacked" {
+        if route
+            .head_repository
+            .as_ref()
+            .is_some_and(|head| head != &route.base_repository)
+            && commit_oids.len() > 1
+        {
+            return Err(crate::error::StaircaseError::Other(
+                "github.fork-topology-cannot-represent-stacked-reviews".into(),
+            ));
+        }
         let mut prev_branch = route.destination_branch.clone();
         for (idx, oid) in commit_oids.iter().enumerate() {
             let subject = repo.run(&["log", "-1", "--format=%s", oid])?;
@@ -210,6 +295,19 @@ pub fn create_github_upload_plan(
                 force_with_lease: true,
             });
             prev_branch = format!("refs/heads/{}", head_branch);
+        }
+    } else if policy == "cumulative" {
+        for (idx, oid) in commit_oids.iter().enumerate() {
+            let subject = repo.run(&["log", "-1", "--format=%s", oid])?;
+            let head_branch = format!("staircase/cumulative-{}", idx + 1);
+            publications.push(GitHubPlannedPublication {
+                step_oid: oid.clone(),
+                subject,
+                head_branch: head_branch.clone(),
+                base_branch: route.destination_branch.clone(),
+                push_refspec: format!("{}:refs/heads/{}", oid, head_branch),
+                force_with_lease: true,
+            });
         }
     } else {
         if let Some(top_oid) = commit_oids.last() {
@@ -265,13 +363,1048 @@ pub fn get_github_verification(
     })
 }
 
-use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance, UnifiedReviewItem, UnifiedReviewOpen,
-    UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus,
-    UnifiedReviewUpload,
-};
-use std::collections::HashMap;
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct GitHubPullRequestKey {
+    pub installation: String,
+    pub base_repository: String,
+    pub number: u64,
+}
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubReviewAssociation {
+    pub subject_id: String,
+    pub local_oid: String,
+    pub head_repository: String,
+    pub head_branch: String,
+    pub base_repository: String,
+    pub base_branch: String,
+    pub pull_request: Option<GitHubPullRequestKey>,
+    pub expected_remote_head_oid: Option<String>,
+    pub last_observed_head_oid: Option<String>,
+    pub synchronization: crate::workspace::review_provider::SynchronizationState,
+    pub state: String,
+    pub draft: bool,
+    pub retired: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubProviderState {
+    pub schema_version: u32,
+    pub route: GitHubRoute,
+    pub mapping_policy: String,
+    pub associations: Vec<GitHubReviewAssociation>,
+    pub verification: Vec<GitHubVerificationEvidence>,
+    pub merge_queue: String,
+    pub auto_merge: String,
+    pub reconciliation_required: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubRemotePullRequest {
+    pub identity: GitHubPullRequestKey,
+    pub head_repository: String,
+    pub head_branch: String,
+    pub head_oid: String,
+    pub base_repository: String,
+    pub base_branch: String,
+    pub base_oid: String,
+    pub state: String,
+    pub draft: bool,
+    pub mergeable: Option<bool>,
+    pub test_merge_oid: Option<String>,
+    pub merge_group_oid: Option<String>,
+    pub required_checks_passed: bool,
+    pub reviews_satisfied: bool,
+    pub queue_state: Option<String>,
+    pub auto_merge_enabled: bool,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubVerificationEvidence {
+    pub pull_request: GitHubPullRequestKey,
+    pub subject_kind: String,
+    pub exact_revision: String,
+    pub head_oid: String,
+    pub base_oid: String,
+    pub checks_passed: bool,
+    pub reviews_satisfied: bool,
+    pub mergeable: Option<bool>,
+    pub observed_at: u64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubPlanItem {
+    pub subject_id: String,
+    pub local_oid: String,
+    pub head_repository: String,
+    pub head_branch: String,
+    pub base_repository: String,
+    pub base_branch: String,
+    pub action: String,
+    pub expected_remote_head_oid: Option<String>,
+    pub synchronization: crate::workspace::review_provider::SynchronizationState,
+    pub blocked_reason: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubReviewOperationPlan {
+    pub provider: String,
+    pub route: GitHubRoute,
+    pub mapping_policy: String,
+    pub expected_record_oid: Option<String>,
+    pub expected_structure_oid: Option<String>,
+    pub remote_queried: bool,
+    pub items: Vec<GitHubPlanItem>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GitHubMutationResult {
+    pub state: GitHubProviderState,
+    pub status: String,
+    pub branches_published: usize,
+    pub pull_requests_created: usize,
+    pub unknown: usize,
+    pub journal_operation_id: Option<String>,
+}
+
+pub struct GitHubStateMachine<T: crate::workspace::review_provider::ProviderTransport> {
+    pub transport: T,
+}
+
+impl<T: crate::workspace::review_provider::ProviderTransport> GitHubStateMachine<T> {
+    pub fn new(transport: T) -> Self {
+        Self { transport }
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    pub fn plan(
+        &self,
+        route: &GitHubRoute,
+        lineage_id: &str,
+        commit_oids: &[String],
+        subject_ids: &[String],
+        mapping_policy: Option<&str>,
+        state: Option<&GitHubProviderState>,
+        record_revision: Option<(&str, &str)>,
+    ) -> Result<GitHubReviewOperationPlan> {
+        if commit_oids.len() != subject_ids.len() {
+            return Err(crate::error::StaircaseError::Other(
+                "GitHub subjects and commit OIDs must have equal length".into(),
+            ));
+        }
+        let mapping = mapping_policy
+            .or_else(|| state.map(|state| state.mapping_policy.as_str()))
+            .unwrap_or("aggregate");
+        if !matches!(mapping, "aggregate" | "stacked" | "cumulative") {
+            return Err(crate::error::StaircaseError::Other(format!(
+                "unsupported GitHub mapping '{}'",
+                mapping
+            )));
+        }
+        let head_repository = route
+            .head_repository
+            .as_ref()
+            .unwrap_or(&route.base_repository);
+        if mapping == "stacked"
+            && head_repository != &route.base_repository
+            && commit_oids.len() > 1
+        {
+            return Err(crate::error::StaircaseError::Other(
+                "github.fork-topology-cannot-represent-stacked-reviews".into(),
+            ));
+        }
+        let selected: Vec<usize> = if mapping == "aggregate" {
+            commit_oids.len().checked_sub(1).into_iter().collect()
+        } else {
+            (0..commit_oids.len()).collect()
+        };
+        let mut items = Vec::new();
+        for (ordinal, index) in selected.into_iter().enumerate() {
+            let subject_id = if mapping == "aggregate" {
+                format!("aggregate:{}", lineage_id)
+            } else {
+                subject_ids[index].clone()
+            };
+            let previous = state.and_then(|state| {
+                state
+                    .associations
+                    .iter()
+                    .find(|association| association.subject_id == subject_id)
+            });
+            let head_branch = previous
+                .map(|association| association.head_branch.clone())
+                .unwrap_or_else(|| stable_github_head(lineage_id, &subject_id));
+            let base_branch = if mapping == "stacked" && ordinal > 0 {
+                items
+                    .last()
+                    .map(|item: &GitHubPlanItem| item.head_branch.clone())
+                    .unwrap_or_else(|| normalize_branch(&route.destination_branch))
+            } else {
+                normalize_branch(&route.destination_branch)
+            };
+            let local_oid = commit_oids[index].clone();
+            let (synchronization, action, blocked_reason) =
+                classify_github_item(&local_oid, previous);
+            items.push(GitHubPlanItem {
+                subject_id,
+                local_oid,
+                head_repository: head_repository.full_name(),
+                head_branch,
+                base_repository: route.base_repository.full_name(),
+                base_branch,
+                action,
+                expected_remote_head_oid: previous
+                    .and_then(|association| association.last_observed_head_oid.clone()),
+                synchronization,
+                blocked_reason,
+            });
+        }
+        let (record_oid, structure_oid) = record_revision
+            .map(|(record, structure)| (Some(record.into()), Some(structure.into())))
+            .unwrap_or_default();
+        Ok(GitHubReviewOperationPlan {
+            provider: "github".into(),
+            route: route.clone(),
+            mapping_policy: mapping.into(),
+            expected_record_oid: record_oid,
+            expected_structure_oid: structure_oid,
+            remote_queried: false,
+            items,
+        })
+    }
+
+    pub fn create_state(&self, plan: &GitHubReviewOperationPlan) -> Result<GitHubProviderState> {
+        if let Some(item) = plan.items.iter().find(|item| item.blocked_reason.is_some()) {
+            return Err(crate::error::StaircaseError::Other(
+                item.blocked_reason.clone().unwrap_or_default(),
+            ));
+        }
+        Ok(GitHubProviderState {
+            schema_version: 1,
+            route: plan.route.clone(),
+            mapping_policy: plan.mapping_policy.clone(),
+            associations: plan
+                .items
+                .iter()
+                .map(|item| GitHubReviewAssociation {
+                    subject_id: item.subject_id.clone(),
+                    local_oid: item.local_oid.clone(),
+                    head_repository: item.head_repository.clone(),
+                    head_branch: item.head_branch.clone(),
+                    base_repository: item.base_repository.clone(),
+                    base_branch: item.base_branch.clone(),
+                    pull_request: None,
+                    expected_remote_head_oid: item.expected_remote_head_oid.clone(),
+                    last_observed_head_oid: item.expected_remote_head_oid.clone(),
+                    synchronization:
+                        crate::workspace::review_provider::SynchronizationState::NotCreated,
+                    state: "open".into(),
+                    draft: false,
+                    retired: false,
+                })
+                .collect(),
+            verification: Vec::new(),
+            merge_queue: "disabled".into(),
+            auto_merge: "disabled".into(),
+            reconciliation_required: false,
+        })
+    }
+
+    pub fn prepare_state(
+        &self,
+        plan: &GitHubReviewOperationPlan,
+        existing: Option<GitHubProviderState>,
+    ) -> Result<GitHubProviderState> {
+        let Some(mut state) = existing else {
+            return self.create_state(plan);
+        };
+        if state.route.installation != plan.route.installation
+            || state.route.base_repository != plan.route.base_repository
+        {
+            return Err(crate::error::StaircaseError::Other(
+                "existing GitHub associations belong to a different route".into(),
+            ));
+        }
+        let active_subjects = plan
+            .items
+            .iter()
+            .map(|item| item.subject_id.as_str())
+            .collect::<Vec<_>>();
+        for association in state
+            .associations
+            .iter_mut()
+            .filter(|association| !association.retired)
+        {
+            if !active_subjects.contains(&association.subject_id.as_str()) {
+                association.retired = true;
+            }
+        }
+        for item in &plan.items {
+            if let Some(association) = state
+                .associations
+                .iter_mut()
+                .find(|association| association.subject_id == item.subject_id)
+            {
+                association.local_oid = item.local_oid.clone();
+                association.base_branch = item.base_branch.clone();
+                association.retired = false;
+                continue;
+            }
+            state.associations.push(GitHubReviewAssociation {
+                subject_id: item.subject_id.clone(),
+                local_oid: item.local_oid.clone(),
+                head_repository: item.head_repository.clone(),
+                head_branch: item.head_branch.clone(),
+                base_repository: item.base_repository.clone(),
+                base_branch: item.base_branch.clone(),
+                pull_request: None,
+                expected_remote_head_oid: item.expected_remote_head_oid.clone(),
+                last_observed_head_oid: item.expected_remote_head_oid.clone(),
+                synchronization:
+                    crate::workspace::review_provider::SynchronizationState::NotCreated,
+                state: "open".into(),
+                draft: false,
+                retired: false,
+            });
+        }
+        state.mapping_policy = plan.mapping_policy.clone();
+        Ok(state)
+    }
+
+    pub fn attach(
+        &self,
+        mut state: GitHubProviderState,
+        subject_id: &str,
+        pull_request: GitHubRemotePullRequest,
+    ) -> Result<GitHubProviderState> {
+        if pull_request.identity.installation != state.route.installation
+            || pull_request.base_repository != state.route.base_repository.full_name()
+        {
+            return Err(crate::error::StaircaseError::Other(
+                "GitHub pull request is outside the canonical base route".into(),
+            ));
+        }
+        let association = state
+            .associations
+            .iter_mut()
+            .find(|association| association.subject_id == subject_id)
+            .ok_or_else(|| crate::error::StaircaseError::NotFound(subject_id.into()))?;
+        apply_github_observation(association, &pull_request);
+        Ok(state)
+    }
+
+    pub fn detach(
+        &self,
+        mut state: GitHubProviderState,
+        subject_id: &str,
+    ) -> Result<GitHubProviderState> {
+        let association = state
+            .associations
+            .iter_mut()
+            .find(|association| association.subject_id == subject_id)
+            .ok_or_else(|| crate::error::StaircaseError::NotFound(subject_id.into()))?;
+        association.retired = true;
+        Ok(state)
+    }
+
+    pub fn publish(
+        &self,
+        repo: &GitRepo,
+        plan: &GitHubReviewOperationPlan,
+        mut state: GitHubProviderState,
+        create_missing_pull_requests: bool,
+    ) -> Result<GitHubMutationResult> {
+        if state.reconciliation_required
+            || plan.items.iter().any(|item| {
+                matches!(
+                    item.synchronization,
+                    crate::workspace::review_provider::SynchronizationState::RemoteNewer
+                        | crate::workspace::review_provider::SynchronizationState::Diverged
+                        | crate::workspace::review_provider::SynchronizationState::UploadUnknown
+                )
+            })
+        {
+            return Err(crate::error::StaircaseError::Other(
+                "reconciliation-required: GitHub branch or pull request moved remotely".into(),
+            ));
+        }
+        let mut branches_published = 0;
+        let mut pull_requests_created = 0;
+        for item in &plan.items {
+            if let Some(association) = state
+                .associations
+                .iter_mut()
+                .find(|association| association.subject_id == item.subject_id)
+            {
+                association.local_oid = item.local_oid.clone();
+                association.base_branch = item.base_branch.clone();
+            }
+            let request = crate::workspace::review_provider::TransportRequest::GitPush {
+                remote: plan.route.remote_name.clone(),
+                source_oid: item.local_oid.clone(),
+                destination_ref: format!("refs/heads/{}", item.head_branch),
+                force_with_lease: item.expected_remote_head_oid.clone(),
+                push_options: Vec::new(),
+            };
+            let response = match self.transport.execute(repo, &request) {
+                Ok(response) => response,
+                Err(error) => {
+                    return self.github_unknown_result(
+                        repo,
+                        state,
+                        plan,
+                        request,
+                        branches_published,
+                        pull_requests_created,
+                        serde_json::json!({"error": error.to_string()}),
+                    );
+                }
+            };
+            if response.uncertain {
+                return self.github_unknown_result(
+                    repo,
+                    state,
+                    plan,
+                    request,
+                    branches_published,
+                    pull_requests_created,
+                    response.observations,
+                );
+            }
+            if !response.success {
+                return Ok(GitHubMutationResult {
+                    state,
+                    status: "branch-publication-rejected".into(),
+                    branches_published,
+                    pull_requests_created,
+                    unknown: 0,
+                    journal_operation_id: None,
+                });
+            }
+            branches_published += 1;
+            if let Some(association) = state
+                .associations
+                .iter_mut()
+                .find(|association| association.subject_id == item.subject_id)
+            {
+                association.expected_remote_head_oid = Some(item.local_oid.clone());
+                association.last_observed_head_oid = Some(item.local_oid.clone());
+                association.synchronization =
+                    crate::workspace::review_provider::SynchronizationState::Current;
+            }
+        }
+        if create_missing_pull_requests {
+            for association in state
+                .associations
+                .iter_mut()
+                .filter(|association| !association.retired && association.pull_request.is_none())
+            {
+                let request = crate::workspace::review_provider::TransportRequest::Api {
+                    tool: "gh".into(),
+                    method: "POST".into(),
+                    endpoint: format!("repos/{}/pulls", association.base_repository),
+                    arguments: Vec::new(),
+                    body: Some(serde_json::json!({
+                        "head": association.head_branch,
+                        "base": association.base_branch,
+                        "title": association.subject_id,
+                        "draft": association.draft,
+                    })),
+                };
+                let response = match self.transport.execute(repo, &request) {
+                    Ok(response) => response,
+                    Err(error) => {
+                        state.reconciliation_required = true;
+                        association.synchronization =
+                            crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+                        let journal =
+                            crate::workspace::review_provider::OperationJournal::for_repo(repo)?;
+                        let entry = journal.record(
+                            "github",
+                            "create-pull-request",
+                            plan.expected_record_oid.clone(),
+                            request,
+                            serde_json::json!({"error": error.to_string()}),
+                        )?;
+                        return Ok(GitHubMutationResult {
+                            state,
+                            status: "create-unknown".into(),
+                            branches_published,
+                            pull_requests_created,
+                            unknown: 1,
+                            journal_operation_id: Some(entry.operation_id),
+                        });
+                    }
+                };
+                if response.uncertain {
+                    state.reconciliation_required = true;
+                    association.synchronization =
+                        crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+                    let journal =
+                        crate::workspace::review_provider::OperationJournal::for_repo(repo)?;
+                    let entry = journal.record(
+                        "github",
+                        "create-pull-request",
+                        plan.expected_record_oid.clone(),
+                        request,
+                        response.observations,
+                    )?;
+                    return Ok(GitHubMutationResult {
+                        state,
+                        status: "create-unknown".into(),
+                        branches_published,
+                        pull_requests_created,
+                        unknown: 1,
+                        journal_operation_id: Some(entry.operation_id),
+                    });
+                }
+                if !response.success {
+                    return Ok(GitHubMutationResult {
+                        state,
+                        status: "pull-request-creation-rejected".into(),
+                        branches_published,
+                        pull_requests_created,
+                        unknown: 0,
+                        journal_operation_id: None,
+                    });
+                }
+                if let Some(number) = response
+                    .observations
+                    .get("number")
+                    .and_then(|value| value.as_u64())
+                {
+                    association.pull_request = Some(GitHubPullRequestKey {
+                        installation: plan.route.installation.clone(),
+                        base_repository: association.base_repository.clone(),
+                        number,
+                    });
+                    pull_requests_created += 1;
+                } else {
+                    state.reconciliation_required = true;
+                    association.synchronization =
+                        crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+                }
+            }
+        }
+        let unknown = state
+            .associations
+            .iter()
+            .filter(|association| {
+                !association.retired
+                    && association.synchronization
+                        == crate::workspace::review_provider::SynchronizationState::UploadUnknown
+            })
+            .count();
+        Ok(GitHubMutationResult {
+            state,
+            status: if unknown == 0 {
+                "published".into()
+            } else {
+                "reconciliation-required".into()
+            },
+            branches_published,
+            pull_requests_created,
+            unknown,
+            journal_operation_id: None,
+        })
+    }
+
+    #[allow(clippy::too_many_arguments)]
+    fn github_unknown_result(
+        &self,
+        repo: &GitRepo,
+        mut state: GitHubProviderState,
+        plan: &GitHubReviewOperationPlan,
+        request: crate::workspace::review_provider::TransportRequest,
+        branches_published: usize,
+        pull_requests_created: usize,
+        details: serde_json::Value,
+    ) -> Result<GitHubMutationResult> {
+        state.reconciliation_required = true;
+        for association in &mut state.associations {
+            association.synchronization =
+                crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+        }
+        let journal = crate::workspace::review_provider::OperationJournal::for_repo(repo)?;
+        let entry = journal.record(
+            "github",
+            "branch-publication",
+            plan.expected_record_oid.clone(),
+            request,
+            details,
+        )?;
+        Ok(GitHubMutationResult {
+            unknown: state.associations.len(),
+            state,
+            status: "upload-unknown".into(),
+            branches_published,
+            pull_requests_created,
+            journal_operation_id: Some(entry.operation_id),
+        })
+    }
+
+    pub fn reconcile(
+        &self,
+        mut state: GitHubProviderState,
+        pull_requests: &[GitHubRemotePullRequest],
+    ) -> GitHubProviderState {
+        for association in &mut state.associations {
+            let observations: Vec<_> = pull_requests
+                .iter()
+                .filter(|pull_request| {
+                    association
+                        .pull_request
+                        .as_ref()
+                        .is_some_and(|identity| &pull_request.identity == identity)
+                        || (pull_request.head_repository == association.head_repository
+                            && pull_request.head_branch == association.head_branch
+                            && pull_request.base_repository == association.base_repository)
+                })
+                .collect();
+            if observations.len() == 1 {
+                apply_github_observation(association, observations[0]);
+            } else if observations.len() > 1 {
+                association.synchronization =
+                    crate::workspace::review_provider::SynchronizationState::IdentityAmbiguous;
+            } else {
+                association.synchronization =
+                    crate::workspace::review_provider::SynchronizationState::Unknown;
+            }
+        }
+        state.reconciliation_required = state
+            .associations
+            .iter()
+            .filter(|association| !association.retired)
+            .any(|association| {
+                matches!(
+                    association.synchronization,
+                    crate::workspace::review_provider::SynchronizationState::Unknown
+                        | crate::workspace::review_provider::SynchronizationState::IdentityAmbiguous
+                        | crate::workspace::review_provider::SynchronizationState::UploadUnknown
+                )
+            });
+        state
+    }
+
+    pub fn verify(
+        &self,
+        mut state: GitHubProviderState,
+        pull_requests: &[GitHubRemotePullRequest],
+    ) -> (GitHubProviderState, Vec<GitHubVerificationEvidence>) {
+        let mut evidence = Vec::new();
+        for association in state
+            .associations
+            .iter()
+            .filter(|association| !association.retired)
+        {
+            let Some(pull_request) = pull_requests.iter().find(|pull_request| {
+                association.pull_request.as_ref() == Some(&pull_request.identity)
+            }) else {
+                continue;
+            };
+            let (kind, revision) = if let Some(merge_group) = &pull_request.merge_group_oid {
+                ("merge-group", merge_group.clone())
+            } else if let Some(test_merge) = &pull_request.test_merge_oid {
+                ("test-merge", test_merge.clone())
+            } else {
+                ("head", pull_request.head_oid.clone())
+            };
+            evidence.push(GitHubVerificationEvidence {
+                pull_request: pull_request.identity.clone(),
+                subject_kind: kind.into(),
+                exact_revision: revision,
+                head_oid: pull_request.head_oid.clone(),
+                base_oid: pull_request.base_oid.clone(),
+                checks_passed: pull_request.required_checks_passed,
+                reviews_satisfied: pull_request.reviews_satisfied,
+                mergeable: pull_request.mergeable,
+                observed_at: crate::workspace::storage::current_timestamp(),
+            });
+        }
+        state.verification = evidence.clone();
+        (state, evidence)
+    }
+
+    pub fn enable_auto_merge(
+        &self,
+        repo: &GitRepo,
+        mut state: GitHubProviderState,
+        method: &str,
+    ) -> Result<GitHubProviderState> {
+        if !matches!(method, "merge" | "rebase" | "squash") {
+            return Err(crate::error::StaircaseError::Other(
+                "invalid GitHub auto-merge method".into(),
+            ));
+        }
+        for identity in state
+            .associations
+            .iter()
+            .filter_map(|association| association.pull_request.as_ref())
+        {
+            let request = crate::workspace::review_provider::TransportRequest::Api {
+                tool: "gh".into(),
+                method: "PUT".into(),
+                endpoint: format!(
+                    "repos/{}/pulls/{}/auto-merge",
+                    identity.base_repository, identity.number
+                ),
+                arguments: Vec::new(),
+                body: Some(serde_json::json!({"merge_method": method})),
+            };
+            let response = self.transport.execute(repo, &request)?;
+            if response.uncertain {
+                state.reconciliation_required = true;
+                crate::workspace::review_provider::OperationJournal::for_repo(repo)?.record(
+                    "github",
+                    "auto-merge",
+                    None,
+                    request,
+                    response.observations,
+                )?;
+                return Ok(state);
+            }
+            if !response.success {
+                return Err(crate::error::StaircaseError::Other(
+                    "GitHub rejected auto-merge request".into(),
+                ));
+            }
+        }
+        state.auto_merge = format!("enabled:{}", method);
+        Ok(state)
+    }
+
+    pub fn enqueue_merge_group(
+        &self,
+        repo: &GitRepo,
+        mut state: GitHubProviderState,
+    ) -> Result<GitHubProviderState> {
+        for identity in state
+            .associations
+            .iter()
+            .filter_map(|association| association.pull_request.as_ref())
+        {
+            let request = crate::workspace::review_provider::TransportRequest::Api {
+                tool: "gh".into(),
+                method: "POST".into(),
+                endpoint: format!(
+                    "repos/{}/pulls/{}/queue",
+                    identity.base_repository, identity.number
+                ),
+                arguments: Vec::new(),
+                body: Some(serde_json::json!({})),
+            };
+            let response = self.transport.execute(repo, &request)?;
+            if response.uncertain {
+                state.reconciliation_required = true;
+                crate::workspace::review_provider::OperationJournal::for_repo(repo)?.record(
+                    "github",
+                    "merge-queue",
+                    None,
+                    request,
+                    response.observations,
+                )?;
+                return Ok(state);
+            }
+            if !response.success {
+                return Err(crate::error::StaircaseError::Other(
+                    "GitHub rejected merge-queue request".into(),
+                ));
+            }
+        }
+        state.merge_queue = "queued".into();
+        Ok(state)
+    }
+
+    pub fn persist(
+        &self,
+        repo: &GitRepo,
+        record: &crate::model::StaircaseRecord,
+        state: &GitHubProviderState,
+    ) -> Result<crate::model::StaircaseRecord> {
+        crate::workspace::review_provider::publish_provider_extension_cas(
+            repo,
+            record,
+            "git-staircase.github",
+            serde_json::to_value(state)?,
+        )
+    }
+
+    pub fn land(
+        &self,
+        repo: &GitRepo,
+        state: &GitHubProviderState,
+        mode: &str,
+        method: &str,
+    ) -> Result<crate::workspace::review_provider::UnifiedProviderLanding> {
+        if !matches!(method, "merge" | "rebase" | "squash") {
+            return Err(crate::error::StaircaseError::Other(format!(
+                "unsupported GitHub landing method '{}'",
+                method
+            )));
+        }
+        let active: Vec<_> = state
+            .associations
+            .iter()
+            .filter(|association| !association.retired)
+            .collect();
+        let selected: Vec<_> = if mode == "stepwise" {
+            active.first().copied().into_iter().collect()
+        } else {
+            active
+        };
+        let mut landed = Vec::new();
+        for association in selected {
+            let Some(identity) = &association.pull_request else {
+                return Ok(github_landing_blocked(
+                    mode,
+                    association.subject_id.clone(),
+                    "pull request identity is unresolved",
+                ));
+            };
+            let verified = state.verification.iter().any(|evidence| {
+                evidence.pull_request == *identity
+                    && evidence.head_oid == association.local_oid
+                    && evidence.checks_passed
+                    && evidence.reviews_satisfied
+                    && evidence.mergeable != Some(false)
+            });
+            if !verified {
+                return Ok(github_landing_blocked(
+                    mode,
+                    identity.number.to_string(),
+                    "exact current pull-request revision is not verified",
+                ));
+            }
+            let request = crate::workspace::review_provider::TransportRequest::Api {
+                tool: "gh".into(),
+                method: "PUT".into(),
+                endpoint: format!(
+                    "repos/{}/pulls/{}/merge",
+                    identity.base_repository, identity.number
+                ),
+                arguments: Vec::new(),
+                body: Some(serde_json::json!({
+                    "merge_method": method,
+                    "sha": association.local_oid,
+                })),
+            };
+            let response = match self.transport.execute(repo, &request) {
+                Ok(response) => response,
+                Err(error) => {
+                    crate::workspace::review_provider::OperationJournal::for_repo(repo)?.record(
+                        "github",
+                        "landing",
+                        None,
+                        request,
+                        serde_json::json!({"error": error.to_string()}),
+                    )?;
+                    return Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+                        provider_label: "GitHub".into(),
+                        mode: mode.into(),
+                        status: "landing-unknown".into(),
+                        landed,
+                        blocked: vec![identity.number.to_string()],
+                        destination_oid: None,
+                        details: vec!["reconcile before retrying merge".into()],
+                    });
+                }
+            };
+            if response.uncertain || !response.success {
+                if response.uncertain {
+                    crate::workspace::review_provider::OperationJournal::for_repo(repo)?.record(
+                        "github",
+                        "landing",
+                        None,
+                        request,
+                        response.observations.clone(),
+                    )?;
+                }
+                return Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+                    provider_label: "GitHub".into(),
+                    mode: mode.into(),
+                    status: if response.uncertain {
+                        "landing-unknown".into()
+                    } else {
+                        "partial".into()
+                    },
+                    landed,
+                    blocked: vec![identity.number.to_string()],
+                    destination_oid: None,
+                    details: vec!["reconcile before retrying merge".into()],
+                });
+            }
+            landed.push(identity.number.to_string());
+        }
+        Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+            provider_label: "GitHub".into(),
+            mode: mode.into(),
+            status: "landed".into(),
+            landed,
+            blocked: Vec::new(),
+            destination_oid: None,
+            details: vec![format!(
+                "{} landing requires destination refresh and upper-chain repair",
+                method
+            )],
+        })
+    }
+}
+
+fn stable_github_head(lineage_id: &str, subject_id: &str) -> String {
+    fn token(value: &str) -> String {
+        let cleaned: String = value
+            .chars()
+            .filter(|character| character.is_ascii_alphanumeric())
+            .take(12)
+            .collect();
+        if cleaned.is_empty() {
+            "subject".into()
+        } else {
+            cleaned.to_ascii_lowercase()
+        }
+    }
+    format!("staircase/{}/{}", token(lineage_id), token(subject_id))
+}
+
+fn normalize_branch(branch: &str) -> String {
+    branch
+        .strip_prefix("refs/heads/")
+        .unwrap_or(branch)
+        .to_string()
+}
+
+fn classify_github_item(
+    local_oid: &str,
+    association: Option<&GitHubReviewAssociation>,
+) -> (
+    crate::workspace::review_provider::SynchronizationState,
+    String,
+    Option<String>,
+) {
+    let Some(association) = association else {
+        return (
+            crate::workspace::review_provider::SynchronizationState::NotCreated,
+            "create".into(),
+            None,
+        );
+    };
+    match association.last_observed_head_oid.as_deref() {
+        Some(remote) if remote == local_oid => (
+            crate::workspace::review_provider::SynchronizationState::Current,
+            "no-op".into(),
+            None,
+        ),
+        Some(remote) if association.expected_remote_head_oid.as_deref() == Some(remote) => (
+            crate::workspace::review_provider::SynchronizationState::LocalNewer,
+            "update".into(),
+            None,
+        ),
+        Some(_) => (
+            crate::workspace::review_provider::SynchronizationState::RemoteNewer,
+            "blocked".into(),
+            Some("remote-newer: reconcile the GitHub head branch".into()),
+        ),
+        None => (
+            crate::workspace::review_provider::SynchronizationState::NotUploaded,
+            "publish".into(),
+            None,
+        ),
+    }
+}
+
+fn apply_github_observation(
+    association: &mut GitHubReviewAssociation,
+    pull_request: &GitHubRemotePullRequest,
+) {
+    association.pull_request = Some(pull_request.identity.clone());
+    association.last_observed_head_oid = Some(pull_request.head_oid.clone());
+    association.state = pull_request.state.clone();
+    association.draft = pull_request.draft;
+    association.synchronization = if pull_request.state.eq_ignore_ascii_case("merged") {
+        crate::workspace::review_provider::SynchronizationState::Merged
+    } else if pull_request.state.eq_ignore_ascii_case("closed") {
+        crate::workspace::review_provider::SynchronizationState::Closed
+    } else if pull_request.base_branch != association.base_branch {
+        crate::workspace::review_provider::SynchronizationState::Retargeted
+    } else if pull_request.head_oid == association.local_oid {
+        crate::workspace::review_provider::SynchronizationState::Current
+    } else if association.expected_remote_head_oid.as_deref() != Some(&pull_request.head_oid) {
+        crate::workspace::review_provider::SynchronizationState::RemoteNewer
+    } else {
+        crate::workspace::review_provider::SynchronizationState::LocalNewer
+    };
+}
+
+pub fn parse_github_api_pull(
+    installation: &str,
+    value: &serde_json::Value,
+) -> Option<GitHubRemotePullRequest> {
+    let base_repository = value
+        .pointer("/base/repo/full_name")
+        .and_then(|value| value.as_str())?
+        .to_string();
+    let head_repository = value
+        .pointer("/head/repo/full_name")
+        .and_then(|value| value.as_str())
+        .unwrap_or("")
+        .to_string();
+    Some(GitHubRemotePullRequest {
+        identity: GitHubPullRequestKey {
+            installation: installation.to_ascii_lowercase(),
+            base_repository: base_repository.clone(),
+            number: value.get("number")?.as_u64()?,
+        },
+        head_repository,
+        head_branch: value.pointer("/head/ref")?.as_str()?.into(),
+        head_oid: value.pointer("/head/sha")?.as_str()?.into(),
+        base_repository,
+        base_branch: value.pointer("/base/ref")?.as_str()?.into(),
+        base_oid: value.pointer("/base/sha")?.as_str()?.into(),
+        state: value
+            .get("state")
+            .and_then(|value| value.as_str())
+            .unwrap_or("open")
+            .to_ascii_uppercase(),
+        draft: value
+            .get("draft")
+            .and_then(|value| value.as_bool())
+            .unwrap_or(false),
+        mergeable: value.get("mergeable").and_then(|value| value.as_bool()),
+        test_merge_oid: value
+            .get("merge_commit_sha")
+            .and_then(|value| value.as_str())
+            .map(str::to_string),
+        merge_group_oid: None,
+        required_checks_passed: false,
+        reviews_satisfied: false,
+        queue_state: None,
+        auto_merge_enabled: value
+            .get("auto_merge")
+            .is_some_and(|value| !value.is_null()),
+    })
+}
+
+fn github_landing_blocked(
+    mode: &str,
+    blocked: String,
+    detail: &str,
+) -> crate::workspace::review_provider::UnifiedProviderLanding {
+    crate::workspace::review_provider::UnifiedProviderLanding {
+        provider_label: "GitHub".into(),
+        mode: mode.into(),
+        status: "landing-blocked".into(),
+        landed: Vec::new(),
+        blocked: vec![blocked],
+        destination_oid: None,
+        details: vec![detail.into()],
+    }
+}
+
+use crate::workspace::review_provider::{
+    ReviewProvider, ReviewProviderInstance, UnifiedProviderLanding, UnifiedProviderVerification,
+    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
+    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
+};
 pub struct GitHubProvider;
 
 impl ReviewProvider for GitHubProvider {
@@ -325,20 +1458,23 @@ impl ReviewProviderInstance for GitHubInstance {
 
     fn status(&self, repo: &GitRepo, oids: &[String]) -> Result<UnifiedReviewStatus> {
         let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
-        let report = get_github_verification(&self.route, &plan)?;
 
         let mut details = HashMap::new();
         details.insert(
-            "Checks Passed".to_string(),
-            format!("{}/{}", report.check_runs_passed, report.check_runs_total),
+            "Review Subjects".to_string(),
+            plan.publications.len().to_string(),
         );
-        details.insert("Mergeable".to_string(), report.is_mergeable.to_string());
+        details.insert("Remote Queried".to_string(), "false".to_string());
+        details.insert(
+            "Exact Verification".to_string(),
+            "unavailable without head/test-merge/merge-group observations".to_string(),
+        );
 
         Ok(UnifiedReviewStatus {
             provider_label: "GitHub".to_string(),
-            status: report.aggregate_status,
+            status: "unknown".into(),
             host: self.route.installation.clone(),
-            project: report.repository,
+            project: self.route.base_repository.full_name(),
             details,
         })
     }
@@ -375,22 +1511,30 @@ impl ReviewProviderInstance for GitHubInstance {
         oids: &[String],
         _destination: Option<&str>,
     ) -> Result<UnifiedReviewUpload> {
-        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
-        let results: Vec<String> = plan
-            .publications
-            .iter()
-            .map(|p| {
-                format!(
-                    "Pushed {} to {}:{}",
-                    p.step_oid, self.route.remote_name, p.head_branch
-                )
-            })
+        let machine =
+            GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+        let subjects: Vec<String> = (0..oids.len())
+            .map(|index| format!("step-{}", index + 1))
             .collect();
+        let plan = machine.plan(
+            &self.route,
+            "ephemeral",
+            oids,
+            &subjects,
+            Some("aggregate"),
+            None,
+            None,
+        )?;
+        let state = machine.create_state(&plan)?;
+        let result = machine.publish(repo, &plan, state, false)?;
 
         Ok(UnifiedReviewUpload {
             provider_label: "GitHub".to_string(),
-            summary: "GitHub Publication Complete".to_string(),
-            details: results,
+            summary: result.status,
+            details: vec![
+                format!("branches published: {}", result.branches_published),
+                format!("unknown outcomes: {}", result.unknown),
+            ],
         })
     }
 
@@ -424,6 +1568,114 @@ impl ReviewProviderInstance for GitHubInstance {
         Ok(UnifiedReviewOpen {
             provider_label: "GitHub".to_string(),
             url,
+        })
+    }
+
+    fn create(
+        &self,
+        _repo: &GitRepo,
+        oids: &[String],
+        mapping: Option<&str>,
+    ) -> Result<UnifiedReviewMutation> {
+        let machine =
+            GitHubStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+        let subjects: Vec<String> = (0..oids.len())
+            .map(|index| format!("step-{}", index + 1))
+            .collect();
+        let plan = machine.plan(&self.route, "pending", oids, &subjects, mapping, None, None)?;
+        Ok(UnifiedReviewMutation {
+            provider_label: "GitHub".into(),
+            action: "create".into(),
+            changed: plan.items.len(),
+            record_before: None,
+            record_after: None,
+            details: plan
+                .items
+                .iter()
+                .map(|item| {
+                    format!(
+                        "{} -> {}:{}",
+                        item.local_oid, item.head_repository, item.head_branch
+                    )
+                })
+                .collect(),
+        })
+    }
+
+    fn attach(
+        &self,
+        _repo: &GitRepo,
+        _oids: &[String],
+        review: &str,
+    ) -> Result<UnifiedReviewMutation> {
+        if !review.contains('#') {
+            return Err(crate::error::StaircaseError::Other(
+                "GitHub review selector must include base repository and pull-request number"
+                    .into(),
+            ));
+        }
+        Ok(UnifiedReviewMutation {
+            provider_label: "GitHub".into(),
+            action: "attach".into(),
+            changed: 1,
+            record_before: None,
+            record_after: None,
+            details: vec![format!("validated attachment {}", review)],
+        })
+    }
+
+    fn detach(
+        &self,
+        _repo: &GitRepo,
+        _oids: &[String],
+        review: &str,
+    ) -> Result<UnifiedReviewMutation> {
+        Ok(UnifiedReviewMutation {
+            provider_label: "GitHub".into(),
+            action: "detach".into(),
+            changed: 1,
+            record_before: None,
+            record_after: None,
+            details: vec![format!("retained historical association {}", review)],
+        })
+    }
+
+    fn verify_provider(
+        &self,
+        _repo: &GitRepo,
+        oids: &[String],
+    ) -> Result<UnifiedProviderVerification> {
+        Ok(UnifiedProviderVerification {
+            provider_label: "GitHub".into(),
+            status: "unknown-without-remote-observation".into(),
+            exact_revisions: Vec::new(),
+            stale_revisions: oids.to_vec(),
+            details: HashMap::from([
+                ("head".into(), "not observed".into()),
+                ("test-merge".into(), "not observed".into()),
+                ("merge-group".into(), "not observed".into()),
+            ]),
+        })
+    }
+
+    fn land(
+        &self,
+        _repo: &GitRepo,
+        _oids: &[String],
+        mode: &str,
+        method: Option<&str>,
+    ) -> Result<UnifiedProviderLanding> {
+        Ok(UnifiedProviderLanding {
+            provider_label: "GitHub".into(),
+            mode: mode.into(),
+            status: "landing-blocked".into(),
+            landed: Vec::new(),
+            blocked: Vec::new(),
+            destination_oid: None,
+            details: vec![format!(
+                "confirmed pull requests and exact {} verification are required",
+                method.unwrap_or("merge")
+            )],
         })
     }
 }

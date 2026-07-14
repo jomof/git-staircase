@@ -1,7 +1,6 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::Step;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RestackStrategy {
@@ -18,34 +17,22 @@ pub struct Restacker<'a> {
     repo: &'a GitRepo,
     original_head: Option<String>,
     original_head_oid: String,
-    original_branch_oids: HashMap<String, String>,
 }
 
 impl<'a> Restacker<'a> {
     pub fn prepare(repo: &'a GitRepo, steps: &[Step]) -> Result<Self> {
         let original_head = repo.current_branch()?;
         let original_head_oid = repo.resolve_commit("HEAD")?;
-        let mut original_branch_oids = HashMap::new();
-        for step in steps {
-            if let Some(ref branch) = step.branch {
-                if let Some(oid) = repo.resolve_commit_opt(&format!("refs/heads/{}", branch))? {
-                    original_branch_oids.insert(branch.clone(), oid);
-                }
-            }
-        }
+        let _ = steps;
         Ok(Self {
             repo,
             original_head,
             original_head_oid,
-            original_branch_oids,
         })
     }
 
     pub fn rollback(&self) {
         let _ = self.repo.run(&["rebase", "--abort"]);
-        for (branch, oid) in &self.original_branch_oids {
-            let _ = self.repo.update_branch(branch, oid);
-        }
         self.restore_head_silent();
     }
 
@@ -162,7 +149,7 @@ impl<'a> Restacker<'a> {
 
     pub fn perform_restack(
         &self,
-        staircase_id: &str,
+        _staircase_id: &str,
         steps: &mut [Step],
         base_oid: &str,
         old_parent_oids: &[String],
@@ -188,17 +175,6 @@ impl<'a> Restacker<'a> {
                     Ok(new_oid) => {
                         steps[i].cut = new_oid.clone();
                         current_base = new_oid.clone();
-
-                        // Update branches
-                        if let Some(ref branch) = steps[i].branch {
-                            self.repo.update_branch(branch, &new_oid)?;
-                        }
-
-                        // Update step refs only if managed
-                        if !staircase_id.starts_with("implicit@") && !steps[i].id.is_empty() {
-                            self.repo
-                                .update_step_ref(staircase_id, &steps[i].id, &new_oid)?;
-                        }
 
                         if options.leave_upper_steps_stale {
                             return Ok(Some(i));

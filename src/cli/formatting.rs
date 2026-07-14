@@ -592,8 +592,9 @@ impl ToPresentation for Summary<StaircaseStatus> {
         let implicit_marker = if s.is_implicit { " (implicit)" } else { "" };
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Plain(format!(
-                "{} {} {} {}{}",
+                "{} [{}] {} {} {}{}",
                 m.name,
+                m.id,
                 steps_count,
                 steps_word,
                 s.state(),
@@ -616,8 +617,8 @@ impl ToPresentation for Summary<StaircaseFamily> {
         let paths_word = if path_count == 1 { "path" } else { "paths" };
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Plain(format!(
-                "{} {} {} (implicit)",
-                f.name, path_count, paths_word
+                "{} [{}] {} {} (implicit)",
+                f.name, f.id, path_count, paths_word
             )))),
             Presentation::Porcelain(Box::new(Presentation::Record(vec![
                 f.name.clone(),

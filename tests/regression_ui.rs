@@ -39,7 +39,7 @@ fn test_reorder_json() {
 
     let (success, stdout, stderr) = run_staircase(
         dir,
-        &["--json", "reorder", "feature/auth", "--order", "2,1"],
+        &["--json", "reorder", "feature/auth", "--steps", "2,1"],
     );
 
     assert!(success, "reorder --json failed: {}", stderr);

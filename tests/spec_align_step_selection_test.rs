@@ -56,19 +56,11 @@ fn test_split_with_id_and_step() {
     assert!(success, "Id failed: {}", stderr);
     let id = id.trim();
 
-    // ACT: git staircase split --id <id> --step 1 --at <c2> --step-name step1a
+    // ACT: git staircase split --id <id> --step 1 --at <c2> --branch step1a
     let (success, stdout, stderr) = run_staircase(
         path,
         &[
-            "split",
-            "--id",
-            id,
-            "--step",
-            "1",
-            "--at",
-            &c2,
-            "--step-name",
-            "step1a",
+            "split", "--id", id, "--step", "1", "--at", &c2, "--branch", "step1a",
         ],
     );
     assert!(

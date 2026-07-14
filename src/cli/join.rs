@@ -16,12 +16,12 @@ pub struct Join {
     /// Second step number if not using --step2.
     pub step2_pos: Option<String>,
 
-    #[arg(long, conflicts_with_all = &["rename_boundary_ref", "keep_boundary_ref"])]
+    #[arg(long, conflicts_with = "keep_boundary_ref")]
     pub delete_boundary_ref: bool,
-    #[arg(long, conflicts_with_all = &["delete_boundary_ref", "keep_boundary_ref"])]
-    pub rename_boundary_ref: Option<String>,
-    #[arg(long, conflicts_with_all = &["delete_boundary_ref", "rename_boundary_ref"])]
+    #[arg(long, conflicts_with = "delete_boundary_ref")]
     pub keep_boundary_ref: bool,
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 impl super::Command for Join {
@@ -29,8 +29,6 @@ impl super::Command for Join {
         let rs = self.staircase.resolve(repo)?;
         let ref_action = if self.delete_boundary_ref {
             core::JoinRefAction::Delete
-        } else if let Some(ref new_name) = self.rename_boundary_ref {
-            core::JoinRefAction::Rename(new_name.clone())
         } else {
             core::JoinRefAction::Keep
         };
@@ -66,13 +64,24 @@ impl super::Command for Join {
             return Err(anyhow!("Step numbers must be 1-based"));
         }
 
-        core::join(
-            repo,
-            &rs.staircase,
-            step_num1 - 1,
-            step_num2 - 1,
-            core::JoinOptions { ref_action },
-        )?;
+        if self.dry_run {
+            let (low, high) = if step_num1 < step_num2 {
+                (step_num1, step_num2)
+            } else {
+                (step_num2, step_num1)
+            };
+            if low + 1 != high || high > rs.metadata().steps.len() {
+                return Err(anyhow!("join requires two adjacent steps"));
+            }
+        } else {
+            core::join(
+                repo,
+                &rs.staircase,
+                step_num1 - 1,
+                step_num2 - 1,
+                core::JoinOptions { ref_action },
+            )?;
+        }
         Ok(Box::new(Success::new(format!(
             "Joined steps {} and {} of staircase '{}'.",
             step_num1,

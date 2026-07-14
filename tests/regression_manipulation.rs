@@ -45,7 +45,7 @@ fn test_reorder_non_atomic() {
     // Rebase of branch-b succeeds, rebase of branch-a fails.
     let (success, _stdout, stderr) = run_staircase(
         tmp.path(),
-        &["reorder", "branch-b", "--order", "2,1", "--onto", "main"],
+        &["reorder", "branch-b", "--steps", "2,1", "--onto", "main"],
     );
 
     assert!(!success, "Reorder should have failed. Stderr: {}", stderr);
@@ -91,7 +91,7 @@ fn test_reorder_rollback_fails() {
 
     let (success, _, _) = run_staircase(
         tmp.path(),
-        &["reorder", "b", "--order", "2,1", "--onto", "main"],
+        &["reorder", "b", "--steps", "2,1", "--onto", "main"],
     );
     assert!(!success, "Reorder should have failed");
 
@@ -127,9 +127,10 @@ fn test_reorder_metadata_inconsistency() {
     let id = adopted_meta.id.clone();
 
     // Resolve by ID to get the Managed variant
-    let rs = resolve_staircase(&repo, &id, Some("main"))
-        .unwrap()
-        .unwrap();
+    let rs = git_staircase::ResolvedSelector {
+        staircase: git_staircase::core::resolve_by_id(&repo, &id).unwrap(),
+        step_index: None,
+    };
     assert!(rs.is_managed());
 
     // 3. Create a conflict for reordering
@@ -205,7 +206,7 @@ fn test_reorder_underflow_error() {
 
     let (success, _stdout, stderr) = run_staircase(
         tmp.path(),
-        &["reorder", "branch-a", "--order", "0,1", "--onto", "main"],
+        &["reorder", "branch-a", "--steps", "0,1", "--onto", "main"],
     );
 
     assert!(!success);
@@ -482,7 +483,7 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
 // --- repro_move_empty_v2.rs ---
 
 #[test]
-fn test_move_commit_creates_empty_step_violating_invariant() {
+fn test_move_commit_refuses_empty_source_before_mutation() {
     // ARRANGE
     let ctx = TestContext::new();
     let target = ctx.repo.resolve_commit("main").unwrap();
@@ -518,21 +519,20 @@ fn test_move_commit_creates_empty_step_violating_invariant() {
     let rs = ResolvedStaircase::Managed(meta.clone());
     persistence::write_metadata(&ctx.repo, &meta).unwrap();
 
-    // ACT: Move the only commit of s2 into s1
-    manipulation::move_commits(&ctx.repo, &rs, 1, 0, &[c2.clone()]).unwrap();
-
-    // ASSERT: The resulting staircase is now considered invalid by the core logic
-    let updated_meta = persistence::read_metadata(&ctx.repo, "test-id").unwrap();
-    let result = adopt(&ctx.repo, &updated_meta);
-    assert!(
-        result.is_err(),
-        "Staircase with empty step should be rejected by validation logic"
-    );
-    assert!(
-        result
-            .unwrap_err()
-            .to_string()
-            .contains("every step must be non-empty")
+    let before = ctx
+        .repo
+        .resolve_ref("refs/staircase-state/test-id/record")
+        .unwrap();
+    let error = manipulation::move_commits(&ctx.repo, &rs, 1, 0, &[c2.clone()]).unwrap_err();
+    assert!(matches!(
+        error,
+        git_staircase::StaircaseError::UnsupportedTopology { .. }
+    ));
+    assert_eq!(
+        ctx.repo
+            .resolve_ref("refs/staircase-state/test-id/record")
+            .unwrap(),
+        before
     );
 }
 

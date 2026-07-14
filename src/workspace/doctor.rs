@@ -16,6 +16,19 @@ pub struct WorkspaceDoctorReport {
     pub installed_providers: Vec<String>,
     pub status: String,
     pub diagnostics: Vec<String>,
+    pub capabilities: Vec<CapabilityDoctorEntry>,
+    pub discovery_fingerprint: HashMap<String, String>,
+    pub last_successful_validation: u64,
+    pub generation: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CapabilityDoctorEntry {
+    pub capability: String,
+    pub provider: Option<String>,
+    pub provenance: Option<String>,
+    pub readiness: String,
+    pub evidence: Option<String>,
 }
 
 pub fn doctor(repo: &GitRepo, options: &BootstrapOptions) -> Result<WorkspaceDoctorReport> {
@@ -23,28 +36,45 @@ pub fn doctor(repo: &GitRepo, options: &BootstrapOptions) -> Result<WorkspaceDoc
     let rec = bootstrap_res.record;
 
     let installed = discover_installed_providers()?;
-    let installed_names: Vec<String> = installed
+    let mut installed_names: Vec<String> = installed
         .into_iter()
         .map(|p| p.descriptor.name)
-        .chain(std::iter::once("core.git".to_string()))
+        .chain(
+            ["core.git", "repo", "gerrit", "github"]
+                .into_iter()
+                .map(str::to_string),
+        )
         .collect();
+    installed_names.sort();
+    installed_names.dedup();
 
     let mut bound_map = HashMap::new();
-    let all_capabilities = [
-        Capability::Workspace,
-        Capability::ProjectMapping,
-        Capability::IntegrationContext,
-        Capability::Review,
-        Capability::Verification,
-        Capability::Transport,
-    ];
-
     let mut missing = Vec::new();
-    for cap in &all_capabilities {
+    let mut capabilities = Vec::new();
+    for cap in &Capability::ALL {
         if let Some(b) = rec.capability_bindings.get(cap) {
             bound_map.insert(cap.to_string(), b.provider.clone());
+            capabilities.push(CapabilityDoctorEntry {
+                capability: cap.to_string(),
+                provider: Some(b.provider.clone()),
+                provenance: Some(b.provenance.to_string()),
+                readiness: rec
+                    .capability_readiness
+                    .get(cap)
+                    .cloned()
+                    .unwrap_or_default()
+                    .to_string(),
+                evidence: b.evidence.clone(),
+            });
         } else {
             missing.push(cap.to_string());
+            capabilities.push(CapabilityDoctorEntry {
+                capability: cap.to_string(),
+                provider: None,
+                provenance: None,
+                readiness: "unavailable".into(),
+                evidence: None,
+            });
         }
     }
 
@@ -65,6 +95,21 @@ pub fn doctor(repo: &GitRepo, options: &BootstrapOptions) -> Result<WorkspaceDoc
         diagnostics.push("Verification provider is unbound.".to_string());
     }
 
+    for capability in &capabilities {
+        if !matches!(capability.readiness.as_str(), "ready") {
+            diagnostics.push(format!(
+                "{} capability is {}{}",
+                capability.capability,
+                capability.readiness,
+                capability
+                    .provider
+                    .as_ref()
+                    .map(|provider| format!(" (provider {})", provider))
+                    .unwrap_or_default()
+            ));
+        }
+    }
+
     let status = if diagnostics.is_empty() {
         "Healthy".to_string()
     } else {
@@ -80,5 +125,9 @@ pub fn doctor(repo: &GitRepo, options: &BootstrapOptions) -> Result<WorkspaceDoc
         installed_providers: installed_names,
         status,
         diagnostics,
+        capabilities,
+        discovery_fingerprint: rec.discovery_fingerprint,
+        last_successful_validation: rec.last_successful_validation,
+        generation: rec.generation,
     })
 }

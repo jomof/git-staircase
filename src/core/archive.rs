@@ -1,5 +1,5 @@
 use crate::core::persistence;
-use crate::core::refs::{STATE_PREFIX, StaircaseRefs};
+use crate::core::refs::StaircaseRefs;
 use crate::core::resolved::ResolvedSelector;
 use crate::core::utils::current_timestamp;
 use crate::error::{Result, StaircaseError};
@@ -48,12 +48,16 @@ pub fn archive_staircase(
     }
 
     let meta = selector.staircase.metadata();
-    let record_ref = StaircaseRefs::state_record(&meta.id);
-    let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
-
-    let current_record = persistence::read_record(repo, &record_ref)
-        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))
-        .or_else(|_| persistence::read_record(repo, &archive_record_ref))?;
+    let current_ref = if meta
+        .lifecycle
+        .as_ref()
+        .is_some_and(|lifecycle| lifecycle.state == LifecycleState::Archived)
+    {
+        StaircaseRefs::archive_record(&meta.id)
+    } else {
+        StaircaseRefs::state_record(&meta.id)
+    };
+    let current_record = persistence::read_record(repo, &current_ref)?;
 
     if current_record.lifecycle.state == LifecycleState::Archived {
         return Ok(ArchiveResult {
@@ -110,47 +114,53 @@ pub fn archive_staircase(
         });
     }
 
-    if let Ok(stdout) = repo.run(&["worktree", "list", "--porcelain"]) {
-        let mut wt_path: Option<String> = None;
-        for line in stdout.lines() {
-            if line.starts_with("worktree ") {
-                wt_path = Some(line.strip_prefix("worktree ").unwrap().to_string());
-            } else if line.starts_with("branch ") {
-                let b = line.strip_prefix("branch ").unwrap().trim();
-                if owned_branches.contains(&b.to_string()) {
-                    let is_clean = repo
-                        .run(&["status", "--porcelain"])
-                        .map(|s| s.trim().is_empty())
-                        .unwrap_or(true);
-                    if !is_clean
-                        && !options.detach_dirty_worktrees
-                        && !options.snapshot_drafts
-                        && !options.leave_worktrees
-                    {
-                        return Err(StaircaseError::Other(format!(
-                            "worktree at {:?} attached to branch '{}' is dirty; use --detach-dirty-worktrees or --snapshot-drafts",
-                            wt_path, b
-                        )));
-                    }
-                    if !options.dry_run {
-                        let step_cut = meta
-                            .steps
-                            .iter()
-                            .find(|s| {
-                                s.branch.as_deref() == Some(b)
-                                    || s.branch.as_deref()
-                                        == Some(b.strip_prefix("refs/heads/").unwrap_or(b))
-                            })
-                            .map(|s| s.cut.clone())
-                            .unwrap_or_else(|| {
-                                meta.steps.last().map(|s| s.cut.clone()).unwrap_or_default()
-                            });
-                        if !step_cut.is_empty() {
-                            let _ = repo.run(&["checkout", "--detach", &step_cut]);
-                        }
-                    }
-                }
-            }
+    for worktree in repo.worktrees()? {
+        let Some(branch) = worktree.branch else {
+            continue;
+        };
+        if !owned_branches.contains(&branch) {
+            continue;
+        }
+        if options.leave_worktrees {
+            return Err(StaircaseError::UnsupportedTopology {
+                operation: "archive".into(),
+                reason: format!(
+                    "worktree {} is attached to owned branch {}; it cannot be left attached while that branch is archived",
+                    worktree.path.display(),
+                    branch
+                ),
+            });
+        }
+        let worktree_repo = GitRepo::new(worktree.path.clone());
+        let draft = crate::core::draft::get_worktree_draft(&worktree_repo)?;
+        let is_clean = draft.classification == crate::model::DraftClassification::Clean;
+        if !is_clean && !options.detach_dirty_worktrees && !options.snapshot_drafts {
+            return Err(StaircaseError::Other(format!(
+                "worktree {} attached to branch '{}' is dirty; use --detach-dirty-worktrees or --snapshot-drafts",
+                worktree.path.display(),
+                branch
+            )));
+        }
+        if options.snapshot_drafts && !options.dry_run {
+            crate::core::draft::create_snapshot(&worktree_repo, Some("archive"))?;
+        }
+        let step_cut = meta
+            .steps
+            .iter()
+            .find(|step| {
+                step.branch.as_ref().is_some_and(|candidate| {
+                    candidate == &branch || format!("refs/heads/{}", candidate) == branch
+                })
+            })
+            .map(|step| step.cut.clone())
+            .ok_or_else(|| {
+                StaircaseError::InvalidStructure(format!(
+                    "owned worktree branch {} has no matching step",
+                    branch
+                ))
+            })?;
+        if !options.dry_run {
+            worktree_repo.run(&["checkout", "--detach", &step_cut])?;
         }
     }
 
@@ -160,7 +170,22 @@ pub fn archive_staircase(
     let mut archive_owned_refs = Vec::new();
     for (idx, full_ref) in owned_branches.iter().enumerate() {
         let ref_id = format!("owned-{}", idx + 1);
-        let oid = repo.resolve_ref_opt(full_ref)?.unwrap_or_default();
+        let oid = repo
+            .resolve_ref_opt(full_ref)?
+            .ok_or_else(|| StaircaseError::RefCollision {
+                reference: full_ref.clone(),
+                expected: meta
+                    .steps
+                    .iter()
+                    .find(|step| {
+                        step.branch.as_ref().is_some_and(|branch| {
+                            branch == full_ref || format!("refs/heads/{}", branch) == *full_ref
+                        })
+                    })
+                    .map(|step| step.cut.clone())
+                    .unwrap_or_else(|| "<owned-cut>".into()),
+                actual: "<missing>".into(),
+            })?;
         archive_owned_refs.push(ArchivedOwnedRef {
             ref_id: ref_id.clone(),
             original_refname: full_ref.clone(),
@@ -267,28 +292,71 @@ pub fn archive_staircase(
         &current_record.user_metadata,
         &updated_lifecycle,
         Some(&archive_manifest),
-        true,
+        Some(&current_record.record_oid),
+        false,
     )?;
 
     if let Some(event) = updated_lifecycle.events.last_mut() {
         event.record_oid_after = Some(record.record_oid.clone());
     }
 
-    let public_ref = StaircaseRefs::public(&meta.name);
-    let _ = repo.run(&["update-ref", "-d", &public_ref]);
-
-    let state_prefix = format!("{}{}/", STATE_PREFIX, meta.id);
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &state_prefix]) {
-        for line in stdout.lines() {
-            let r = line.trim();
-            let _ = repo.run(&["update-ref", "-d", r]);
+    let mut plan = crate::core::operation::MutationPlan::new("archive", Some(meta.id.clone()))
+        .expected_record(Some(current_record.record_oid.clone()));
+    plan.update(
+        StaircaseRefs::state_record(&meta.id),
+        Some(current_record.record_oid.clone()),
+        None,
+    );
+    plan.update(
+        StaircaseRefs::archive_record(&meta.id),
+        None,
+        Some(record.record_oid.clone()),
+    );
+    plan.update(
+        StaircaseRefs::public(&meta.name),
+        Some(current_record.record_oid.clone()),
+        None,
+    );
+    for step in &meta.steps {
+        let key = if step.id.is_empty() {
+            &step.name
+        } else {
+            &step.id
+        };
+        plan.update(
+            StaircaseRefs::state_step(&meta.id, key),
+            Some(step.cut.clone()),
+            None,
+        );
+        plan.update(
+            StaircaseRefs::archive_step(&meta.id, key),
+            None,
+            Some(step.cut.clone()),
+        );
+    }
+    if let Some(manifest) = &record.archive_manifest {
+        for owned in &manifest.owned_refs {
+            plan.update(
+                owned.original_refname.clone(),
+                Some(owned.original_oid.clone()),
+                None,
+            );
+            plan.update(
+                owned.archive_refname.clone(),
+                None,
+                Some(owned.original_oid.clone()),
+            );
         }
     }
+    plan.publish(repo, false)?;
 
     for full_ref in &owned_branches {
         let b_name = full_ref.strip_prefix("refs/heads/").unwrap_or(full_ref);
-        let _ = repo.run(&["config", "--remove-section", &format!("branch.{}", b_name)]);
-        let _ = repo.run(&["update-ref", "-d", full_ref]);
+        repo.run(&["config", "--remove-section", &format!("branch.{}", b_name)])
+            .or_else(|error| match error {
+                StaircaseError::GitCommandFailed { .. } => Ok(String::new()),
+                other => Err(other),
+            })?;
     }
 
     Ok(ArchiveResult {
@@ -338,6 +406,7 @@ pub fn release_staircase_name(repo: &GitRepo, selector: &ResolvedSelector) -> Re
         &record.user_metadata,
         &record.lifecycle,
         record.archive_manifest.as_ref(),
+        Some(&record.record_oid),
         true,
     )?;
 

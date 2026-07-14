@@ -22,7 +22,7 @@ fn test_rebase_leave_upper_steps_stale() {
     let (success, _, stderr) = ctx.run_staircase(&[
         "rebase",
         "test:1",
-        "--to",
+        "--onto",
         "main",
         "--leave-upper-steps-stale",
     ]);
@@ -47,7 +47,7 @@ fn test_rebase_leave_upper_steps_stale() {
 }
 
 #[test]
-fn test_reorder_no_restack() {
+fn test_reorder_restacks_by_default() {
     let ctx = TestContext::new();
 
     ctx.run_git(&["checkout", "-b", "s1"]);
@@ -58,23 +58,22 @@ fn test_reorder_no_restack() {
     let (success, _, stderr) = ctx.run_staircase(&["adopt", "test", "s1", "s2"]);
     assert!(success, "adopt failed: {}", stderr);
 
-    // Reorder s2 before s1 (order 2,1) with --no-restack
-    let (success, _, stderr) =
-        ctx.run_staircase(&["reorder", "test", "--order", "2,1", "--no-restack"]);
+    // Reorder s2 before s1 using the canonical complete permutation.
+    let (success, _, stderr) = ctx.run_staircase(&["reorder", "test", "--steps", "2,1"]);
     assert!(success, "reorder failed: {}", stderr);
 
-    // Verify branches are NOT rewritten (s1 and s2 still point to original OIDs)
+    // Reordering rewrites both conceptual steps while preserving their identities.
     let s1_oid = ctx.run_git(&["rev-parse", "s1"]);
-    assert_eq!(s1_oid, c1);
+    assert_ne!(s1_oid, c1);
     let s2_oid = ctx.run_git(&["rev-parse", "s2"]);
-    assert_eq!(s2_oid, c2);
+    assert_ne!(s2_oid, c2);
 
-    // Verify status is stale
+    // Verify the fully restacked result is clean.
     let (success, stdout, stderr) = ctx.run_staircase(&["status", "test"]);
     assert!(success, "status failed: {}", stderr);
     assert!(
-        stdout.contains("state: stale"),
-        "Expected state: stale, but output was:\n{}",
+        stdout.contains("state: clean"),
+        "Expected state: clean, but output was:\n{}",
         stdout
     );
 }
@@ -90,13 +89,7 @@ fn test_split_no_ref_triggers_adoption() {
     // We have an implicit staircase (s1 branch has 2 commits)
     // Split it at c1 with --no-ref.
     let (success, _stdout, stderr) = ctx.run_staircase(&[
-        "split",
-        "s1:1",
-        "--at",
-        &c1,
-        "--step-name",
-        "s1-part1",
-        "--no-ref",
+        "split", "s1:1", "--at", &c1, "--branch", "s1-part1", "--no-ref",
     ]);
     assert!(success, "split failed: {}", stderr);
 
@@ -161,12 +154,7 @@ fn test_drop_leave_descendants_stale() {
     assert!(success, "adopt failed: {}", stderr);
 
     // Drop s2, leaving s3 stale (not restacked)
-    let (success, _, stderr) = ctx.run_staircase(&[
-        "drop",
-        "test:2",
-        "--no-restack",
-        "--leave-descendants-stale",
-    ]);
+    let (success, _, stderr) = ctx.run_staircase(&["drop", "test:2", "--leave-descendants-stale"]);
     assert!(success, "drop failed: {}", stderr);
 
     // Verify s3 branch is NOT rewritten (still points to c3)

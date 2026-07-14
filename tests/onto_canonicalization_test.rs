@@ -18,18 +18,12 @@ fn test_adopt_canonicalizes_onto() {
         ctx.run_staircase(&["adopt", "my-staircase", "--onto", "main", "feature"]);
     assert!(success, "Adopt failed: {}", stderr);
 
-    // ASSERT: Check the descriptor for full refname
+    // ASSERT: Check generation-1 structure for the full symbolic target.
     let content = ctx.run_git(&["cat-file", "-p", "refs/staircases/my-staircase:structure"]);
-
-    // The spec requires full refname
-    assert!(
-        content.contains("target-ref refs/heads/main"),
-        "Descriptor should contain full refname for target-ref, but was:\n{}",
-        content
-    );
-    assert!(
-        !content.contains("target-ref main\n"),
-        "Descriptor should NOT contain abbreviated target-ref name"
+    let structure: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+        structure["integration_context"]["symbolic_targets"][0],
+        "refs/heads/main"
     );
 }
 
@@ -47,13 +41,11 @@ fn test_infer_onto_canonicalizes() {
     let (success, _stdout, stderr) = ctx.run_staircase(&["adopt", "my-staircase", "feature"]);
     assert!(success, "Adopt failed: {}", stderr);
 
-    // ASSERT: Check the descriptor for full refname
+    // ASSERT: Check generation-1 structure for the inferred full refname.
     let content = ctx.run_git(&["cat-file", "-p", "refs/staircases/my-staircase:structure"]);
-
-    // It should infer 'refs/heads/main' from upstream
-    assert!(
-        content.contains("target-ref refs/heads/main"),
-        "Descriptor should contain full refname for inferred target-ref, but was:\n{}",
-        content
+    let structure: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(
+        structure["integration_context"]["symbolic_targets"][0],
+        "refs/heads/main"
     );
 }

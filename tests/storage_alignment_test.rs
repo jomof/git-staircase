@@ -33,10 +33,9 @@ fn test_staircase_storage_alignment() {
     let content = repo
         .run(&["cat-file", "-p", &format!("{}:structure", ref_name)])
         .unwrap();
-    assert!(
-        content.starts_with("git-staircase-descriptor 1\n"),
-        "Descriptor should have canonical header"
-    );
+    let structure: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(structure["schema"], "git-staircase/structure");
+    assert_eq!(structure["version"], 1);
 
     // Also verify refs/staircases/auth is a tree type
     let obj_type = repo.run(&["cat-file", "-t", &oid]).unwrap();

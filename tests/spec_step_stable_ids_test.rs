@@ -63,7 +63,7 @@ fn test_step_stable_ids() {
 
     // ACT: Reorder steps (e.g., 1, 3, 2)
     let (success, _, stderr) =
-        run_staircase(repo_path, &["reorder", "feature", "--order", "1,3,2"]);
+        run_staircase(repo_path, &["reorder", "feature", "--steps", "1,3,2"]);
     assert!(success, "reorder failed: {}", stderr);
 
     // ACT: Get steps again

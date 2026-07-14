@@ -4,6 +4,20 @@ use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{IdentityKind, VerificationResult};
 
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+pub struct DraftVerificationEvidence {
+    pub schema: String,
+    pub version: u32,
+    pub subject_kind: String,
+    pub tree_oid: String,
+    pub basis_oid: String,
+    pub build_command: Option<String>,
+    pub test_command: Option<String>,
+    pub success: bool,
+    pub stdout: String,
+    pub stderr: String,
+}
+
 pub fn verify(
     repo: &GitRepo,
     rs: &ResolvedStaircase,
@@ -12,6 +26,13 @@ pub fn verify(
     aggregate_only: Option<bool>,
     each_prefix: Option<bool>,
 ) -> Result<Vec<VerificationResult>> {
+    let draft = super::draft::get_worktree_draft(repo)?;
+    if draft.classification != crate::model::DraftClassification::Clean {
+        return Err(StaircaseError::Other(
+            "commit verification requires a clean worktree; use verify --draft for staged work"
+                .into(),
+        ));
+    }
     let s = rs.metadata();
 
     let policy = s.verification_policy.as_ref();
@@ -112,6 +133,57 @@ pub fn verify(
     persistence::record_verification(repo, &key, kind, &results)?;
 
     Ok(results)
+}
+
+pub fn verify_draft(
+    repo: &GitRepo,
+    build_command: Option<String>,
+    test_command: Option<String>,
+) -> Result<DraftVerificationEvidence> {
+    let draft = super::draft::get_worktree_draft(repo)?;
+    if let Some(operation) = draft.transient_operation {
+        return Err(StaircaseError::ExternalOperation {
+            owner: format!("git {} --continue|--abort", operation),
+            operation,
+        });
+    }
+    if !draft.conflicted_paths.is_empty() {
+        return Err(StaircaseError::Other(
+            "cannot verify a draft with unmerged index entries".into(),
+        ));
+    }
+    let tree_oid = draft.staged_tree_oid.ok_or_else(|| {
+        StaircaseError::Other("draft index does not resolve to an exact stage-zero tree".into())
+    })?;
+    let mut success = true;
+    let mut stdout = String::new();
+    let mut stderr = String::new();
+    if let Some(command) = &build_command {
+        let (ok, out, err) = run_shell_command(&repo.workdir, command)?;
+        success &= ok;
+        stdout.push_str(&out);
+        stderr.push_str(&err);
+    }
+    if success {
+        if let Some(command) = &test_command {
+            let (ok, out, err) = run_shell_command(&repo.workdir, command)?;
+            success &= ok;
+            stdout.push_str(&out);
+            stderr.push_str(&err);
+        }
+    }
+    Ok(DraftVerificationEvidence {
+        schema: "git-staircase/verification-evidence".into(),
+        version: 1,
+        subject_kind: "draft-index".into(),
+        tree_oid,
+        basis_oid: draft.basis,
+        build_command,
+        test_command,
+        success,
+        stdout,
+        stderr,
+    })
 }
 
 fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, String, String)> {

@@ -1,4 +1,4 @@
-use super::{PresentationOutput, ReorderResult, StaircaseSelectorArgs};
+use super::{NonStepsStaircaseSelectorArgs, PresentationOutput, ReorderResult};
 use crate::GitRepo;
 use crate::core;
 use anyhow::{Result, anyhow};
@@ -6,43 +6,53 @@ use anyhow::{Result, anyhow};
 #[derive(clap::Args, Clone, Debug)]
 pub struct Reorder {
     #[command(flatten)]
-    pub staircase: StaircaseSelectorArgs,
-    /// New order of steps by 1-based index.
-    #[arg(long, value_delimiter = ',')]
-    pub order: Option<Vec<usize>>,
-    #[arg(long = "no-restack")]
-    pub no_restack: bool,
+    pub staircase: NonStepsStaircaseSelectorArgs,
+    /// Complete new order by 1-based ordinal or stable step ID.
+    #[arg(long, value_delimiter = ',', required = true)]
+    pub steps: Vec<String>,
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 impl super::Command for Reorder {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
-        let raw_order: Vec<usize> = if let Some(order) = &self.order {
-            order.clone()
-        } else if let Some(steps) = &self.staircase.steps {
-            let parsed: Result<Vec<usize>, _> = steps.iter().map(|s| s.parse::<usize>()).collect();
-            parsed.map_err(|_| anyhow!("Invalid step permutation in --steps. Expected numeric 1-based indices (e.g. --steps 1,3,2)"))?
-        } else {
-            return Err(anyhow!(
-                "Either --steps or --order (indices) must be provided"
-            ));
-        };
-
         let mut zero_based_steps = Vec::new();
-        for &s in &raw_order {
-            if s == 0 {
-                return Err(anyhow!("Step indices must be 1-based (got 0)"));
+        for value in &self.steps {
+            if let Ok(ordinal) = value.parse::<usize>() {
+                if ordinal == 0 {
+                    return Err(anyhow!("Step indices must be 1-based (got 0)"));
+                }
+                zero_based_steps.push(ordinal - 1);
+            } else {
+                let index = rs
+                    .metadata()
+                    .steps
+                    .iter()
+                    .position(|step| step.id == *value)
+                    .ok_or_else(|| anyhow!("unknown step ID '{}'", value))?;
+                zero_based_steps.push(index);
             }
-            zero_based_steps.push(s - 1);
         }
-        core::reorder(
-            repo,
-            &rs,
-            &zero_based_steps,
-            core::ReorderOptions {
-                no_restack: self.no_restack,
-            },
-        )?;
+        if self.dry_run {
+            core::reorder_dry_run(
+                repo,
+                &rs,
+                &zero_based_steps,
+                core::ReorderOptions { no_restack: false },
+            )?;
+            return Ok(Box::new(super::Success::new(format!(
+                "Planned reorder of staircase '{}'",
+                rs.metadata().name
+            ))));
+        } else {
+            core::reorder(
+                repo,
+                &rs,
+                &zero_based_steps,
+                core::ReorderOptions { no_restack: false },
+            )?;
+        }
 
         let updated_rs =
             core::resolve_staircase(repo, &rs.metadata().name, self.staircase.onto.as_deref())?

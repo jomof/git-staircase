@@ -2,30 +2,53 @@ use super::graph;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{Discovery, FamilyStep, StaircaseFamily, StaircaseMetadata, Step};
-use std::collections::HashMap;
+use std::collections::{BTreeMap, HashMap};
 use uuid::Uuid;
 
 use super::inference::infer_onto;
 use super::utils::{check_sequential_layout, common_prefix};
 
-pub fn compute_implicit_id(object_format: &str, target_oid: &str, steps: &[Step]) -> String {
+fn hash_field(hasher: &mut sha2::Sha256, label: &[u8], value: &[u8]) {
+    use sha2::Digest;
+    hasher.update((label.len() as u64).to_be_bytes());
+    hasher.update(label);
+    hasher.update((value.len() as u64).to_be_bytes());
+    hasher.update(value);
+}
+
+pub fn compute_implicit_id(
+    repo: &GitRepo,
+    integration_oid: &str,
+    steps: &[Step],
+) -> Result<String> {
     use sha2::{Digest, Sha256};
+
+    let repository_identity = repo.repository_identity()?;
+    let object_format = repo.get_object_format()?;
+    let integration_oid = repo.resolve_commit(integration_oid)?;
+    let cuts = steps
+        .iter()
+        .map(|step| repo.resolve_commit(&step.cut))
+        .collect::<Result<Vec<_>>>()?;
+
     let mut hasher = Sha256::new();
-    // Canonical representation per spec addendum naming Section 3.11
-    hasher.update(b"1"); // Discovery schema version
-    hasher.update(object_format.as_bytes());
-    hasher.update(target_oid.as_bytes());
-    hasher.update(&(steps.len() as u32).to_be_bytes());
-    for step in steps {
-        hasher.update(step.cut.as_bytes());
-        hasher.update(step.name.as_bytes());
+    hasher.update(b"git-staircase\0implicit-structural-key\0v1\0");
+    hash_field(
+        &mut hasher,
+        b"repository-identity",
+        repository_identity.as_bytes(),
+    );
+    hash_field(&mut hasher, b"object-format", object_format.as_bytes());
+    hash_field(
+        &mut hasher,
+        b"integration-context",
+        integration_oid.as_bytes(),
+    );
+    hasher.update((cuts.len() as u64).to_be_bytes());
+    for cut in cuts {
+        hash_field(&mut hasher, b"cut", cut.as_bytes());
     }
-    let hash = hasher.finalize();
-    // Truncate to 16 hex characters (8 bytes) for brevity
-    format!(
-        "implicit@{:016x}",
-        u64::from_be_bytes(hash[..8].try_into().unwrap())
-    )
+    Ok(format!("implicit@{:x}", hasher.finalize()))
 }
 
 /// Discover potential staircases relative to `onto`.
@@ -55,7 +78,8 @@ pub fn discover(
     let all_oids: Vec<&str> = branches.iter().map(|b| b.oid.as_str()).collect();
     let _ = repo.preload_ancestry_ext(&all_oids, &[&onto_oid]);
 
-    let active_branches = filter_active_branches(repo, branches, &onto_oid, &onto_final)?;
+    let mut active_branches = filter_active_branches(repo, branches, &onto_oid, &onto_final)?;
+    active_branches.sort_by(|left, right| left.refname.cmp(&right.refname));
 
     let (parents, children_map) = graph::build_branch_graph(repo, &active_branches)?;
 
@@ -100,7 +124,7 @@ pub fn discover(
 
                 discoveries.push(Discovery::Linear(StaircaseMetadata {
                     landing_policy: None,
-                    id: compute_implicit_id(&repo.get_object_format()?, &onto_oid, &steps),
+                    id: compute_implicit_id(repo, &onto_oid, &steps)?,
                     verification_policy: None,
                     name,
                     target: onto_final.to_string(),
@@ -114,7 +138,30 @@ pub fn discover(
         }
     }
 
-    Ok(discoveries)
+    let mut canonical = BTreeMap::<String, Discovery>::new();
+    for discovery in discoveries {
+        match discovery {
+            Discovery::Linear(candidate) => {
+                canonical
+                    .entry(candidate.id.clone())
+                    .and_modify(|existing| {
+                        if let Discovery::Linear(current) = existing {
+                            if candidate.name < current.name {
+                                current.name = candidate.name.clone();
+                            }
+                        }
+                    })
+                    .or_insert(Discovery::Linear(candidate));
+            }
+            Discovery::Ambiguous(family) => {
+                canonical.insert(
+                    format!("family:{}", family.name),
+                    Discovery::Ambiguous(family),
+                );
+            }
+        }
+    }
+    Ok(canonical.into_values().collect())
 }
 
 fn filter_active_branches(

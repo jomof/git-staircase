@@ -139,6 +139,13 @@ pub struct TreeEntry {
     pub name: String,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct WorktreeInfo {
+    pub path: PathBuf,
+    pub head: Option<String>,
+    pub branch: Option<String>,
+}
+
 impl TreeEntry {
     pub fn blob(oid: impl Into<String>, name: impl Into<String>) -> Self {
         Self {
@@ -456,6 +463,44 @@ impl GitRepo {
         Ok(fmt)
     }
 
+    pub fn repository_identity(&self) -> Result<String> {
+        let object_directory = self
+            .command()
+            .args(&["rev-parse", "--git-path", "objects"])
+            .run()?;
+        let path = PathBuf::from(object_directory);
+        let path = if path.is_absolute() {
+            path
+        } else {
+            self.workdir.join(path)
+        };
+        let canonical = path.canonicalize()?;
+        Ok(canonical.to_string_lossy().into_owned())
+    }
+
+    pub fn git_dir(&self) -> Result<PathBuf> {
+        let raw = self.command().args(["rev-parse", "--git-dir"]).run()?;
+        let path = PathBuf::from(raw);
+        Ok(if path.is_absolute() {
+            path
+        } else {
+            self.workdir.join(path)
+        })
+    }
+
+    pub fn common_dir(&self) -> Result<PathBuf> {
+        let raw = self
+            .command()
+            .args(["rev-parse", "--git-common-dir"])
+            .run()?;
+        let path = PathBuf::from(raw);
+        Ok(if path.is_absolute() {
+            path
+        } else {
+            self.workdir.join(path)
+        })
+    }
+
     pub fn get_tree_id(&self, rev: &str) -> Result<String> {
         let commit_oid = self.resolve_commit(rev)?;
         if let Some(tree) = self.memoizer.get_tree_id(&commit_oid) {
@@ -565,11 +610,45 @@ impl GitRepo {
         Ok(branches)
     }
 
+    pub fn worktrees(&self) -> Result<Vec<WorktreeInfo>> {
+        let output = self
+            .command()
+            .args(["worktree", "list", "--porcelain"])
+            .run()?;
+        let mut worktrees = Vec::new();
+        let mut current: Option<WorktreeInfo> = None;
+        for line in output.lines().chain(std::iter::once("")) {
+            if let Some(path) = line.strip_prefix("worktree ") {
+                if let Some(info) = current.take() {
+                    worktrees.push(info);
+                }
+                current = Some(WorktreeInfo {
+                    path: PathBuf::from(path),
+                    head: None,
+                    branch: None,
+                });
+            } else if let Some(head) = line.strip_prefix("HEAD ") {
+                if let Some(info) = current.as_mut() {
+                    info.head = Some(head.into());
+                }
+            } else if let Some(branch) = line.strip_prefix("branch ") {
+                if let Some(info) = current.as_mut() {
+                    info.branch = Some(branch.into());
+                }
+            } else if line.is_empty() {
+                if let Some(info) = current.take() {
+                    worktrees.push(info);
+                }
+            }
+        }
+        Ok(worktrees)
+    }
+
     pub fn update_refs_transaction(&self, commands: &[String]) -> Result<()> {
         if commands.is_empty() {
             return Ok(());
         }
-        let input = commands.join("\n") + "\n";
+        let input = format!("start\n{}\nprepare\ncommit\n", commands.join("\n"));
         self.command()
             .args(&["update-ref", "--stdin"])
             .stdin(input)

@@ -54,8 +54,10 @@ impl super::Command for Show {
                 aggregate: false,
                 each_prefix: false,
                 profile: None,
+                provider: None,
                 build_command: None,
                 test_command: None,
+                draft: false,
             };
             return cmd.run(repo);
         }

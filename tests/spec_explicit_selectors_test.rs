@@ -35,7 +35,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         steps: None,
         onto: Some("main".to_string()),
         id: None,
-        revision: None,
+        record: None,
         explicit_name: None,
         r#ref: None,
         structural_key: None,
@@ -51,7 +51,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         steps: None,
         onto: Some("main".to_string()),
         id: None,
-        revision: None,
+        record: None,
         explicit_name: Some("auth".to_string()),
         r#ref: None,
         structural_key: None,
@@ -66,7 +66,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         steps: None,
         onto: Some("main".to_string()),
         id: Some(lineage_id.clone()),
-        revision: None,
+        record: None,
         explicit_name: None,
         r#ref: None,
         structural_key: None,
@@ -81,7 +81,7 @@ fn test_explicit_selectors_resolve_ambiguity() {
         steps: None,
         onto: Some("main".to_string()),
         id: None,
-        revision: None,
+        record: None,
         explicit_name: None,
         r#ref: Some("refs/staircases/auth".to_string()),
         structural_key: None,
@@ -90,20 +90,18 @@ fn test_explicit_selectors_resolve_ambiguity() {
     assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
     assert_eq!(rs.metadata().name, "auth");
 
-    // 7. Test --revision <oid>
+    // 7. Test --record <oid>
     let args_rev = StaircaseSelectorArgs {
         name: None,
         steps: None,
         onto: Some("main".to_string()),
         id: None,
-        revision: Some(revision_oid.clone()),
+        record: Some(revision_oid.clone()),
         explicit_name: None,
         r#ref: None,
         structural_key: None,
     };
-    let rs = args_rev
-        .resolve(&repo)
-        .expect("Should resolve by --revision");
+    let rs = args_rev.resolve(&repo).expect("Should resolve by --record");
     assert!(matches!(rs.staircase, ResolvedStaircase::Managed(_)));
     assert_eq!(
         repo.resolve_ref("refs/staircases/auth").unwrap(),

@@ -8,7 +8,7 @@ pub mod workspace;
 
 pub use crate::core::{ResolvedSelector, ResolvedStaircase};
 pub use cli::formatting::{ToHuman, ToPorcelain};
-pub use error::{Result, StaircaseError};
+pub use error::{AmbiguityCandidate, ExitClass, Result, StaircaseError};
 pub use git::GitRepo;
 pub use model::{
     Discovery, DraftAttachment, DraftClassification, DraftIntent, DraftSnapshot, FamilyStep,

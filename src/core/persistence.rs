@@ -3,8 +3,16 @@ use crate::error::{Result, StaircaseError};
 use crate::git::{GitRepo, TreeEntry};
 use crate::model::{
     ArchiveManifest, IdentityKind, LifecycleState, StaircaseLifecycle, StaircaseMetadata,
-    StaircaseRecord, StaircaseUserMetadata, Step, VerificationPolicy, VerificationResult,
+    StaircaseRecord, StaircaseUserMetadata, Step, VerificationResult,
 };
+use std::collections::BTreeMap;
+
+const POLICY_EXTENSION: &str = "git-staircase.policies";
+const DISCOVERY_EXTENSION: &str = "git-staircase.discovery-overrides";
+const ANCHOR_EXTENSION: &str = "git-staircase.internal.integration-anchor";
+const STRUCTURAL_STATE_EXTENSION: &str = "git-staircase.internal.structural-state";
+const GERRIT_EXTENSION: &str = "git-staircase.gerrit";
+const GITHUB_EXTENSION: &str = "git-staircase.github";
 
 pub fn write_record(
     repo: &GitRepo,
@@ -12,23 +20,34 @@ pub fn write_record(
     user_metadata: &StaircaseUserMetadata,
     lifecycle: &StaircaseLifecycle,
     archive_manifest: Option<&ArchiveManifest>,
+    expected_record_oid: Option<&str>,
     update_refs: bool,
 ) -> Result<StaircaseRecord> {
-    let structure_desc = serialize_descriptor(repo, metadata)?;
+    let structure_desc = serialize_structure(repo, metadata, user_metadata)?;
     let structure_oid = repo.write_blob(&structure_desc)?;
 
-    let metadata_oid = repo.write_json(user_metadata)?;
-    let lifecycle_oid = repo.write_json(lifecycle)?;
+    let mut descriptive_metadata = user_metadata.clone();
+    descriptive_metadata.extensions.remove(POLICY_EXTENSION);
+    descriptive_metadata.extensions.remove(DISCOVERY_EXTENSION);
+    descriptive_metadata.extensions.remove(ANCHOR_EXTENSION);
+    descriptive_metadata
+        .extensions
+        .remove(STRUCTURAL_STATE_EXTENSION);
+    descriptive_metadata.extensions.remove(GERRIT_EXTENSION);
+    descriptive_metadata.extensions.remove(GITHUB_EXTENSION);
+    let metadata_oid =
+        write_versioned_json(repo, "git-staircase-metadata 1", &descriptive_metadata)?;
+    let lifecycle_oid = write_versioned_json(repo, "git-staircase-lifecycle 1", lifecycle)?;
 
     let mut entries = vec![
-        TreeEntry::blob(&structure_oid, "structure"),
-        TreeEntry::blob(&metadata_oid, "metadata"),
         TreeEntry::blob(&lifecycle_oid, "lifecycle"),
+        TreeEntry::blob(&metadata_oid, "metadata"),
+        TreeEntry::blob(&structure_oid, "structure"),
     ];
 
     let manifest_oid = if let Some(manifest) = archive_manifest {
-        let m_oid = repo.write_json(manifest)?;
-        entries.push(TreeEntry::blob(&m_oid, "archive-manifest"));
+        let m_oid = write_versioned_json(repo, "git-staircase-archive-manifest 1", manifest)?;
+        entries.insert(0, TreeEntry::blob(&m_oid, "archive-manifest"));
         Some(m_oid)
     } else {
         None
@@ -41,40 +60,7 @@ pub fn write_record(
     full_meta.lifecycle = Some(lifecycle.clone());
 
     if update_refs {
-        if lifecycle.state == LifecycleState::Active {
-            if !metadata.name.is_empty() {
-                let public_ref = StaircaseRefs::public(&metadata.name);
-                repo.run(&["update-ref", &public_ref, &record_oid])?;
-            }
-            let state_record_ref = StaircaseRefs::state_record(&metadata.id);
-            repo.run(&["update-ref", &state_record_ref, &record_oid])?;
-
-            let state_desc_ref = StaircaseRefs::state_descriptor(&metadata.id);
-            repo.run(&["update-ref", &state_desc_ref, &structure_oid])?;
-
-            for step in &metadata.steps {
-                let key = if !step.id.is_empty() {
-                    &step.id
-                } else {
-                    &step.name
-                };
-                let step_ref = StaircaseRefs::state_step(&metadata.id, key);
-                repo.run(&["update-ref", &step_ref, &step.cut])?;
-            }
-        } else if lifecycle.state == LifecycleState::Archived {
-            let archive_record_ref = StaircaseRefs::archive_record(&metadata.id);
-            repo.run(&["update-ref", &archive_record_ref, &record_oid])?;
-
-            for step in &metadata.steps {
-                let key = if !step.id.is_empty() {
-                    &step.id
-                } else {
-                    &step.name
-                };
-                let step_ref = StaircaseRefs::archive_step(&metadata.id, key);
-                repo.run(&["update-ref", &step_ref, &step.cut])?;
-            }
-        }
+        publish_record(repo, metadata, lifecycle, expected_record_oid, &record_oid)?;
     }
 
     Ok(StaircaseRecord {
@@ -90,191 +76,489 @@ pub fn write_record(
     })
 }
 
+fn canonical_json<T: serde::Serialize>(value: &T) -> Result<String> {
+    fn sort(value: serde_json::Value) -> serde_json::Value {
+        match value {
+            serde_json::Value::Array(values) => {
+                serde_json::Value::Array(values.into_iter().map(sort).collect())
+            }
+            serde_json::Value::Object(values) => {
+                let mut sorted = serde_json::Map::new();
+                let mut entries: Vec<_> = values.into_iter().collect();
+                entries.sort_by(|left, right| left.0.cmp(&right.0));
+                for (key, value) in entries {
+                    sorted.insert(key, sort(value));
+                }
+                serde_json::Value::Object(sorted)
+            }
+            scalar => scalar,
+        }
+    }
+
+    let value = sort(serde_json::to_value(value)?);
+    Ok(serde_json::to_string(&value)?)
+}
+
+fn write_versioned_json<T: serde::Serialize>(
+    repo: &GitRepo,
+    header: &str,
+    value: &T,
+) -> Result<String> {
+    repo.write_blob(&format!("{}\n{}\n", header, canonical_json(value)?))
+}
+
+fn step_key(step: &Step) -> &str {
+    if step.id.is_empty() {
+        &step.name
+    } else {
+        &step.id
+    }
+}
+
+fn assert_ref(repo: &GitRepo, reference: &str, expected: &str) -> Result<()> {
+    let actual = repo
+        .resolve_ref_opt(reference)?
+        .unwrap_or_else(|| "<missing>".into());
+    if actual != expected {
+        return Err(StaircaseError::ConcurrentRecordUpdate {
+            reference: reference.into(),
+            expected: expected.into(),
+            actual,
+        });
+    }
+    Ok(())
+}
+
+fn publish_record(
+    repo: &GitRepo,
+    metadata: &StaircaseMetadata,
+    lifecycle: &StaircaseLifecycle,
+    expected_record_oid: Option<&str>,
+    new_record_oid: &str,
+) -> Result<()> {
+    let mut old_record = expected_record_oid
+        .map(|oid| read_record(repo, oid))
+        .transpose()?;
+    if let Some(old) = &mut old_record {
+        if old.metadata.name.is_empty() {
+            old.metadata.name = metadata.name.clone();
+        }
+    }
+    let mut commands = Vec::new();
+
+    if let Some(expected) = expected_record_oid {
+        let old = old_record.as_ref().expect("expected record was read");
+        let old_ref = match old.lifecycle.state {
+            LifecycleState::Active => StaircaseRefs::state_record(&old.metadata.id),
+            LifecycleState::Archived => StaircaseRefs::archive_record(&old.metadata.id),
+        };
+        assert_ref(repo, &old_ref, expected)?;
+        if old.lifecycle.state == LifecycleState::Active && !old.metadata.name.is_empty() {
+            assert_ref(repo, &StaircaseRefs::public(&old.metadata.name), expected)?;
+        }
+    }
+
+    let new_record_ref = match lifecycle.state {
+        LifecycleState::Active => StaircaseRefs::state_record(&metadata.id),
+        LifecycleState::Archived => StaircaseRefs::archive_record(&metadata.id),
+    };
+
+    match old_record.as_ref() {
+        None => commands.push(format!("create {} {}", new_record_ref, new_record_oid)),
+        Some(old) if old.lifecycle.state == lifecycle.state => commands.push(format!(
+            "update {} {} {}",
+            new_record_ref, new_record_oid, old.record_oid
+        )),
+        Some(old) => {
+            let old_ref = match old.lifecycle.state {
+                LifecycleState::Active => StaircaseRefs::state_record(&old.metadata.id),
+                LifecycleState::Archived => StaircaseRefs::archive_record(&old.metadata.id),
+            };
+            commands.push(format!("delete {} {}", old_ref, old.record_oid));
+            commands.push(format!("create {} {}", new_record_ref, new_record_oid));
+        }
+    }
+
+    let old_public = old_record
+        .as_ref()
+        .filter(|record| record.lifecycle.state == LifecycleState::Active)
+        .filter(|record| !record.metadata.name.is_empty())
+        .map(|record| StaircaseRefs::public(&record.metadata.name));
+    let new_public = (lifecycle.state == LifecycleState::Active && !metadata.name.is_empty())
+        .then(|| StaircaseRefs::public(&metadata.name));
+    match (old_public.as_deref(), new_public.as_deref()) {
+        (None, Some(new_ref)) => {
+            commands.push(format!("create {} {}", new_ref, new_record_oid));
+        }
+        (Some(old_ref), None) => {
+            commands.push(format!(
+                "delete {} {}",
+                old_ref,
+                expected_record_oid.expect("old public ref has expected record")
+            ));
+        }
+        (Some(old_ref), Some(new_ref)) if old_ref == new_ref => {
+            commands.push(format!(
+                "update {} {} {}",
+                new_ref,
+                new_record_oid,
+                expected_record_oid.expect("old public ref has expected record")
+            ));
+        }
+        (Some(old_ref), Some(new_ref)) => {
+            commands.push(format!(
+                "delete {} {}",
+                old_ref,
+                expected_record_oid.expect("old public ref has expected record")
+            ));
+            commands.push(format!("create {} {}", new_ref, new_record_oid));
+        }
+        (None, None) => {}
+    }
+
+    let old_steps = old_record
+        .as_ref()
+        .map(|record| {
+            record
+                .metadata
+                .steps
+                .iter()
+                .map(|step| (step_key(step).to_string(), step.cut.clone()))
+                .collect::<std::collections::BTreeMap<_, _>>()
+        })
+        .unwrap_or_default();
+    let new_steps = metadata
+        .steps
+        .iter()
+        .map(|step| (step_key(step).to_string(), step.cut.clone()))
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let old_archived = old_record
+        .as_ref()
+        .is_some_and(|record| record.lifecycle.state == LifecycleState::Archived);
+    let new_archived = lifecycle.state == LifecycleState::Archived;
+
+    for key in old_steps.keys() {
+        let old_ref = if old_archived {
+            StaircaseRefs::archive_step(&metadata.id, key)
+        } else {
+            StaircaseRefs::state_step(&metadata.id, key)
+        };
+        if old_archived != new_archived || !new_steps.contains_key(key) {
+            if let Some(actual) = repo.resolve_ref_opt(&old_ref)? {
+                commands.push(format!("delete {} {}", old_ref, actual));
+            }
+        }
+    }
+    for (key, oid) in &new_steps {
+        let new_ref = if new_archived {
+            StaircaseRefs::archive_step(&metadata.id, key)
+        } else {
+            StaircaseRefs::state_step(&metadata.id, key)
+        };
+        if let Some(actual) = repo.resolve_ref_opt(&new_ref)? {
+            commands.push(format!("update {} {} {}", new_ref, oid, actual));
+        } else {
+            commands.push(format!("create {} {}", new_ref, oid));
+        }
+    }
+
+    let mut plan =
+        crate::core::operation::MutationPlan::new("record-publication", Some(metadata.id.clone()))
+            .expected_record(expected_record_oid.map(str::to_string));
+    for command in &commands {
+        let fields = command.split_whitespace().collect::<Vec<_>>();
+        match fields.as_slice() {
+            ["create", reference, new] => {
+                plan.update((*reference).to_string(), None, Some((*new).to_string()))
+            }
+            ["update", reference, new, old] => plan.update(
+                (*reference).to_string(),
+                Some((*old).to_string()),
+                Some((*new).to_string()),
+            ),
+            ["delete", reference, old] => {
+                plan.update((*reference).to_string(), Some((*old).to_string()), None)
+            }
+            _ => {
+                return Err(StaircaseError::Other(format!(
+                    "invalid record publication command '{}'",
+                    command
+                )));
+            }
+        }
+    }
+    plan.publish(repo, false).map(|_| ()).map_err(|error| {
+        if let Some(expected) = expected_record_oid {
+            let actual = repo
+                .resolve_ref_opt(&new_record_ref)
+                .ok()
+                .flatten()
+                .unwrap_or_else(|| "<missing>".into());
+            StaircaseError::ConcurrentRecordUpdate {
+                reference: new_record_ref,
+                expected: expected.into(),
+                actual,
+            }
+        } else {
+            error
+        }
+    })
+}
+
 pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
-    let mut target_oid = repo
+    let target_oid = repo
         .resolve_ref_opt(target)?
         .unwrap_or_else(|| target.to_string());
-
-    let mut obj_type = repo
-        .run(&["cat-file", "-t", &target_oid])
-        .unwrap_or_default()
-        .trim()
-        .to_string();
-
-    if obj_type == "commit" {
-        if let Ok(tree_oid) = repo.run(&["rev-parse", &format!("{}^{{tree}}", target_oid)]) {
-            target_oid = tree_oid.trim().to_string();
-            obj_type = "tree".to_string();
-        }
+    let obj_type = repo.run(&["cat-file", "-t", &target_oid])?;
+    if obj_type.trim() != "tree" {
+        return Err(StaircaseError::Other(format!(
+            "record {} must be a tree, found {}",
+            target_oid,
+            obj_type.trim()
+        )));
     }
 
-    if obj_type == "blob" {
-        let content = repo.run(&["cat-file", "-p", &target_oid])?;
-        let mut meta = parse_descriptor(&content)?;
-        let user_meta = meta.user_metadata.clone().unwrap_or_default();
-        let lifecycle = meta.lifecycle.clone().unwrap_or_default();
-
-        let metadata_oid = repo.write_json(&user_meta)?;
-        let lifecycle_oid = repo.write_json(&lifecycle)?;
-
-        meta.user_metadata = Some(user_meta.clone());
-        meta.lifecycle = Some(lifecycle.clone());
-
-        return Ok(StaircaseRecord {
-            record_oid: target_oid.clone(),
-            structure_oid: target_oid,
-            metadata_oid,
-            lifecycle_oid,
-            archive_manifest_oid: None,
-            metadata: meta,
-            user_metadata: user_meta,
-            lifecycle,
-            archive_manifest: None,
-        });
-    }
-
-    if obj_type == "tree" {
-        let ls_output = repo.run(&["ls-tree", &target_oid])?;
-        let mut structure_oid = None;
-        let mut metadata_oid = None;
-        let mut lifecycle_oid = None;
-        let mut manifest_oid = None;
-
-        for line in ls_output.lines() {
-            let parts: Vec<&str> = line.split_whitespace().collect();
-            if parts.len() >= 4 {
-                let oid = parts[2].to_string();
-                let name = parts[3];
-                match name {
-                    "structure" => structure_oid = Some(oid),
-                    "metadata" => metadata_oid = Some(oid),
-                    "lifecycle" => lifecycle_oid = Some(oid),
-                    "archive-manifest" => manifest_oid = Some(oid),
-                    _ => {}
-                }
-            }
-        }
-
-        let struct_oid = structure_oid.ok_or_else(|| {
-            StaircaseError::Other(format!(
-                "Record tree {} missing 'structure' entry",
-                target_oid
-            ))
+    let ls_output = repo.run(&["ls-tree", &target_oid])?;
+    let mut entries = std::collections::BTreeMap::new();
+    for line in ls_output.lines() {
+        let (metadata, name) = line.split_once('\t').ok_or_else(|| {
+            StaircaseError::Other(format!("invalid record tree entry in {}", target_oid))
         })?;
-
-        let struct_content = repo.run(&["cat-file", "-p", &struct_oid])?;
-        let mut metadata = parse_descriptor(&struct_content)?;
-
-        let user_metadata: StaircaseUserMetadata = if let Some(ref m_oid) = metadata_oid {
-            let m_content = repo.run(&["cat-file", "-p", m_oid])?;
-            serde_json::from_str(&m_content).unwrap_or_default()
-        } else {
-            StaircaseUserMetadata::default()
-        };
-
-        let lifecycle: StaircaseLifecycle = if let Some(ref l_oid) = lifecycle_oid {
-            let l_content = repo.run(&["cat-file", "-p", l_oid])?;
-            serde_json::from_str(&l_content).unwrap_or_default()
-        } else {
-            StaircaseLifecycle::default()
-        };
-
-        let archive_manifest: Option<ArchiveManifest> = if let Some(ref am_oid) = manifest_oid {
-            let am_content = repo.run(&["cat-file", "-p", am_oid])?;
-            serde_json::from_str(&am_content).ok()
-        } else {
-            None
-        };
-
-        if metadata.name.is_empty() {
-            if let Some(ref manifest) = archive_manifest {
-                metadata.name = manifest.canonical_name.clone();
-            }
+        let fields: Vec<_> = metadata.split_whitespace().collect();
+        if fields.len() != 3 || fields[0] != "100644" || fields[1] != "blob" {
+            return Err(StaircaseError::Other(format!(
+                "record entry '{}' must be a regular blob",
+                name
+            )));
         }
-
-        metadata.user_metadata = Some(user_metadata.clone());
-        metadata.lifecycle = Some(lifecycle.clone());
-
-        return Ok(StaircaseRecord {
-            record_oid: target_oid,
-            structure_oid: struct_oid,
-            metadata_oid: metadata_oid.unwrap_or_default(),
-            lifecycle_oid: lifecycle_oid.unwrap_or_default(),
-            archive_manifest_oid: manifest_oid,
-            metadata,
-            user_metadata,
-            lifecycle,
-            archive_manifest,
-        });
+        if !matches!(
+            name,
+            "structure" | "metadata" | "lifecycle" | "archive-manifest"
+        ) {
+            return Err(StaircaseError::Other(format!(
+                "record tree {} contains unknown entry '{}'",
+                target_oid, name
+            )));
+        }
+        entries.insert(name.to_string(), fields[2].to_string());
     }
 
-    Err(StaircaseError::Other(format!(
-        "Target {} is not a blob or tree (type: {})",
-        target, obj_type
-    )))
+    let structure_oid = required_entry(&entries, "structure", &target_oid)?;
+    let metadata_oid = required_entry(&entries, "metadata", &target_oid)?;
+    let lifecycle_oid = required_entry(&entries, "lifecycle", &target_oid)?;
+    let manifest_oid = entries.get("archive-manifest").cloned();
+
+    let structure = repo.run(&["cat-file", "-p", &structure_oid])?;
+    let (mut metadata, structural_extensions) = parse_structure(&structure)?;
+    let mut user_metadata: StaircaseUserMetadata =
+        read_versioned_json(repo, &metadata_oid, "git-staircase-metadata 1")?;
+    user_metadata.extensions.extend(structural_extensions);
+    let lifecycle: StaircaseLifecycle =
+        read_versioned_json(repo, &lifecycle_oid, "git-staircase-lifecycle 1")?;
+    let archive_manifest: Option<ArchiveManifest> = manifest_oid
+        .as_ref()
+        .map(|oid| read_versioned_json(repo, oid, "git-staircase-archive-manifest 1"))
+        .transpose()?;
+
+    if lifecycle.state == LifecycleState::Archived && archive_manifest.is_none() {
+        return Err(StaircaseError::Other(format!(
+            "archived record {} is missing archive-manifest",
+            target_oid
+        )));
+    }
+    if lifecycle.state == LifecycleState::Active && archive_manifest.is_some() {
+        return Err(StaircaseError::Other(format!(
+            "active record {} must not contain archive-manifest",
+            target_oid
+        )));
+    }
+    if let Some(manifest) = &archive_manifest {
+        metadata.name = manifest.canonical_name.clone();
+    }
+    metadata.user_metadata = Some(user_metadata.clone());
+    metadata.lifecycle = Some(lifecycle.clone());
+
+    Ok(StaircaseRecord {
+        record_oid: target_oid,
+        structure_oid,
+        metadata_oid,
+        lifecycle_oid,
+        archive_manifest_oid: manifest_oid,
+        metadata,
+        user_metadata,
+        lifecycle,
+        archive_manifest,
+    })
+}
+
+fn required_entry(
+    entries: &std::collections::BTreeMap<String, String>,
+    name: &str,
+    record_oid: &str,
+) -> Result<String> {
+    entries.get(name).cloned().ok_or_else(|| {
+        StaircaseError::Other(format!("record tree {} missing '{}'", record_oid, name))
+    })
+}
+
+fn read_versioned_json<T: serde::de::DeserializeOwned>(
+    repo: &GitRepo,
+    oid: &str,
+    expected_header: &str,
+) -> Result<T> {
+    let content = repo.run(&["cat-file", "-p", oid])?;
+    let (header, json) = content
+        .split_once('\n')
+        .ok_or_else(|| StaircaseError::Other(format!("versioned blob {} has no header", oid)))?;
+    if header != expected_header {
+        return Err(StaircaseError::Other(format!(
+            "blob {} has header '{}', expected '{}'",
+            oid, header, expected_header
+        )));
+    }
+    Ok(serde_json::from_str(json.trim_end_matches('\n'))?)
 }
 
 pub fn write_metadata(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
+    let mut metadata = metadata.clone();
+    for step in &mut metadata.steps {
+        if step.id.is_empty() {
+            step.id = uuid::Uuid::new_v4().to_string();
+        }
+    }
     let user_metadata = metadata.user_metadata.clone().unwrap_or_default();
     let lifecycle = metadata.lifecycle.clone().unwrap_or_default();
-    let record = write_record(repo, metadata, &user_metadata, &lifecycle, None, true)?;
+    let current_ref = match lifecycle.state {
+        LifecycleState::Active => StaircaseRefs::state_record(&metadata.id),
+        LifecycleState::Archived => StaircaseRefs::archive_record(&metadata.id),
+    };
+    let expected = repo.resolve_ref_opt(&current_ref)?;
+    let record = write_record(
+        repo,
+        &metadata,
+        &user_metadata,
+        &lifecycle,
+        None,
+        expected.as_deref(),
+        true,
+    )?;
     Ok(record.record_oid)
 }
 
 pub fn serialize_descriptor(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
-    let mut out = String::new();
-    out.push_str("git-staircase-descriptor 1\n");
+    serialize_structure(repo, metadata, &StaircaseUserMetadata::default())
+}
 
-    if let Ok(format) = repo.get_object_format() {
-        out.push_str(&format!("object-format {}\n", format));
-    }
-
-    out.push_str(&format!("lineage {}\n", metadata.id));
-    out.push_str(&format!("target-ref {}\n", metadata.target));
-
-    if let Some(ref policy) = metadata.verification_policy {
-        if let Some(ref build) = policy.build_command {
-            out.push_str(&format!("build-command {}\n", build));
+fn serialize_structure(
+    repo: &GitRepo,
+    metadata: &StaircaseMetadata,
+    user_metadata: &StaircaseUserMetadata,
+) -> Result<String> {
+    let object_format = repo.get_object_format()?;
+    let target_oid = user_metadata
+        .extensions
+        .get(ANCHOR_EXTENSION)
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .map(Ok)
+        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))?;
+    let typed_oid = |hex: String| {
+        serde_json::json!({
+            "algorithm": object_format,
+            "hex": hex,
+        })
+    };
+    let steps = metadata
+        .steps
+        .iter()
+        .map(|step| {
+            let materializing_refs = step
+                .branch
+                .as_ref()
+                .map(|branch| {
+                    vec![if branch.starts_with("refs/") {
+                        branch.clone()
+                    } else {
+                        format!("refs/heads/{}", branch)
+                    }]
+                })
+                .unwrap_or_default();
+            serde_json::json!({
+                "id": step.id,
+                "name": step.name,
+                "cut_oid": typed_oid(step.cut.clone()),
+                "materializing_refs": materializing_refs,
+                "owned_refs": materializing_refs,
+            })
+        })
+        .collect::<Vec<_>>();
+    let policies = user_metadata
+        .extensions
+        .get(POLICY_EXTENSION)
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({}));
+    let discovery_overrides = user_metadata
+        .extensions
+        .get(DISCOVERY_EXTENSION)
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!([]));
+    let structural_state = user_metadata
+        .extensions
+        .get(STRUCTURAL_STATE_EXTENSION)
+        .cloned()
+        .unwrap_or_else(|| serde_json::json!({"kind": "clean"}));
+    let symbolic_targets = metadata
+        .target
+        .starts_with("refs/")
+        .then(|| vec![metadata.target.clone()])
+        .unwrap_or_default();
+    let mut extensions = serde_json::Map::new();
+    extensions.insert(
+        "git-staircase.core".into(),
+        serde_json::json!({
+            "landing_policy": metadata.landing_policy,
+            "verification_policy": metadata.verification_policy,
+        }),
+    );
+    for key in [GERRIT_EXTENSION, GITHUB_EXTENSION] {
+        if let Some(provider_state) = user_metadata.extensions.get(key) {
+            extensions.insert(key.into(), provider_state.clone());
         }
-        if let Some(ref test) = policy.test_command {
-            out.push_str(&format!("test-command {}\n", test));
-        }
-        out.push_str(&format!(
-            "verify-each-prefix {}\n",
-            policy.verify_each_prefix
-        ));
     }
-
-    for step in &metadata.steps {
-        out.push_str("\n");
-        out.push_str(&format!("step {}\n", step.name));
-        out.push_str(&format!("step-id {}\n", step.id));
-        out.push_str(&format!("cut {}\n", step.cut));
-        if let Some(ref branch) = step.branch {
-            let full_ref = if branch.starts_with("refs/") {
-                branch.clone()
-            } else {
-                format!("refs/heads/{}", branch)
-            };
-            out.push_str(&format!("materializing-ref {}\n", full_ref));
-        }
-    }
-
-    Ok(out)
+    let value = serde_json::json!({
+        "schema": "git-staircase/structure",
+        "version": 1,
+        "kind": "linear",
+        "object_format": object_format,
+        "lineage_id": metadata.id,
+        "integration_context": {
+            "kind": "single-anchor",
+            "anchors": [typed_oid(target_oid)],
+            "symbolic_targets": symbolic_targets,
+        },
+        "steps": steps,
+        "structural_state": structural_state,
+        "layout": {
+            "kind": metadata.primary_branch_layout.as_deref().unwrap_or("none"),
+            "base": metadata.branch_layout_base,
+        },
+        "policies": policies,
+        "discovery_overrides": discovery_overrides,
+        "extensions": extensions,
+        "parent_structure_revision_oid": null,
+    });
+    Ok(format!("{}\n", canonical_json(&value)?))
 }
 
 pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetadata> {
     let name_ref = StaircaseRefs::public(id_or_name);
     let id_record_ref = StaircaseRefs::state_record(id_or_name);
-    let id_desc_ref = StaircaseRefs::state_descriptor(id_or_name);
     let archive_ref = StaircaseRefs::archive_record(id_or_name);
 
     let (ref_name, is_name) = if repo.resolve_ref_opt(&name_ref)?.is_some() {
         (name_ref, true)
     } else if repo.resolve_ref_opt(&id_record_ref)?.is_some() {
         (id_record_ref, false)
-    } else if repo.resolve_ref_opt(&id_desc_ref)?.is_some() {
-        (id_desc_ref, false)
     } else if repo.resolve_ref_opt(&archive_ref)?.is_some() {
         (archive_ref, false)
     } else {
@@ -307,113 +591,180 @@ pub fn read_metadata(repo: &GitRepo, id_or_name: &str) -> Result<StaircaseMetada
 }
 
 pub fn parse_descriptor(content: &str) -> Result<StaircaseMetadata> {
-    if content.starts_with("git-staircase-descriptor 1\n") {
-        return parse_canonical_descriptor(content);
-    }
-
-    if let Ok(meta) = serde_json::from_str::<StaircaseMetadata>(content) {
-        return Ok(meta);
-    }
-
-    parse_legacy_descriptor(content)
+    parse_structure(content).map(|(metadata, _)| metadata)
 }
 
-fn parse_canonical_descriptor(content: &str) -> Result<StaircaseMetadata> {
-    let mut id = String::new();
-    let mut target = String::new();
+fn parse_structure(
+    content: &str,
+) -> Result<(StaircaseMetadata, BTreeMap<String, serde_json::Value>)> {
+    let value: serde_json::Value = serde_json::from_str(content.trim_end())?;
+    if value.get("schema").and_then(|value| value.as_str()) != Some("git-staircase/structure")
+        || value.get("version").and_then(|value| value.as_u64()) != Some(1)
+    {
+        return Err(StaircaseError::Other(
+            "unsupported structure schema; expected git-staircase/structure version 1".into(),
+        ));
+    }
+    if value.get("kind").and_then(|value| value.as_str()) != Some("linear") {
+        return Err(StaircaseError::UnsupportedTopology {
+            operation: "read-structure".into(),
+            reason: "only linear generation-1 structures are supported".into(),
+        });
+    }
+    let object_format = required_json_str(&value, "object_format")?;
+    let id = required_json_str(&value, "lineage_id")?.to_string();
+    let context = value
+        .get("integration_context")
+        .ok_or_else(|| StaircaseError::Other("structure missing integration_context".into()))?;
+    let target = context
+        .get("symbolic_targets")
+        .and_then(|value| value.as_array())
+        .and_then(|values| values.first())
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .or_else(|| {
+            context
+                .get("anchors")
+                .and_then(|value| value.as_array())
+                .and_then(|values| values.first())
+                .and_then(|value| value.get("hex"))
+                .and_then(|value| value.as_str())
+                .map(str::to_string)
+        })
+        .ok_or_else(|| StaircaseError::Other("structure has no integration anchor".into()))?;
+    let integration_anchor = context
+        .get("anchors")
+        .and_then(|value| value.as_array())
+        .and_then(|values| values.first())
+        .and_then(|value| value.get("hex"))
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| StaircaseError::Other("structure has no integration anchor".into()))?
+        .to_string();
+    let step_values = value
+        .get("steps")
+        .and_then(|value| value.as_array())
+        .ok_or_else(|| StaircaseError::Other("structure steps must be an array".into()))?;
     let mut steps = Vec::new();
-    let mut current_step: Option<Step> = None;
-    let mut verification_policy = None;
-
-    for line in content.lines() {
-        let line = line.trim();
-        if line.is_empty() || line == "git-staircase-descriptor 1" {
-            continue;
+    for step in step_values {
+        let id = required_json_str(step, "id")?.to_string();
+        let name = required_json_str(step, "name")?.to_string();
+        let cut_oid = step
+            .get("cut_oid")
+            .ok_or_else(|| StaircaseError::Other("step missing cut_oid".into()))?;
+        if required_json_str(cut_oid, "algorithm")? != object_format {
+            return Err(StaircaseError::Other(
+                "step cut object format does not match structure".into(),
+            ));
         }
-
-        let parts: Vec<&str> = line.splitn(2, ' ').collect();
-        if parts.len() < 2 {
-            continue;
+        let cut = required_json_str(cut_oid, "hex")?.to_string();
+        let branch = step
+            .get("materializing_refs")
+            .and_then(|value| value.as_array())
+            .and_then(|values| values.first())
+            .and_then(|value| value.as_str())
+            .map(|reference| {
+                reference
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(reference)
+                    .to_string()
+            });
+        if id.is_empty() || name.is_empty() || cut.is_empty() {
+            return Err(StaircaseError::Other(
+                "structure contains an empty or incomplete step".into(),
+            ));
         }
-
-        match parts[0] {
-            "step-id" => {
-                if let Some(ref mut step) = current_step {
-                    step.id = parts[1].to_string();
-                }
+        steps.push(Step {
+            id,
+            name,
+            cut,
+            branch,
+        });
+    }
+    if steps.is_empty() {
+        return Err(StaircaseError::Other(
+            "structure must contain at least one step".into(),
+        ));
+    }
+    let layout = value.get("layout");
+    let layout_kind = layout
+        .and_then(|layout| layout.get("kind"))
+        .and_then(|value| value.as_str())
+        .unwrap_or("none");
+    let primary_branch_layout = (layout_kind != "none").then(|| layout_kind.to_string());
+    let branch_layout_base = layout
+        .and_then(|layout| layout.get("base"))
+        .and_then(|value| value.as_str())
+        .map(str::to_string);
+    let core_extensions = value
+        .get("extensions")
+        .and_then(|value| value.get("git-staircase.core"));
+    let landing_policy = core_extensions
+        .and_then(|value| value.get("landing_policy"))
+        .cloned()
+        .filter(|value| !value.is_null())
+        .map(serde_json::from_value)
+        .transpose()?;
+    let verification_policy = core_extensions
+        .and_then(|value| value.get("verification_policy"))
+        .cloned()
+        .filter(|value| !value.is_null())
+        .map(serde_json::from_value)
+        .transpose()?;
+    let mut structural_extensions = BTreeMap::new();
+    structural_extensions.insert(
+        POLICY_EXTENSION.into(),
+        value
+            .get("policies")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({})),
+    );
+    structural_extensions.insert(
+        DISCOVERY_EXTENSION.into(),
+        value
+            .get("discovery_overrides")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!([])),
+    );
+    structural_extensions.insert(
+        ANCHOR_EXTENSION.into(),
+        serde_json::Value::String(integration_anchor),
+    );
+    structural_extensions.insert(
+        STRUCTURAL_STATE_EXTENSION.into(),
+        value
+            .get("structural_state")
+            .cloned()
+            .unwrap_or_else(|| serde_json::json!({"kind": "clean"})),
+    );
+    if let Some(extensions) = value.get("extensions").and_then(|value| value.as_object()) {
+        for key in [GERRIT_EXTENSION, GITHUB_EXTENSION] {
+            if let Some(provider_state) = extensions.get(key) {
+                structural_extensions.insert(key.into(), provider_state.clone());
             }
-            "lineage" => id = parts[1].to_string(),
-            "target-ref" => target = parts[1].to_string(),
-            "build-command" => {
-                let policy = verification_policy.get_or_insert(VerificationPolicy {
-                    build_command: None,
-                    test_command: None,
-                    verify_each_prefix: false,
-                });
-                policy.build_command = Some(parts[1].to_string());
-            }
-            "test-command" => {
-                let policy = verification_policy.get_or_insert(VerificationPolicy {
-                    build_command: None,
-                    test_command: None,
-                    verify_each_prefix: false,
-                });
-                policy.test_command = Some(parts[1].to_string());
-            }
-            "verify-each-prefix" => {
-                let policy = verification_policy.get_or_insert(VerificationPolicy {
-                    build_command: None,
-                    test_command: None,
-                    verify_each_prefix: false,
-                });
-                policy.verify_each_prefix = parts[1] == "true";
-            }
-            "step" => {
-                if let Some(step) = current_step.take() {
-                    steps.push(step);
-                }
-                current_step = Some(Step {
-                    id: String::new(),
-                    name: parts[1].to_string(),
-                    cut: String::new(),
-                    branch: None,
-                });
-            }
-            "cut" => {
-                if let Some(ref mut step) = current_step {
-                    step.cut = parts[1].to_string();
-                }
-            }
-            "materializing-ref" => {
-                if let Some(ref mut step) = current_step {
-                    let b = parts[1].strip_prefix("refs/heads/").unwrap_or(parts[1]);
-                    step.branch = Some(b.to_string());
-                }
-            }
-            _ => {}
         }
     }
-
-    if let Some(step) = current_step {
-        steps.push(step);
-    }
-
-    Ok(StaircaseMetadata {
-        landing_policy: None,
-        id,
-        name: String::new(),
-        target,
-        steps,
-        verification_policy,
-        primary_branch_layout: None,
-        branch_layout_base: None,
-        user_metadata: None,
-        lifecycle: None,
-    })
+    Ok((
+        StaircaseMetadata {
+            landing_policy,
+            id,
+            name: String::new(),
+            target,
+            steps,
+            verification_policy,
+            primary_branch_layout,
+            branch_layout_base,
+            user_metadata: None,
+            lifecycle: None,
+        },
+        structural_extensions,
+    ))
 }
 
-fn parse_legacy_descriptor(content: &str) -> Result<StaircaseMetadata> {
-    parse_canonical_descriptor(content)
+fn required_json_str<'a>(value: &'a serde_json::Value, key: &str) -> Result<&'a str> {
+    value
+        .get(key)
+        .and_then(|value| value.as_str())
+        .ok_or_else(|| StaircaseError::Other(format!("structure field '{}' must be a string", key)))
 }
 
 pub fn record_verification(
@@ -462,62 +813,53 @@ pub fn list_staircases_filtered(
     let mut seen_ids = std::collections::HashSet::new();
 
     if include_active {
-        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", PUBLIC_PREFIX]) {
-            for line in stdout.lines() {
-                let refname = line.trim();
-                if refname.starts_with(PUBLIC_PREFIX) {
-                    let name = refname.strip_prefix(PUBLIC_PREFIX).unwrap();
-                    if !name.contains('/') {
-                        if let Ok(meta) = read_metadata(repo, name) {
-                            seen_ids.insert(meta.id.clone());
-                            staircases.push(meta);
-                        }
-                    }
-                }
+        let stdout = repo.run(&["for-each-ref", "--format=%(refname)", PUBLIC_PREFIX])?;
+        for line in stdout.lines() {
+            let refname = line.trim();
+            let name = refname.strip_prefix(PUBLIC_PREFIX).unwrap_or_default();
+            if name.starts_with("by-revision/") || name.ends_with("/verification") {
+                continue;
             }
+            let mut record = read_record(repo, refname)?;
+            record.metadata.name = name.to_string();
+            seen_ids.insert(record.metadata.id.clone());
+            staircases.push(record.metadata);
         }
 
-        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", STATE_PREFIX]) {
-            for line in stdout.lines() {
-                let refname = line.trim();
-                if refname.ends_with("/record") || refname.ends_with("/descriptor") {
-                    let parts: Vec<&str> = refname
-                        .strip_prefix(STATE_PREFIX)
-                        .unwrap()
-                        .split('/')
-                        .collect();
-                    if parts.len() == 2 {
-                        let id = parts[0];
-                        if !seen_ids.contains(id) {
-                            if let Ok(meta) = read_metadata(repo, id) {
-                                seen_ids.insert(meta.id.clone());
-                                staircases.push(meta);
-                            }
-                        }
-                    }
+        let stdout = repo.run(&["for-each-ref", "--format=%(refname)", STATE_PREFIX])?;
+        for line in stdout.lines() {
+            let refname = line.trim();
+            if refname.ends_with("/record") {
+                let parts: Vec<&str> = refname
+                    .strip_prefix(STATE_PREFIX)
+                    .unwrap()
+                    .split('/')
+                    .collect();
+                if parts.len() == 2 && !seen_ids.contains(parts[0]) {
+                    let meta = read_metadata(repo, parts[0])?;
+                    seen_ids.insert(meta.id.clone());
+                    staircases.push(meta);
                 }
             }
         }
     }
 
     if include_archived {
-        if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", ARCHIVE_PREFIX]) {
-            for line in stdout.lines() {
-                let refname = line.trim();
-                if refname.ends_with("/record") {
-                    let parts: Vec<&str> = refname
-                        .strip_prefix(ARCHIVE_PREFIX)
-                        .unwrap()
-                        .split('/')
-                        .collect();
-                    if parts.len() == 2 && parts[1] == "record" {
-                        let id = parts[0];
-                        if !seen_ids.contains(id) {
-                            if let Ok(record) = read_record(repo, refname) {
-                                seen_ids.insert(record.metadata.id.clone());
-                                staircases.push(record.metadata);
-                            }
-                        }
+        let stdout = repo.run(&["for-each-ref", "--format=%(refname)", ARCHIVE_PREFIX])?;
+        for line in stdout.lines() {
+            let refname = line.trim();
+            if refname.ends_with("/record") {
+                let parts: Vec<&str> = refname
+                    .strip_prefix(ARCHIVE_PREFIX)
+                    .unwrap()
+                    .split('/')
+                    .collect();
+                if parts.len() == 2 && parts[1] == "record" {
+                    let id = parts[0];
+                    if !seen_ids.contains(id) {
+                        let record = read_record(repo, refname)?;
+                        seen_ids.insert(record.metadata.id.clone());
+                        staircases.push(record.metadata);
                     }
                 }
             }
@@ -528,23 +870,23 @@ pub fn list_staircases_filtered(
 }
 
 pub fn delete_staircase_refs(repo: &GitRepo, id: &str, name: &str) -> Result<()> {
-    let state_prefix = format!("{}{}/", STATE_PREFIX, id);
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &state_prefix]) {
+    let mut plan = crate::core::operation::MutationPlan::new("delete", Some(id.into()));
+    for prefix in [
+        format!("{}{}/", STATE_PREFIX, id),
+        format!("{}{}/", ARCHIVE_PREFIX, id),
+    ] {
+        let stdout = repo.run(&["for-each-ref", "--format=%(refname) %(objectname)", &prefix])?;
         for line in stdout.lines() {
-            let refname = line.trim();
-            repo.run(&["update-ref", "-d", refname])?;
-        }
-    }
-    let archive_prefix = format!("{}{}/", ARCHIVE_PREFIX, id);
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &archive_prefix]) {
-        for line in stdout.lines() {
-            let refname = line.trim();
-            repo.run(&["update-ref", "-d", refname])?;
+            if let Some((reference, oid)) = line.split_once(' ') {
+                plan.update(reference, Some(oid.into()), None);
+            }
         }
     }
     let ref_name = StaircaseRefs::public(name);
-    repo.run(&["update-ref", "-d", &ref_name])?;
-    Ok(())
+    if let Some(oid) = repo.resolve_ref_opt(&ref_name)? {
+        plan.update(ref_name, Some(oid), None);
+    }
+    plan.publish(repo, false).map(|_| ())
 }
 
 fn commit_json_data<T: serde::Serialize>(

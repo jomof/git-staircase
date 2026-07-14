@@ -31,7 +31,7 @@ fn test_implicit_sequential_discovery() {
 }
 
 #[test]
-fn test_split_renumbers_implicit() {
+fn test_split_renumbers_and_adopts_implicit() {
     let ctx = TestContext::new();
 
     ctx.run_git(&["checkout", "-b", "feat-1"]);
@@ -62,7 +62,7 @@ fn test_split_renumbers_implicit() {
         .unwrap()
         .unwrap()
         .staircase;
-    assert!(matches!(rs_after, core::ResolvedStaircase::Implicit(_)));
+    assert!(matches!(rs_after, core::ResolvedStaircase::Managed(_)));
 
     let meta = rs_after.metadata();
     assert_eq!(meta.steps.len(), 4);

@@ -1,5 +1,5 @@
 use crate::core::persistence;
-use crate::core::refs::{ARCHIVE_PREFIX, StaircaseRefs};
+use crate::core::refs::StaircaseRefs;
 use crate::core::resolved::ResolvedSelector;
 use crate::core::utils::current_timestamp;
 use crate::error::{Result, StaircaseError};
@@ -37,11 +37,16 @@ pub fn unarchive_staircase(
 ) -> Result<UnarchiveResult> {
     let meta = selector.staircase.metadata();
     let archive_record_ref = StaircaseRefs::archive_record(&meta.id);
-    let active_record_ref = StaircaseRefs::state_record(&meta.id);
-
-    let record = persistence::read_record(repo, &archive_record_ref)
-        .or_else(|_| persistence::read_record(repo, &active_record_ref))
-        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))?;
+    let current_ref = if meta
+        .lifecycle
+        .as_ref()
+        .is_some_and(|lifecycle| lifecycle.state == LifecycleState::Active)
+    {
+        StaircaseRefs::state_record(&meta.id)
+    } else {
+        archive_record_ref
+    };
+    let record = persistence::read_record(repo, &current_ref)?;
 
     if record.lifecycle.state == LifecycleState::Active {
         return Ok(UnarchiveResult {
@@ -162,35 +167,75 @@ pub fn unarchive_staircase(
         }
     }
 
-    let _active_record = persistence::write_record(
+    let active_record = persistence::write_record(
         repo,
         &updated_metadata,
         &record.user_metadata,
         &updated_lifecycle,
         None,
-        true,
+        Some(&record.record_oid),
+        false,
     )?;
-
-    if options.branches_mode != UnarchiveBranchesMode::None {
-        for (b_name, cut_oid) in &restored_branches {
-            let full_ref = format!("refs/heads/{}", b_name);
-            repo.run(&["update-ref", &full_ref, cut_oid])?;
+    let mut plan = crate::core::operation::MutationPlan::new("unarchive", Some(meta.id.clone()))
+        .expected_record(Some(record.record_oid.clone()));
+    plan.update(
+        StaircaseRefs::archive_record(&meta.id),
+        Some(record.record_oid.clone()),
+        None,
+    );
+    plan.update(
+        StaircaseRefs::state_record(&meta.id),
+        None,
+        Some(active_record.record_oid.clone()),
+    );
+    plan.update(
+        StaircaseRefs::public(&target_name),
+        None,
+        Some(active_record.record_oid.clone()),
+    );
+    for step in &updated_metadata.steps {
+        let key = if step.id.is_empty() {
+            &step.name
+        } else {
+            &step.id
+        };
+        plan.update(
+            StaircaseRefs::archive_step(&meta.id, key),
+            Some(step.cut.clone()),
+            None,
+        );
+        plan.update(
+            StaircaseRefs::state_step(&meta.id, key),
+            None,
+            Some(step.cut.clone()),
+        );
+    }
+    if let Some(manifest) = &record.archive_manifest {
+        for owned in &manifest.owned_refs {
+            if repo.resolve_ref_opt(&owned.archive_refname)?.is_some() {
+                plan.update(
+                    owned.archive_refname.clone(),
+                    Some(owned.original_oid.clone()),
+                    None,
+                );
+            }
         }
     }
+    for (b_name, cut_oid) in &restored_branches {
+        let full_ref = format!("refs/heads/{}", b_name);
+        plan.update(
+            full_ref.clone(),
+            repo.resolve_ref_opt(&full_ref)?,
+            Some(cut_oid.clone()),
+        );
+    }
+    plan.publish(repo, false)?;
 
     if let Some(ref manifest) = record.archive_manifest {
         for bc in &manifest.branch_configs {
             for entry in &bc.entries {
                 let _ = repo.run(&["config", &entry.key, &entry.value]);
             }
-        }
-    }
-
-    let archive_prefix = format!("{}{}/", ARCHIVE_PREFIX, meta.id);
-    if let Ok(stdout) = repo.run(&["for-each-ref", "--format=%(refname)", &archive_prefix]) {
-        for line in stdout.lines() {
-            let r = line.trim();
-            let _ = repo.run(&["update-ref", "-d", r]);
         }
     }
 

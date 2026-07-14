@@ -13,28 +13,53 @@ pub fn get_user_metadata(
     selector: &ResolvedSelector,
 ) -> Result<StaircaseUserMetadata> {
     let meta = selector.staircase.metadata();
-    let record_ref = StaircaseRefs::state_record(&meta.id);
-    let archive_ref = StaircaseRefs::archive_record(&meta.id);
-
-    let record = persistence::read_record(repo, &record_ref)
-        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))
-        .or_else(|_| persistence::read_record(repo, &archive_ref))?;
+    let record_ref = if meta
+        .lifecycle
+        .as_ref()
+        .is_some_and(|lifecycle| lifecycle.state == crate::model::LifecycleState::Archived)
+    {
+        StaircaseRefs::archive_record(&meta.id)
+    } else {
+        StaircaseRefs::state_record(&meta.id)
+    };
+    let record = persistence::read_record(repo, &record_ref)?;
 
     Ok(record.user_metadata)
+}
+
+pub fn get_user_metadata_snapshot(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+) -> Result<(StaircaseUserMetadata, String)> {
+    let record = read_selected_record(repo, selector)?;
+    Ok((record.user_metadata, record.record_oid))
 }
 
 pub fn update_user_metadata(
     repo: &GitRepo,
     selector: &ResolvedSelector,
+    new_user_meta: StaircaseUserMetadata,
+) -> Result<StaircaseRecord> {
+    let record = read_selected_record(repo, selector)?;
+    update_user_metadata_expected(repo, selector, new_user_meta, &record.record_oid)
+}
+
+pub fn update_user_metadata_expected(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
     mut new_user_meta: StaircaseUserMetadata,
+    expected_record_oid: &str,
 ) -> Result<StaircaseRecord> {
     let meta = selector.staircase.metadata();
-    let record_ref = StaircaseRefs::state_record(&meta.id);
-    let archive_ref = StaircaseRefs::archive_record(&meta.id);
-
-    let record = persistence::read_record(repo, &record_ref)
-        .or_else(|_| persistence::read_record(repo, &StaircaseRefs::public(&meta.name)))
-        .or_else(|_| persistence::read_record(repo, &archive_ref))?;
+    let mut record = persistence::read_record(repo, expected_record_oid)?;
+    if record.metadata.id != meta.id {
+        return Err(crate::StaircaseError::ConcurrentRecordUpdate {
+            reference: StaircaseRefs::state_record(&meta.id),
+            expected: expected_record_oid.into(),
+            actual: record.record_oid,
+        });
+    }
+    record.metadata.name = meta.name.clone();
 
     new_user_meta.labels.sort();
     new_user_meta.labels.dedup();
@@ -46,10 +71,25 @@ pub fn update_user_metadata(
         &new_user_meta,
         &record.lifecycle,
         record.archive_manifest.as_ref(),
+        Some(expected_record_oid),
         true,
     )?;
 
     Ok(updated_record)
+}
+
+fn read_selected_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
+    let meta = selector.staircase.metadata();
+    let record_ref = if meta
+        .lifecycle
+        .as_ref()
+        .is_some_and(|lifecycle| lifecycle.state == crate::model::LifecycleState::Archived)
+    {
+        StaircaseRefs::archive_record(&meta.id)
+    } else {
+        StaircaseRefs::state_record(&meta.id)
+    };
+    persistence::read_record(repo, &record_ref)
 }
 
 pub fn set_title(
@@ -125,6 +165,39 @@ pub fn get_step_metadata(
         .get(&key)
         .cloned()
         .unwrap_or_default())
+}
+
+pub fn get_step_metadata_snapshot(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    step_key: &str,
+) -> Result<(StepMetadata, String)> {
+    let (user_meta, record_oid) = get_user_metadata_snapshot(repo, selector)?;
+    let key = resolve_step_key(selector.staircase.metadata(), step_key)?;
+    Ok((
+        user_meta
+            .step_metadata
+            .get(&key)
+            .cloned()
+            .unwrap_or_default(),
+        record_oid,
+    ))
+}
+
+pub fn update_step_metadata_expected(
+    repo: &GitRepo,
+    selector: &ResolvedSelector,
+    step_key: &str,
+    mut step_meta: StepMetadata,
+    expected_record_oid: &str,
+) -> Result<StaircaseRecord> {
+    let record = persistence::read_record(repo, expected_record_oid)?;
+    let mut user_meta = record.user_metadata;
+    let key = resolve_step_key(selector.staircase.metadata(), step_key)?;
+    step_meta.labels.sort();
+    step_meta.labels.dedup();
+    user_meta.step_metadata.insert(key, step_meta);
+    update_user_metadata_expected(repo, selector, user_meta, expected_record_oid)
 }
 
 pub fn update_step_metadata(

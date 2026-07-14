@@ -102,22 +102,25 @@ pub fn get_status_metadata_ext(
         }
     }
 
-    // Detect ambiguous: if this managed staircase name is shared by an implicit one
-    if let Some(discoveries) = known_discoveries {
-        for d in discoveries {
-            if let Discovery::Linear(m) = d {
-                if m.name == metadata.name && m.id != metadata.id {
-                    is_ambiguous = true;
+    // A canonical managed name owns its implicit materialization evidence. Only
+    // an implicit selection can be ambiguous with another implicit shape.
+    if is_implicit {
+        if let Some(discoveries) = known_discoveries {
+            for d in discoveries {
+                if let Discovery::Linear(m) = d {
+                    if m.name == metadata.name && m.id != metadata.id {
+                        is_ambiguous = true;
+                    }
                 }
             }
-        }
-    } else if let Ok(discoveries) =
-        super::discovery::discover(repo, Some(&metadata.target), None, false)
-    {
-        for d in discoveries {
-            if let Discovery::Linear(m) = d {
-                if m.name == metadata.name && m.id != metadata.id {
-                    is_ambiguous = true;
+        } else if let Ok(discoveries) =
+            super::discovery::discover(repo, Some(&metadata.target), None, false)
+        {
+            for d in discoveries {
+                if let Discovery::Linear(m) = d {
+                    if m.name == metadata.name && m.id != metadata.id {
+                        is_ambiguous = true;
+                    }
                 }
             }
         }
@@ -146,6 +149,20 @@ pub fn get_status_metadata_ext(
             .filter(filter_draft),
     };
 
+    let active_operation =
+        super::operation::active_operation(repo)
+            .ok()
+            .flatten()
+            .map(|operation| crate::model::ActiveOperationStatus {
+                operation_id: operation.operation_id,
+                kind: operation.kind,
+                phase: format!("{:?}", operation.phase).to_lowercase(),
+            });
+    let external_git_operation = super::operation::external_git_operation(repo)
+        .ok()
+        .flatten()
+        .map(|(operation, owner)| crate::model::ExternalGitOperationStatus { operation, owner });
+
     Ok(StaircaseStatus {
         metadata,
         steps,
@@ -155,5 +172,7 @@ pub fn get_status_metadata_ext(
         is_ambiguous,
         verification_results,
         worktree_draft,
+        active_operation,
+        external_git_operation,
     })
 }

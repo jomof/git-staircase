@@ -17,12 +17,16 @@ pub fn get_core_git_descriptor() -> ProviderDescriptor {
             Capability::Workspace,
             Capability::ProjectMapping,
             Capability::IntegrationContext,
+            Capability::WorkspaceHints,
+            Capability::RepositoryRouting,
             Capability::Transport,
         ],
         probe: ProbeDescriptor {
             passive: true,
             network: false,
+            authenticates: false,
             mutates_workspace: false,
+            executes_repository_hooks: false,
         },
     }
 }
@@ -200,13 +204,19 @@ pub fn expand_profile(profile: &str) -> HashMap<Capability, String> {
             bindings.insert(Capability::Workspace, "repo".to_string());
             bindings.insert(Capability::ProjectMapping, "repo".to_string());
             bindings.insert(Capability::IntegrationContext, "repo".to_string());
+            bindings.insert(Capability::WorkspaceHints, "repo".to_string());
             bindings.insert(Capability::Review, "gerrit".to_string());
+            bindings.insert(Capability::ReviewIdentity, "gerrit".to_string());
             bindings.insert(Capability::Verification, "gerrit".to_string());
+            bindings.insert(Capability::ReviewTransport, "gerrit".to_string());
+            bindings.insert(Capability::Landing, "gerrit".to_string());
         }
         "single-git" => {
             bindings.insert(Capability::Workspace, "core.git".to_string());
             bindings.insert(Capability::ProjectMapping, "core.git".to_string());
             bindings.insert(Capability::IntegrationContext, "core.git".to_string());
+            bindings.insert(Capability::WorkspaceHints, "core.git".to_string());
+            bindings.insert(Capability::RepositoryRouting, "core.git".to_string());
             bindings.insert(Capability::Transport, "git".to_string());
         }
         _ => {}

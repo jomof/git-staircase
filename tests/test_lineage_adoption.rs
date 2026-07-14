@@ -65,7 +65,7 @@ fn test_lineage_id_adoption() {
     run_git(repo_path, &["commit", "-m", "main updated"]);
 
     // Note: using the nominal name "feature" ensures we find the managed staircase
-    let (success, _, stderr) = run_staircase(repo_path, &["rebase", "feature", "--to", "main"]);
+    let (success, _, stderr) = run_staircase(repo_path, &["rebase", "feature", "--onto", "main"]);
     assert!(success, "rebase failed: {}", stderr);
 
     // ASSERT: Verify that id --kind=lineage returns the same UUID, even though content hash changed

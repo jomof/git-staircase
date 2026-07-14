@@ -40,7 +40,8 @@ fn test_duplicate_step_names_leak() {
     let metadata = StaircaseMetadata {
         id: "test-id".to_string(),
         name: "test-staircase".to_string(),
-        target: "refs/heads/main".to_string(),
+        // Generation-1 structures require a resolvable integration anchor.
+        target: c1.clone(),
         steps: vec![
             Step {
                 id: "s1".to_string(),

@@ -55,60 +55,25 @@ impl ResolvedStaircase {
         step: Step,
         no_ref: bool,
     ) -> Result<ResolvedStaircase> {
-        let mut metadata = self.metadata().clone();
+        let managed = ensure_managed(repo, self)?;
+        let mut metadata = managed.metadata().clone();
         if no_ref {
             metadata.primary_branch_layout = None;
             metadata.branch_layout_base = None;
         }
         metadata.steps.insert(index, step.clone());
 
-        let mut metadata = metadata;
-        let commands = plan_renumbering(repo, self.metadata(), &mut metadata)?;
-        repo.update_refs_transaction(&commands)?;
-
-        if self.is_managed() {
-            persistence::write_metadata(repo, &metadata)?;
-            repo.update_step_ref(&metadata.id, &step.id, &step.cut)?;
-            Ok(ResolvedStaircase::Managed(metadata))
-        } else {
-            let has_branch = metadata.steps[index].branch.is_some();
-            if has_branch {
-                if commands.is_empty() {
-                    if let Some(ref branch) = step.branch {
-                        repo.update_branch(branch, &step.cut)?;
-                    }
-                }
-                Ok(ResolvedStaircase::Implicit(metadata))
-            } else {
-                let metadata = adopt(repo, &metadata)?;
-                Ok(ResolvedStaircase::Managed(metadata))
-            }
-        }
+        validate_renumbering(repo, managed.metadata(), &mut metadata)?;
+        publish_managed(repo, &managed, metadata)
     }
 
     /// Remove a step at the given index and persist the change.
     pub fn remove_step(&self, repo: &GitRepo, index: usize) -> Result<ResolvedStaircase> {
-        let mut metadata = self.metadata().clone();
-        let removed = metadata.steps.remove(index);
-
-        let mut metadata = metadata;
-        let commands = plan_renumbering(repo, self.metadata(), &mut metadata)?;
-        repo.update_refs_transaction(&commands)?;
-
-        if self.is_managed() {
-            persistence::write_metadata(repo, &metadata)?;
-            repo.delete_step_ref(&metadata.id, &removed.id)?;
-            Ok(ResolvedStaircase::Managed(metadata))
-        } else {
-            // If all remaining steps have branches, it can stay implicit.
-            // But if it becomes stale, it must be managed.
-            if metadata.steps.iter().all(|s| s.branch.is_some()) && is_clean(repo, &metadata)? {
-                Ok(ResolvedStaircase::Implicit(metadata))
-            } else {
-                let metadata = adopt(repo, &metadata)?;
-                Ok(ResolvedStaircase::Managed(metadata))
-            }
-        }
+        let managed = ensure_managed(repo, self)?;
+        let mut metadata = managed.metadata().clone();
+        metadata.steps.remove(index);
+        validate_renumbering(repo, managed.metadata(), &mut metadata)?;
+        publish_managed(repo, &managed, metadata)
     }
 
     /// Update a step's OID and persist.
@@ -118,26 +83,10 @@ impl ResolvedStaircase {
         index: usize,
         new_oid: String,
     ) -> Result<ResolvedStaircase> {
-        let mut metadata = self.metadata().clone();
+        let managed = ensure_managed(repo, self)?;
+        let mut metadata = managed.metadata().clone();
         metadata.steps[index].cut = new_oid.clone();
-
-        if self.is_managed() {
-            repo.update_step_ref(&metadata.id, &metadata.steps[index].id, &new_oid)?;
-            persistence::write_metadata(repo, &metadata)?;
-            Ok(ResolvedStaircase::Managed(metadata))
-        } else {
-            if let Some(ref branch) = metadata.steps[index].branch {
-                repo.update_branch(branch, &new_oid)?;
-                // Check if the entire staircase is still clean.
-                // If we are restacking, it might be transiently stale.
-                // But update_step_oid is usually called by restack which then calls commit_metadata.
-                // To avoid premature adoption during restack, we allow it to stay implicit if it has a branch.
-                Ok(ResolvedStaircase::Implicit(metadata))
-            } else {
-                let metadata = adopt(repo, &metadata)?;
-                Ok(ResolvedStaircase::Managed(metadata))
-            }
-        }
+        publish_managed(repo, &managed, metadata)
     }
 
     /// Update the entire metadata and persist it.
@@ -147,27 +96,36 @@ impl ResolvedStaircase {
         repo: &GitRepo,
         metadata: StaircaseMetadata,
     ) -> Result<ResolvedStaircase> {
+        let managed = ensure_managed(repo, self)?;
         let mut metadata = metadata;
-        let commands = plan_renumbering(repo, self.metadata(), &mut metadata)?;
-        repo.update_refs_transaction(&commands)?;
-
-        if self.is_managed() {
-            persistence::write_metadata(repo, &metadata)?;
-            for step in &metadata.steps {
-                repo.update_step_ref(&metadata.id, &step.id, &step.cut)?;
-            }
-            Ok(ResolvedStaircase::Managed(metadata))
-        } else {
-            // An implicit staircase can stay implicit if it remains discoverable (all steps have branches)
-            // and it is clean. Stale staircases must be managed.
-            if metadata.steps.iter().all(|s| s.branch.is_some()) && is_clean(repo, &metadata)? {
-                Ok(ResolvedStaircase::Implicit(metadata))
-            } else {
-                let metadata = adopt(repo, &metadata)?;
-                Ok(ResolvedStaircase::Managed(metadata))
-            }
-        }
+        metadata.id = managed.metadata().id.clone();
+        validate_renumbering(repo, managed.metadata(), &mut metadata)?;
+        publish_managed(repo, &managed, metadata)
     }
+}
+
+fn ensure_managed(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<ResolvedStaircase> {
+    if staircase.is_managed() {
+        Ok(staircase.clone())
+    } else {
+        Ok(ResolvedStaircase::Managed(adopt(
+            repo,
+            staircase.metadata(),
+        )?))
+    }
+}
+
+fn publish_managed(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    metadata: StaircaseMetadata,
+) -> Result<ResolvedStaircase> {
+    let selector = ResolvedSelector {
+        staircase: staircase.clone(),
+        step_index: None,
+    };
+    super::local::publish_metadata(repo, &selector, metadata.clone(), "structure", false)?;
+    Ok(ResolvedStaircase::Managed(metadata))
 }
 
 pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
@@ -238,14 +196,11 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     }
 
     persistence::write_metadata(repo, &staircase)?;
-    for step in &staircase.steps {
-        repo.update_step_ref(&staircase.id, &step.id, &step.cut)?;
-    }
     Ok(staircase)
 }
 
 fn plan_renumbering(
-    _repo: &GitRepo,
+    repo: &GitRepo,
     old_metadata: &StaircaseMetadata,
     new_metadata: &mut StaircaseMetadata,
 ) -> Result<Vec<String>> {
@@ -257,105 +212,119 @@ fn plan_renumbering(
     };
 
     let n = new_metadata.steps.len();
-    let mut new_refs = std::collections::HashSet::new();
     let mut expected_branches = Vec::new();
     for i in 0..n {
         let name = sequential_branch_name(i, n, base);
         expected_branches.push(name.clone());
-        new_refs.insert(format!("refs/heads/{}", name));
     }
-
+    let new_cuts_by_step = new_metadata
+        .steps
+        .iter()
+        .map(|step| {
+            (
+                if step.id.is_empty() {
+                    step.name.as_str()
+                } else {
+                    step.id.as_str()
+                },
+                step.cut.as_str(),
+            )
+        })
+        .collect::<HashMap<_, _>>();
+    let old_owned = old_metadata
+        .steps
+        .iter()
+        .filter_map(|step| {
+            step.branch.as_ref().map(|branch| {
+                (
+                    format!("refs/heads/{}", branch),
+                    new_cuts_by_step
+                        .get(if step.id.is_empty() {
+                            step.name.as_str()
+                        } else {
+                            step.id.as_str()
+                        })
+                        .map(|cut| (*cut).to_string())
+                        .unwrap_or_else(|| step.cut.clone()),
+                )
+            })
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    for (step, branch) in new_metadata.steps.iter_mut().zip(expected_branches) {
+        step.branch = Some(branch);
+    }
+    let new_owned = new_metadata
+        .steps
+        .iter()
+        .filter_map(|step| {
+            step.branch
+                .as_ref()
+                .map(|branch| (format!("refs/heads/{}", branch), step.cut.clone()))
+        })
+        .collect::<std::collections::BTreeMap<_, _>>();
+    let refs = old_owned
+        .keys()
+        .chain(new_owned.keys())
+        .cloned()
+        .collect::<std::collections::BTreeSet<_>>();
+    let checked_out = repo
+        .worktrees()?
+        .into_iter()
+        .filter_map(|worktree| worktree.branch.map(|branch| (branch, worktree.path)))
+        .collect::<HashMap<_, _>>();
     let mut commands = Vec::new();
-
-    // Helper to get match key for a step
-    let step_key = |s: &Step| {
-        if !s.id.is_empty() {
-            s.id.clone()
-        } else {
-            s.name.clone()
+    for reference in refs {
+        let actual = repo.resolve_ref_opt(&reference)?;
+        let old = old_owned.get(&reference);
+        let planned = new_owned.get(&reference);
+        if let Some(expected) = old {
+            let already_planned =
+                planned.is_some_and(|oid| actual.as_deref() == Some(oid.as_str()));
+            if actual.as_deref() != Some(expected.as_str()) && !already_planned {
+                return Err(StaircaseError::RefCollision {
+                    reference,
+                    expected: expected.clone(),
+                    actual: actual.unwrap_or_else(|| "<missing>".into()),
+                });
+            }
+        } else if actual.is_some() {
+            return Err(StaircaseError::RefCollision {
+                reference,
+                expected: "<missing>".into(),
+                actual: actual.expect("checked"),
+            });
         }
-    };
-
-    let mut old_steps_by_key = HashMap::new();
-    for s in &old_metadata.steps {
-        old_steps_by_key.insert(step_key(s), s);
-    }
-
-    // Map to find the current OID of an old branch in Git.
-    let mut old_branch_current_oid = HashMap::new();
-    for step in &new_metadata.steps {
-        if let Some(old_step) = old_steps_by_key.get(&step_key(step)) {
-            if let Some(ref old_branch) = old_step.branch {
-                old_branch_current_oid.insert(old_branch.clone(), step.cut.clone());
-            }
+        if actual.as_ref() == planned {
+            continue;
         }
-    }
-    for old_step in &old_metadata.steps {
-        let key = step_key(old_step);
-        if !new_metadata.steps.iter().any(|s| step_key(s) == key) {
-            if let Some(ref old_branch) = old_step.branch {
-                old_branch_current_oid.insert(old_branch.clone(), old_step.cut.clone());
-            }
+        if let Some(path) = checked_out.get(&reference) {
+            return Err(StaircaseError::UnsupportedTopology {
+                operation: "branch-layout".into(),
+                reason: format!(
+                    "branch {} is checked out in worktree {}",
+                    reference,
+                    path.display()
+                ),
+            });
         }
-    }
-
-    for i in 0..n {
-        let expected_name = &expected_branches[i];
-        let new_ref = format!("refs/heads/{}", expected_name);
-        let step = &mut new_metadata.steps[i];
-        let new_oid = &step.cut;
-
-        let mut old_ref = None;
-        if let Some(old_step) = old_steps_by_key.get(&step_key(step)) {
-            if let Some(ref old_branch) = old_step.branch {
-                old_ref = Some(format!("refs/heads/{}", old_branch));
+        match (actual, planned) {
+            (None, Some(new)) => commands.push(format!("create {} {}", reference, new)),
+            (Some(old), Some(new)) => {
+                commands.push(format!("update {} {} {}", reference, new, old))
             }
-        }
-
-        step.branch = Some(expected_name.clone());
-
-        match old_ref {
-            Some(ref_name) => {
-                if ref_name == new_ref {
-                    commands.push(format!("update {} {} {}", new_ref, new_oid, new_oid));
-                } else {
-                    if !new_refs.contains(&ref_name) {
-                        commands.push(format!("delete {} {}", ref_name, new_oid));
-                    }
-
-                    let current_oid_of_new = old_branch_current_oid.get(expected_name);
-                    if let Some(curr_oid) = current_oid_of_new {
-                        commands.push(format!("update {} {} {}", new_ref, new_oid, curr_oid));
-                    } else {
-                        commands.push(format!("create {} {}", new_ref, new_oid));
-                    }
-                }
-            }
-            None => {
-                let current_oid_of_new = old_branch_current_oid.get(expected_name);
-                if let Some(curr_oid) = current_oid_of_new {
-                    commands.push(format!("update {} {} {}", new_ref, new_oid, curr_oid));
-                } else {
-                    commands.push(format!("create {} {}", new_ref, new_oid));
-                }
-            }
+            (Some(old), None) => commands.push(format!("delete {} {}", reference, old)),
+            (None, None) => {}
         }
     }
-
-    // Handle dropped steps
-    for old_step in &old_metadata.steps {
-        let key = step_key(old_step);
-        if !new_metadata.steps.iter().any(|s| step_key(s) == key) {
-            if let Some(ref old_branch) = old_step.branch {
-                let ref_name = format!("refs/heads/{}", old_branch);
-                if !new_refs.contains(&ref_name) {
-                    commands.push(format!("delete {} {}", ref_name, old_step.cut));
-                }
-            }
-        }
-    }
-
     Ok(commands)
+}
+
+pub(crate) fn validate_renumbering(
+    repo: &GitRepo,
+    old_metadata: &StaircaseMetadata,
+    new_metadata: &mut StaircaseMetadata,
+) -> Result<()> {
+    plan_renumbering(repo, old_metadata, new_metadata).map(|_| ())
 }
 
 fn sequential_branch_name(index: usize, total: usize, base: &str) -> String {

@@ -1,6 +1,6 @@
 use crate::cli::{
-    Command, Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation,
-    UsePresentation,
+    Command, Presentation, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
+    ToPresentation, UsePresentation,
 };
 use crate::core::{self, ResolvedSelector};
 use crate::git::GitRepo;
@@ -53,7 +53,7 @@ pub struct MetadataEditArgs {
 #[derive(Args, Clone, Debug)]
 pub struct SetTitleArgs {
     #[command(flatten)]
-    pub selector: StaircaseSelectorArgs,
+    pub selector: RequiredStaircaseSelector,
     /// New title string
     pub title: String,
 }
@@ -61,7 +61,7 @@ pub struct SetTitleArgs {
 #[derive(Args, Clone, Debug)]
 pub struct AddLabelArgs {
     #[command(flatten)]
-    pub selector: StaircaseSelectorArgs,
+    pub selector: RequiredStaircaseSelector,
     /// Label name
     pub label: String,
 }
@@ -69,7 +69,7 @@ pub struct AddLabelArgs {
 #[derive(Args, Clone, Debug)]
 pub struct RemoveLabelArgs {
     #[command(flatten)]
-    pub selector: StaircaseSelectorArgs,
+    pub selector: RequiredStaircaseSelector,
     /// Label name to remove
     pub label: String,
 }
@@ -77,7 +77,7 @@ pub struct RemoveLabelArgs {
 #[derive(Args, Clone, Debug)]
 pub struct AddLinkArgs {
     #[command(flatten)]
-    pub selector: StaircaseSelectorArgs,
+    pub selector: RequiredStaircaseSelector,
     /// Relationship kind (issue, design, documentation, incident, review, dependency)
     #[arg(long)]
     pub relation: String,
@@ -221,7 +221,8 @@ impl Command for MetadataCmd {
             }
             MetadataSubcommands::Edit(args) => {
                 let sel = args.selector.resolve(repo)?;
-                let current_meta = core::get_user_metadata(repo, &sel)?;
+                let (current_meta, expected_record_oid) =
+                    core::get_user_metadata_snapshot(repo, &sel)?;
                 let json_str = serde_json::to_string_pretty(&current_meta)?;
 
                 let temp_dir = env::temp_dir();
@@ -252,7 +253,7 @@ impl Command for MetadataCmd {
                 let parsed: StaircaseUserMetadata = serde_json::from_str(&edited)
                     .map_err(|e| anyhow!("Invalid JSON metadata: {}", e))?;
 
-                core::update_user_metadata(repo, &sel, parsed)?;
+                core::update_user_metadata_expected(repo, &sel, parsed, &expected_record_oid)?;
                 let updated = core::get_user_metadata(repo, &sel)?;
                 Ok(Box::new(UserMetadataOutput {
                     name: sel.staircase.metadata().name.clone(),
@@ -315,7 +316,8 @@ impl Command for MetadataCmd {
             MetadataSubcommands::EditStep(args) => {
                 let sel = args.selector.resolve(repo)?;
                 let step_key = resolve_step_arg(&sel, args.step.as_deref())?;
-                let current_step_meta = core::get_step_metadata(repo, &sel, &step_key)?;
+                let (current_step_meta, expected_record_oid) =
+                    core::get_step_metadata_snapshot(repo, &sel, &step_key)?;
                 let json_str = serde_json::to_string_pretty(&current_step_meta)?;
 
                 let temp_dir = env::temp_dir();
@@ -344,7 +346,13 @@ impl Command for MetadataCmd {
                 let parsed: StepMetadata = serde_json::from_str(&edited)
                     .map_err(|e| anyhow!("Invalid JSON step metadata: {}", e))?;
 
-                core::update_step_metadata(repo, &sel, &step_key, parsed)?;
+                core::update_step_metadata_expected(
+                    repo,
+                    &sel,
+                    &step_key,
+                    parsed,
+                    &expected_record_oid,
+                )?;
                 let updated = core::get_step_metadata(repo, &sel, &step_key)?;
                 Ok(Box::new(StepMetadataOutput {
                     name: sel.staircase.metadata().name.clone(),

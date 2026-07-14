@@ -11,12 +11,12 @@ pub struct Drop {
     /// Step number (1-based). Can be part of the staircase name (e.g. name:1)
     #[arg(long)]
     pub step: Option<usize>,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "leave_descendants_stale")]
     pub restack: bool,
-    #[arg(long)]
-    pub no_restack: bool,
-    #[arg(long)]
+    #[arg(long, conflicts_with = "restack")]
     pub leave_descendants_stale: bool,
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 impl super::Command for Drop {
@@ -33,8 +33,8 @@ impl super::Command for Drop {
         }
         let step_index = step_num - 1;
 
-        let restack = !self.no_restack && !self.leave_descendants_stale;
-        core::drop(
+        let restack = self.restack || !self.leave_descendants_stale;
+        core::drop_with_dry_run(
             repo,
             &rs,
             step_index,
@@ -42,6 +42,7 @@ impl super::Command for Drop {
                 restack,
                 leave_descendants_stale: !restack,
             },
+            self.dry_run,
         )?;
 
         Ok(Box::new(Success::new(format!(

@@ -13,10 +13,12 @@ pub struct Split {
     #[arg(long)]
     pub at: String,
     /// Name of the new step.
-    #[arg(long, alias = "branch")]
+    #[arg(long = "branch")]
     pub step_name: Option<String>,
     #[arg(long)]
     pub no_ref: bool,
+    #[arg(long)]
+    pub dry_run: bool,
 }
 
 impl super::Command for Split {
@@ -31,18 +33,34 @@ impl super::Command for Split {
         if step_num == 0 {
             return Err(anyhow!("Step number must be 1-based"));
         }
-        core::split(
-            repo,
-            &rs.staircase,
-            step_num - 1,
-            &self.at,
-            self.step_name.as_deref(),
-            core::SplitOptions {
-                no_ref: self.no_ref,
-            },
-        )?;
+        if self.dry_run {
+            core::validate_split_plan(
+                repo,
+                &rs.staircase,
+                step_num - 1,
+                &self.at,
+                self.step_name.as_deref(),
+                self.no_ref,
+            )?;
+        } else {
+            core::split(
+                repo,
+                &rs.staircase,
+                step_num - 1,
+                &self.at,
+                self.step_name.as_deref(),
+                core::SplitOptions {
+                    no_ref: self.no_ref,
+                },
+            )?;
+        }
         Ok(Box::new(Success::new(format!(
-            "Split step {} of staircase '{}' at {}.",
+            "{} step {} of staircase '{}' at {}.",
+            if self.dry_run {
+                "Planned split of"
+            } else {
+                "Split"
+            },
             step_num,
             rs.metadata().name,
             self.at

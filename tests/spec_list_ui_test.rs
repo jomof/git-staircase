@@ -28,7 +28,8 @@ fn test_list_implicit_flag_and_output() {
         stdout
     };
     let output = output.trim();
-    assert_eq!(output, "feature/auth 2 steps clean (implicit)");
+    assert!(output.starts_with("feature/auth [implicit@"));
+    assert!(output.ends_with("] 2 steps clean (implicit)"));
 }
 
 #[test]
@@ -49,8 +50,8 @@ fn test_list_managed_output() {
     assert!(success, "list --managed failed: {}", stderr);
 
     let output = stdout.trim();
-    // Expected: auth 1 step clean
-    assert_eq!(output, "auth 1 step clean");
+    assert!(output.starts_with("auth ["));
+    assert!(output.ends_with("] 1 step clean"));
 }
 
 #[test]

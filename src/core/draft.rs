@@ -3,11 +3,13 @@ use crate::core::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
-    DraftAttachment, DraftClassification, DraftIntent, DraftSnapshot, RewriteMode, Step,
-    WorktreeDraft,
+    DraftAttachment, DraftClassification, DraftFileSnapshot, DraftIntent, DraftSnapshot,
+    RewriteMode, Step, WorktreeDraft,
 };
 use std::fs;
-use std::path::PathBuf;
+use std::os::unix::ffi::OsStringExt;
+use std::os::unix::fs::{PermissionsExt, symlink};
+use std::path::{Component, Path, PathBuf};
 use std::time::SystemTime;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -40,11 +42,11 @@ pub struct MaterializeResult {
 }
 
 fn get_draft_attachment_path(repo: &GitRepo) -> Result<PathBuf> {
-    Ok(repo.workdir.join(".git").join("staircase-draft.json"))
+    Ok(repo.git_dir()?.join("staircase-draft.json"))
 }
 
 fn get_snapshots_dir(repo: &GitRepo) -> Result<PathBuf> {
-    let p = repo.workdir.join(".git").join("staircase-snapshots");
+    let p = repo.git_dir()?.join("staircase-snapshots");
     if !p.exists() {
         let _ = fs::create_dir_all(&p);
     }
@@ -52,7 +54,7 @@ fn get_snapshots_dir(repo: &GitRepo) -> Result<PathBuf> {
 }
 
 fn detect_active_git_operation(repo: &GitRepo) -> Result<Option<String>> {
-    let git_dir = repo.workdir.join(".git");
+    let git_dir = repo.git_dir()?;
     let checks = [
         ("MERGE_HEAD", "merge"),
         ("rebase-merge", "rebase"),
@@ -395,11 +397,12 @@ pub fn materialize_draft(
     let rs = crate::core::resolve_staircase(repo, target_name, None)?
         .ok_or_else(|| StaircaseError::Other(format!("Staircase '{}' not found", target_name)))?;
 
-    let mut meta = if rs.is_managed() {
-        rs.metadata().clone()
+    let managed = if rs.is_managed() {
+        rs.staircase.clone()
     } else {
-        crate::core::adopt(repo, rs.metadata())?
+        crate::core::ResolvedStaircase::Managed(crate::core::adopt(repo, rs.metadata())?)
     };
+    let mut meta = managed.metadata().clone();
 
     let intent = requested_intent
         .or_else(|| draft.attachment.as_ref().map(|a| a.intent.clone()))
@@ -453,10 +456,6 @@ pub fn materialize_draft(
     match intent {
         DraftIntent::ExtendStep | DraftIntent::Unassigned => {
             meta.steps[step_idx].cut = commit_oid.clone();
-            if let Some(ref branch) = meta.steps[step_idx].branch {
-                repo.update_branch(branch, &commit_oid)?;
-            }
-            repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
 
             if step_idx + 1 < meta.steps.len() {
                 let mut old_parents = Vec::new();
@@ -481,21 +480,6 @@ pub fn materialize_draft(
                     updated_steps_count += 1;
                 }
             }
-
-            if let Some(ref b) = draft.head_branch {
-                let current_target = meta
-                    .steps
-                    .iter()
-                    .find(|s| s.branch.as_deref() == Some(b.as_str()));
-                if let Some(target_step) = current_target {
-                    let target_oid = &target_step.cut;
-                    repo.run(&["reset", "--soft", target_oid])?;
-                } else {
-                    repo.run(&["reset", "--soft", &commit_oid])?;
-                }
-            } else {
-                repo.run(&["reset", "--soft", &commit_oid])?;
-            }
         }
         DraftIntent::NewStep => {
             let new_step_name = format!("{}-step", target_step.name);
@@ -508,8 +492,6 @@ pub fn materialize_draft(
             };
 
             meta.steps.insert(step_idx + 1, new_step);
-            repo.update_branch(&new_step_name, &commit_oid)?;
-            repo.update_step_ref(&meta.id, &new_step_id, &commit_oid)?;
 
             if step_idx + 2 < meta.steps.len() {
                 let mut old_parents = Vec::new();
@@ -558,30 +540,22 @@ pub fn materialize_draft(
                     updated_steps_count += 1;
                 }
             }
-
-            repo.run(&["reset", "--soft", &commit_oid])?;
         }
         DraftIntent::RewriteStep(mode) => match mode {
             RewriteMode::Amend => {
                 meta.steps[step_idx].cut = commit_oid.clone();
-                if let Some(ref branch) = meta.steps[step_idx].branch {
-                    repo.update_branch(branch, &commit_oid)?;
-                }
-                repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
-                repo.run(&["reset", "--soft", &commit_oid])?;
             }
             RewriteMode::Fixup | RewriteMode::FoldInto(_) => {
                 meta.steps[step_idx].cut = commit_oid.clone();
-                if let Some(ref branch) = meta.steps[step_idx].branch {
-                    repo.update_branch(branch, &commit_oid)?;
-                }
-                repo.update_step_ref(&meta.id, &meta.steps[step_idx].id, &commit_oid)?;
-                repo.run(&["reset", "--soft", &commit_oid])?;
             }
         },
     }
 
-    persistence::write_metadata(repo, &meta)?;
+    let selector = crate::core::ResolvedSelector {
+        staircase: managed,
+        step_index: None,
+    };
+    crate::core::local::publish_metadata(repo, &selector, meta.clone(), "materialize", false)?;
 
     if let Some(mut att) = draft.attachment {
         att.expected_basis = commit_oid.clone();
@@ -607,7 +581,13 @@ pub fn create_snapshot(repo: &GitRepo, _name: Option<&str>) -> Result<DraftSnaps
 
     let staged_tree = draft.staged_tree_oid.clone();
 
-    let worktree_patch = repo.run(&["diff"]).ok();
+    let worktree_patch = repo
+        .command()
+        .args(["diff", "--binary", "--no-ext-diff"])
+        .trim(false)
+        .run()
+        .ok();
+    let untracked_files = capture_untracked_files(repo)?;
 
     let snapshot = DraftSnapshot {
         id: snapshot_id.clone(),
@@ -616,6 +596,7 @@ pub fn create_snapshot(repo: &GitRepo, _name: Option<&str>) -> Result<DraftSnaps
         staged_tree,
         worktree_tree: worktree_patch,
         untracked_paths: draft.untracked_paths.clone(),
+        untracked_files,
         attachment: draft.attachment.clone(),
     };
 
@@ -647,13 +628,152 @@ pub fn restore_snapshot(repo: &GitRepo, snapshot_id: &str) -> Result<DraftSnapsh
         ));
     }
 
-    if let Some(ref patch) = snapshot.worktree_tree {
-        let _ = repo.run_with_stdin(&["apply"], patch);
+    if repo.resolve_commit("HEAD")? != snapshot.basis {
+        return Err(StaircaseError::RefCollision {
+            reference: "HEAD".into(),
+            expected: snapshot.basis.clone(),
+            actual: repo.resolve_commit("HEAD")?,
+        });
     }
+    if let Some(ref tree) = snapshot.staged_tree {
+        repo.run(&["read-tree", tree])?;
+        repo.run(&["checkout-index", "-a", "-f"])?;
+    }
+    if let Some(ref patch) = snapshot.worktree_tree {
+        if !patch.is_empty() {
+            repo.run_with_stdin(&["apply", "--binary"], patch)?;
+        }
+    }
+    restore_untracked_files(repo, &snapshot.untracked_files)?;
 
     if let Some(ref att) = snapshot.attachment {
         save_persistent_attachment(repo, att)?;
     }
 
     Ok(snapshot)
+}
+
+pub(crate) fn capture_untracked_files(repo: &GitRepo) -> Result<Vec<DraftFileSnapshot>> {
+    let output = repo
+        .command()
+        .args(["ls-files", "--others", "--exclude-standard", "-z"])
+        .trim(false)
+        .run()?;
+    let mut files = Vec::new();
+    for path in output.split('\0').filter(|path| !path.is_empty()) {
+        validate_snapshot_path(path)?;
+        let absolute = repo.workdir.join(path);
+        let metadata = fs::symlink_metadata(&absolute)?;
+        let (kind, content) = if metadata.file_type().is_symlink() {
+            (
+                "symlink".to_string(),
+                fs::read_link(&absolute)?.into_os_string().into_vec(),
+            )
+        } else if metadata.is_file() {
+            ("regular".to_string(), fs::read(&absolute)?)
+        } else {
+            return Err(StaircaseError::UnsupportedTopology {
+                operation: "draft-snapshot".into(),
+                reason: format!(
+                    "untracked path '{}' is neither a regular file nor a symbolic link",
+                    path
+                ),
+            });
+        };
+        files.push(DraftFileSnapshot {
+            path: path.to_string(),
+            kind,
+            mode: metadata.permissions().mode(),
+            content_hex: hex_encode(&content),
+        });
+    }
+    Ok(files)
+}
+
+pub(crate) fn restore_untracked_files(repo: &GitRepo, files: &[DraftFileSnapshot]) -> Result<()> {
+    for file in files {
+        validate_snapshot_path(&file.path)?;
+        let absolute = repo.workdir.join(&file.path);
+        if absolute.symlink_metadata().is_ok() {
+            let existing = if absolute
+                .symlink_metadata()
+                .is_ok_and(|metadata| metadata.file_type().is_symlink())
+            {
+                fs::read_link(&absolute)?.into_os_string().into_vec()
+            } else {
+                fs::read(&absolute)?
+            };
+            if existing == hex_decode(&file.content_hex)? {
+                continue;
+            }
+            return Err(StaircaseError::RefCollision {
+                reference: file.path.clone(),
+                expected: "snapshot content".into(),
+                actual: "existing filesystem entry".into(),
+            });
+        }
+        if let Some(parent) = absolute.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let content = hex_decode(&file.content_hex)?;
+        match file.kind.as_str() {
+            "regular" => {
+                fs::write(&absolute, content)?;
+                fs::set_permissions(&absolute, fs::Permissions::from_mode(file.mode))?;
+            }
+            "symlink" => {
+                symlink(std::ffi::OsString::from_vec(content), &absolute)?;
+            }
+            kind => {
+                return Err(StaircaseError::Other(format!(
+                    "unsupported snapshot entry kind '{}'",
+                    kind
+                )));
+            }
+        }
+    }
+    Ok(())
+}
+
+fn validate_snapshot_path(path: &str) -> Result<()> {
+    let path = Path::new(path);
+    if path.is_absolute()
+        || path.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(StaircaseError::Other(
+            "snapshot path escapes the worktree".into(),
+        ));
+    }
+    Ok(())
+}
+
+fn hex_encode(bytes: &[u8]) -> String {
+    const HEX: &[u8; 16] = b"0123456789abcdef";
+    let mut output = String::with_capacity(bytes.len() * 2);
+    for byte in bytes {
+        output.push(HEX[(byte >> 4) as usize] as char);
+        output.push(HEX[(byte & 0xf) as usize] as char);
+    }
+    output
+}
+
+fn hex_decode(value: &str) -> Result<Vec<u8>> {
+    if value.len() % 2 != 0 {
+        return Err(StaircaseError::Other(
+            "snapshot contains invalid hexadecimal content".into(),
+        ));
+    }
+    (0..value.len())
+        .step_by(2)
+        .map(|index| {
+            u8::from_str_radix(&value[index..index + 2], 16).map_err(|_| {
+                StaircaseError::Other("snapshot contains invalid hexadecimal content".into())
+            })
+        })
+        .collect()
 }

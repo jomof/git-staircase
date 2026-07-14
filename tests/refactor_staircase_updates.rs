@@ -69,9 +69,10 @@ fn test_managed_staircase_updates() {
     .unwrap();
 
     // ASSERT (Split)
-    let rs = core::resolve_staircase(&ctx.repo, "test-managed", None)
-        .unwrap()
-        .unwrap();
+    let rs = git_staircase::ResolvedSelector {
+        staircase: core::resolve_by_id(&ctx.repo, "test-managed").unwrap(),
+        step_index: None,
+    };
     assert_eq!(rs.metadata().steps.len(), 3);
     assert_eq!(rs.metadata().steps[0].name, "A-part1");
     let step0_id = rs.metadata().steps[0].id.clone();
@@ -98,9 +99,10 @@ fn test_managed_staircase_updates() {
     .unwrap();
 
     // ASSERT (Join)
-    let rs = core::resolve_staircase(&ctx.repo, "test-managed", None)
-        .unwrap()
-        .unwrap();
+    let rs = git_staircase::ResolvedSelector {
+        staircase: core::resolve_by_id(&ctx.repo, "test-managed").unwrap(),
+        step_index: None,
+    };
     assert_eq!(rs.metadata().steps.len(), 2);
     assert!(
         ctx.repo

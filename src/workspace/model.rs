@@ -9,9 +9,14 @@ pub enum Capability {
     Workspace,
     ProjectMapping,
     IntegrationContext,
+    WorkspaceHints,
+    RepositoryRouting,
     Review,
+    ReviewIdentity,
     Verification,
+    ReviewTransport,
     Transport,
+    Landing,
 }
 
 impl fmt::Display for Capability {
@@ -20,11 +25,32 @@ impl fmt::Display for Capability {
             Capability::Workspace => write!(f, "workspace"),
             Capability::ProjectMapping => write!(f, "project-mapping"),
             Capability::IntegrationContext => write!(f, "integration-context"),
+            Capability::WorkspaceHints => write!(f, "workspace-hints"),
+            Capability::RepositoryRouting => write!(f, "repository-routing"),
             Capability::Review => write!(f, "review"),
+            Capability::ReviewIdentity => write!(f, "review-identity"),
             Capability::Verification => write!(f, "verification"),
+            Capability::ReviewTransport => write!(f, "review-transport"),
             Capability::Transport => write!(f, "transport"),
+            Capability::Landing => write!(f, "landing"),
         }
     }
+}
+
+impl Capability {
+    pub const ALL: [Capability; 11] = [
+        Capability::Workspace,
+        Capability::ProjectMapping,
+        Capability::IntegrationContext,
+        Capability::WorkspaceHints,
+        Capability::RepositoryRouting,
+        Capability::Review,
+        Capability::ReviewIdentity,
+        Capability::Verification,
+        Capability::ReviewTransport,
+        Capability::Transport,
+        Capability::Landing,
+    ];
 }
 
 impl std::str::FromStr for Capability {
@@ -35,10 +61,43 @@ impl std::str::FromStr for Capability {
             "workspace" => Ok(Capability::Workspace),
             "project-mapping" => Ok(Capability::ProjectMapping),
             "integration-context" => Ok(Capability::IntegrationContext),
+            "workspace-hints" => Ok(Capability::WorkspaceHints),
+            "repository-routing" => Ok(Capability::RepositoryRouting),
             "review" => Ok(Capability::Review),
+            "review-identity" => Ok(Capability::ReviewIdentity),
             "verification" => Ok(Capability::Verification),
+            "review-transport" => Ok(Capability::ReviewTransport),
             "transport" => Ok(Capability::Transport),
+            "landing" => Ok(Capability::Landing),
             _ => Err(format!("Unknown capability: {}", s)),
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum CapabilityReadiness {
+    Ready,
+    Degraded,
+    RouteIncomplete,
+    Unavailable,
+    Stale,
+}
+
+impl Default for CapabilityReadiness {
+    fn default() -> Self {
+        Self::Ready
+    }
+}
+
+impl fmt::Display for CapabilityReadiness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Ready => write!(f, "ready"),
+            Self::Degraded => write!(f, "degraded"),
+            Self::RouteIncomplete => write!(f, "route-incomplete"),
+            Self::Unavailable => write!(f, "unavailable"),
+            Self::Stale => write!(f, "stale"),
         }
     }
 }
@@ -79,16 +138,26 @@ pub struct WorkspaceRecord {
     pub provider_native_key: Option<String>,
     pub capability_bindings: HashMap<Capability, CapabilityBinding>,
     pub binding_provenance: HashMap<Capability, BindingProvenance>,
+    #[serde(default)]
+    pub capability_readiness: HashMap<Capability, CapabilityReadiness>,
     pub discovery_fingerprint: HashMap<String, String>,
     pub last_successful_validation: u64,
     pub current_project_id: Option<String>,
+    #[serde(default)]
+    pub generation: u64,
+    #[serde(default)]
+    pub extensions: HashMap<String, serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProbeDescriptor {
     pub passive: bool,
     pub network: bool,
+    #[serde(default)]
+    pub authenticates: bool,
     pub mutates_workspace: bool,
+    #[serde(default)]
+    pub executes_repository_hooks: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -134,4 +203,40 @@ pub struct IntegrationContextCandidate {
     pub symbolic_target: Option<String>,
     pub mode: String,
     pub provenance: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "kebab-case")]
+pub enum EvidenceAuthority {
+    Authoritative,
+    Strong,
+    Advisory,
+    Observed,
+    Ineligible,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct TypedEvidence {
+    pub kind: String,
+    pub locator: Option<String>,
+    pub resolved_oid: Option<String>,
+    pub source: String,
+    pub exact: bool,
+    pub moving: bool,
+    pub authority: EvidenceAuthority,
+    pub provenance: Vec<String>,
+    pub eligible: bool,
+    pub notes: Vec<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct WorkspaceHint {
+    pub kind: String,
+    pub provider_hint: Option<String>,
+    pub value: String,
+    pub source: String,
+    pub scope: HashMap<String, String>,
+    pub confidence: String,
+    pub normalized: bool,
+    pub freshness_fingerprint: HashMap<String, String>,
 }

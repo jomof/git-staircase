@@ -162,7 +162,7 @@ fn test_move() {
 }
 
 #[test]
-fn test_reorder_without_branches() {
+fn test_reorder_refuses_missing_owned_branches() {
     let (_tmp, repo) = setup_repo();
     let dir = &repo.workdir;
     use git_staircase::model::{StaircaseMetadata, Step};
@@ -218,65 +218,20 @@ fn test_reorder_without_branches() {
         .expect("Resolve failed")
         .expect("Staircase not found");
 
-    // Reorder: 1, 3, 2
-    core::reorder(
+    let record_ref = format!("refs/staircase-state/{}/record", metadata.id);
+    let before = repo.resolve_ref(&record_ref).unwrap();
+    let error = core::reorder(
         &repo,
         &rs,
         &[0, 2, 1],
         core::ReorderOptions { no_restack: false },
     )
-    .expect("Reorder failed");
-
-    let rs = core::resolve_staircase(&repo, "mystaircase", None)
-        .expect("Resolve failed")
-        .expect("Staircase not found");
-    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
-
-    assert_eq!(status.metadata.steps.len(), 3);
-    assert_eq!(status.metadata.steps[0].name, "step1");
-    assert_eq!(status.metadata.steps[1].name, "step3");
-    assert_eq!(status.metadata.steps[2].name, "step2");
-
-    // Verify ancestry
-    let main_oid = repo.resolve_ref("main").unwrap();
-    assert!(
-        repo.is_ancestor(&main_oid, &status.metadata.steps[0].cut)
-            .unwrap()
-    );
-    assert!(
-        repo.is_ancestor(&status.metadata.steps[0].cut, &status.metadata.steps[1].cut)
-            .unwrap()
-    );
-    assert!(
-        repo.is_ancestor(&status.metadata.steps[1].cut, &status.metadata.steps[2].cut)
-            .unwrap()
-    );
-
-    // Verify step refs are updated
-    assert_eq!(
-        repo.resolve_ref(&format!(
-            "refs/staircase-state/{}/steps/{}",
-            metadata.id, status.metadata.steps[0].id
-        ))
-        .unwrap(),
-        status.metadata.steps[0].cut
-    );
-    assert_eq!(
-        repo.resolve_ref(&format!(
-            "refs/staircase-state/{}/steps/{}",
-            metadata.id, status.metadata.steps[1].id
-        ))
-        .unwrap(),
-        status.metadata.steps[1].cut
-    );
-    assert_eq!(
-        repo.resolve_ref(&format!(
-            "refs/staircase-state/{}/steps/{}",
-            metadata.id, status.metadata.steps[2].id
-        ))
-        .unwrap(),
-        status.metadata.steps[2].cut
-    );
+    .unwrap_err();
+    assert!(matches!(
+        error,
+        git_staircase::StaircaseError::RefCollision { .. }
+    ));
+    assert_eq!(repo.resolve_ref(&record_ref).unwrap(), before);
 }
 
 #[test]

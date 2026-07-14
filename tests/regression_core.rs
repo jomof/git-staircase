@@ -81,10 +81,10 @@ fn test_id_consistency_when_resolving_prefix() {
     let meta = resolved.metadata();
 
     // ASSERT
-    let object_format = ctx.repo.get_object_format().unwrap();
     let onto_oid = ctx.repo.resolve_commit("main").unwrap();
     let expected_id =
-        git_staircase::core::discovery::compute_implicit_id(&object_format, &onto_oid, &meta.steps);
+        git_staircase::core::discovery::compute_implicit_id(&ctx.repo, &onto_oid, &meta.steps)
+            .unwrap();
 
     assert_eq!(
         meta.id, expected_id,

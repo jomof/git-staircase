@@ -77,8 +77,8 @@ fn test_adopt_and_status() {
     assert!(!status.is_clean);
     assert_eq!(status.steps[1].actual_oid, Some(c2_new.clone()));
 
-    let found = core::find_by_name(&ctx.repo, &s.id).unwrap().unwrap();
-    assert_eq!(found.name, "auth");
+    let found = core::resolve_by_id(&ctx.repo, &s.id).unwrap();
+    assert_eq!(found.metadata().name, "auth");
 }
 
 #[test]
@@ -108,9 +108,10 @@ fn test_status_stale_and_restack() {
     let status = core::get_status(&ctx.repo, &s.id).unwrap();
     assert!(!status.is_clean);
 
-    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
-        .unwrap()
-        .unwrap();
+    let rs = git_staircase::ResolvedSelector {
+        staircase: core::resolve_by_id(&ctx.repo, &s.id).unwrap(),
+        step_index: None,
+    };
     core::restack(
         &ctx.repo,
         &rs,
@@ -143,9 +144,10 @@ fn test_split_and_join() {
     };
     let s = core::adopt(&ctx.repo, &s).unwrap();
 
-    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
-        .unwrap()
-        .unwrap();
+    let rs = git_staircase::ResolvedSelector {
+        staircase: core::resolve_by_id(&ctx.repo, &s.id).unwrap(),
+        step_index: None,
+    };
 
     // ACT (Split)
     core::split(
@@ -163,9 +165,10 @@ fn test_split_and_join() {
     assert_eq!(read.steps.len(), 2);
 
     // ACT (Join)
-    let rs = core::resolve_staircase(&ctx.repo, &s.id, None)
-        .unwrap()
-        .unwrap();
+    let rs = git_staircase::ResolvedSelector {
+        staircase: core::resolve_by_id(&ctx.repo, &s.id).unwrap(),
+        step_index: None,
+    };
     core::join(
         &ctx.repo,
         &rs,
@@ -398,9 +401,7 @@ fn test_id_lineage_auto_adopt() {
     // ASSERT
     assert!(!id.is_empty());
 
-    let rs_after = core::resolve_staircase(&ctx.repo, &id, None)
-        .unwrap()
-        .expect("Should find staircase");
+    let rs_after = core::resolve_by_id(&ctx.repo, &id).expect("Should find staircase");
     assert!(rs_after.is_managed());
     assert_eq!(rs_after.metadata().id, id);
 }

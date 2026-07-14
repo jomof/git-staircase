@@ -117,6 +117,23 @@ pub struct StaircaseStatus {
     pub is_ambiguous: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_draft: Option<WorktreeDraft>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub active_operation: Option<ActiveOperationStatus>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub external_git_operation: Option<ExternalGitOperationStatus>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ActiveOperationStatus {
+    pub operation_id: String,
+    pub kind: String,
+    pub phase: String,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct ExternalGitOperationStatus {
+    pub operation: String,
+    pub owner: String,
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -200,7 +217,17 @@ pub struct DraftSnapshot {
     pub staged_tree: Option<String>,
     pub worktree_tree: Option<String>,
     pub untracked_paths: Vec<String>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub untracked_files: Vec<DraftFileSnapshot>,
     pub attachment: Option<DraftAttachment>,
+}
+
+#[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
+pub struct DraftFileSnapshot {
+    pub path: String,
+    pub kind: String,
+    pub mode: u32,
+    pub content_hex: String,
 }
 
 impl StaircaseStatus {

@@ -6,6 +6,7 @@ use crate::core::persistence;
 use crate::{Discovery, ResolvedStaircase};
 use anyhow::{Result, anyhow};
 use serde::Serialize;
+use std::collections::BTreeMap;
 
 #[derive(clap::Args, Clone, Debug)]
 pub struct List {
@@ -92,9 +93,31 @@ impl super::Command for List {
             ));
         }
 
+        let mut canonical = BTreeMap::<String, ResolvedStaircase>::new();
+        for staircase in resolved_staircases {
+            let key = match &staircase {
+                ResolvedStaircase::Managed(metadata) => {
+                    let integration = repo.resolve_commit(&metadata.target)?;
+                    core::discovery::compute_implicit_id(repo, &integration, &metadata.steps)?
+                }
+                ResolvedStaircase::Implicit(metadata) => metadata.id.clone(),
+                ResolvedStaircase::ImplicitFamily(family) => format!("family:{}", family.id),
+            };
+            match canonical.get(&key) {
+                Some(ResolvedStaircase::Managed(_)) => {}
+                Some(_) if staircase.is_managed() => {
+                    canonical.insert(key, staircase);
+                }
+                None => {
+                    canonical.insert(key, staircase);
+                }
+                Some(_) => {}
+            }
+        }
+
         let cached_draft = core::draft::get_worktree_draft(repo).ok();
 
-        for rs in resolved_staircases {
+        for rs in canonical.into_values() {
             match rs {
                 ResolvedStaircase::ImplicitFamily(f) => {
                     if !self.stale {

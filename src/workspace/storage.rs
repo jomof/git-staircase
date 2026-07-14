@@ -23,6 +23,18 @@ pub fn get_workspace_storage_dir() -> PathBuf {
 }
 
 pub fn save_workspace_record(record: &WorkspaceRecord) -> Result<()> {
+    save_workspace_record_cas(record, None)
+}
+
+/// Atomically publishes a workspace record after checking its complete generation.
+///
+/// `expected_generation` is required for updates made by provider commands. A
+/// newly discovered record may pass `None`; an existing record then causes a
+/// concurrent-update error instead of being overwritten.
+pub fn save_workspace_record_cas(
+    record: &WorkspaceRecord,
+    expected_generation: Option<u64>,
+) -> Result<()> {
     let dir = get_workspace_storage_dir();
     fs::create_dir_all(&dir)?;
 
@@ -30,7 +42,41 @@ pub fn save_workspace_record(record: &WorkspaceRecord) -> Result<()> {
     let target_path = dir.join(&filename);
     let temp_path = dir.join(format!(".tmp_{}.json", record.workspace_id));
 
-    let json_data = serde_json::to_string_pretty(record).map_err(|e| {
+    let existing = if target_path.exists() {
+        let data = fs::read_to_string(&target_path)?;
+        Some(serde_json::from_str::<WorkspaceRecord>(&data).map_err(|e| {
+            StaircaseError::Other(format!("Failed to parse workspace record: {}", e))
+        })?)
+    } else {
+        None
+    };
+    match (existing.as_ref(), expected_generation) {
+        (Some(current), Some(expected)) if current.generation != expected => {
+            return Err(StaircaseError::Other(format!(
+                "concurrent-workspace-update: expected generation {}, found {}",
+                expected, current.generation
+            )));
+        }
+        (Some(_), None) if record.generation == 0 => {
+            return Err(StaircaseError::Other(
+                "concurrent-workspace-update: record already exists".into(),
+            ));
+        }
+        (None, Some(_)) => {
+            return Err(StaircaseError::Other(
+                "concurrent-workspace-update: record disappeared".into(),
+            ));
+        }
+        _ => {}
+    }
+
+    let mut published = record.clone();
+    published.generation = existing
+        .as_ref()
+        .map(|current| current.generation.saturating_add(1))
+        .unwrap_or(1);
+
+    let json_data = serde_json::to_string_pretty(&published).map_err(|e| {
         StaircaseError::Other(format!("Failed to serialize workspace record: {}", e))
     })?;
 

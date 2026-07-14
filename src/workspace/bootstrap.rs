@@ -1,7 +1,8 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::workspace::model::{
-    BindingProvenance, Capability, CapabilityBinding, WorkspaceCandidate, WorkspaceRecord,
+    BindingProvenance, Capability, CapabilityBinding, CapabilityReadiness, WorkspaceCandidate,
+    WorkspaceRecord,
 };
 use crate::workspace::provider::{
     discover_installed_providers, expand_profile, get_core_git_candidate,
@@ -9,8 +10,8 @@ use crate::workspace::provider::{
 };
 use crate::workspace::repo_provider::probe_repo_workspace;
 use crate::workspace::storage::{
-    current_timestamp, find_workspace_record_for_path, load_workspace_record_by_id,
-    save_workspace_record,
+    current_timestamp, find_workspace_record_for_path, list_workspace_records,
+    load_workspace_record_by_id, save_workspace_record, save_workspace_record_cas,
 };
 use std::collections::HashMap;
 use std::path::PathBuf;
@@ -73,82 +74,65 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         }
     }
 
-    let existing = find_workspace_record_for_path(&workdir)?;
+    let mut existing = find_workspace_record_for_path(&workdir)?;
+    if existing.is_none() {
+        if let Some(candidate) = probe_repo_workspace(repo)? {
+            existing = list_workspace_records()?.into_iter().find(|record| {
+                record.provider_native_key.is_some()
+                    && record.provider_native_key == candidate.workspace_key
+            });
+        }
+    }
     if let Some(mut record) = existing {
+        let expected_generation = record.generation;
         if options.workspace_mode.as_deref() == Some("single-git") {
-            record.capability_bindings.insert(
+            bind_capability(
+                &mut record,
                 Capability::Workspace,
-                CapabilityBinding {
-                    provider: "core.git".to_string(),
-                    provenance: BindingProvenance::Explicit,
-                    evidence: Some("explicit --workspace-mode=single-git".to_string()),
-                },
+                "core.git",
+                BindingProvenance::Explicit,
+                Some("explicit --workspace-mode=single-git".into()),
             );
         }
-
-        let mut updated = false;
-        if !record.capability_bindings.contains_key(&Capability::Review)
-            && options.review_provider.is_none()
-        {
-            if let Ok(Some(_gerrit_route)) =
-                crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(&record))
-            {
-                record.capability_bindings.insert(
-                    Capability::Review,
-                    CapabilityBinding {
-                        provider: "gerrit".to_string(),
-                        provenance: BindingProvenance::AutoDiscovered,
-                        evidence: Some("Gerrit review route discovered".to_string()),
-                    },
+        if let Some(profile) = &options.provider_profile {
+            for (capability, provider) in expand_profile(profile) {
+                if record
+                    .capability_bindings
+                    .get(&capability)
+                    .is_some_and(|binding| binding.provenance == BindingProvenance::Explicit)
+                {
+                    continue;
+                }
+                bind_capability(
+                    &mut record,
+                    capability,
+                    &provider,
+                    BindingProvenance::Profile,
+                    Some(format!("profile {}", profile)),
                 );
-                record
-                    .binding_provenance
-                    .insert(Capability::Review, BindingProvenance::AutoDiscovered);
-
-                record.capability_bindings.insert(
-                    Capability::Verification,
-                    CapabilityBinding {
-                        provider: "gerrit".to_string(),
-                        provenance: BindingProvenance::AutoDiscovered,
-                        evidence: Some("Gerrit verification route discovered".to_string()),
-                    },
-                );
-                record
-                    .binding_provenance
-                    .insert(Capability::Verification, BindingProvenance::AutoDiscovered);
-                updated = true;
-            } else if let Ok(Some(_gh_route)) =
-                crate::workspace::github_provider::probe_github_route(repo, Some(&record))
-            {
-                record.capability_bindings.insert(
-                    Capability::Review,
-                    CapabilityBinding {
-                        provider: "github".to_string(),
-                        provenance: BindingProvenance::AutoDiscovered,
-                        evidence: Some("GitHub review route discovered".to_string()),
-                    },
-                );
-                record
-                    .binding_provenance
-                    .insert(Capability::Review, BindingProvenance::AutoDiscovered);
-
-                record.capability_bindings.insert(
-                    Capability::Verification,
-                    CapabilityBinding {
-                        provider: "github".to_string(),
-                        provenance: BindingProvenance::AutoDiscovered,
-                        evidence: Some("GitHub verification route discovered".to_string()),
-                    },
-                );
-                record
-                    .binding_provenance
-                    .insert(Capability::Verification, BindingProvenance::AutoDiscovered);
-                updated = true;
             }
         }
-
-        if updated && !options.no_configure {
-            let _ = save_workspace_record(&record);
+        if let Some(provider) = &options.workspace_provider {
+            bind_capability(
+                &mut record,
+                Capability::Workspace,
+                provider,
+                BindingProvenance::Explicit,
+                Some("explicit workspace provider".into()),
+            );
+        }
+        if let Some(provider) = &options.review_provider {
+            bind_review_capabilities(
+                &mut record,
+                provider,
+                BindingProvenance::Explicit,
+                Some("explicit review provider".into()),
+            );
+        }
+        revalidate_record(repo, &mut record)?;
+        if !options.no_configure {
+            save_workspace_record_cas(&record, Some(expected_generation))?;
+            record.generation = expected_generation.saturating_add(1);
         }
 
         return Ok(BootstrapResult {
@@ -202,21 +186,22 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
 
     let ws_provider_name = selected_candidate.provider.clone();
 
+    let workspace_provenance = if options.workspace_provider.is_some() {
+        BindingProvenance::Explicit
+    } else if ws_provider_name == "core.git" {
+        BindingProvenance::Default
+    } else {
+        BindingProvenance::AutoDiscovered
+    };
     bindings.insert(
         Capability::Workspace,
         CapabilityBinding {
             provider: ws_provider_name.clone(),
-            provenance: if options.workspace_provider.is_some() {
-                BindingProvenance::Explicit
-            } else if ws_provider_name == "core.git" {
-                BindingProvenance::Default
-            } else {
-                BindingProvenance::AutoDiscovered
-            },
+            provenance: workspace_provenance.clone(),
             evidence: selected_candidate.evidence.first().cloned(),
         },
     );
-    provenances.insert(Capability::Workspace, BindingProvenance::AutoDiscovered);
+    provenances.insert(Capability::Workspace, workspace_provenance);
 
     bindings.insert(
         Capability::ProjectMapping,
@@ -226,6 +211,10 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
             evidence: None,
         },
     );
+    provenances.insert(
+        Capability::ProjectMapping,
+        BindingProvenance::AutoDiscovered,
+    );
     bindings.insert(
         Capability::IntegrationContext,
         CapabilityBinding {
@@ -234,6 +223,24 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
             evidence: None,
         },
     );
+    provenances.insert(
+        Capability::IntegrationContext,
+        BindingProvenance::AutoDiscovered,
+    );
+    if ws_provider_name == "repo" {
+        bindings.insert(
+            Capability::WorkspaceHints,
+            CapabilityBinding {
+                provider: "repo".into(),
+                provenance: BindingProvenance::AutoDiscovered,
+                evidence: Some("effective repo manifest hints".into()),
+            },
+        );
+        provenances.insert(
+            Capability::WorkspaceHints,
+            BindingProvenance::AutoDiscovered,
+        );
+    }
     bindings.insert(
         Capability::Transport,
         CapabilityBinding {
@@ -242,6 +249,7 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
             evidence: None,
         },
     );
+    provenances.insert(Capability::Transport, BindingProvenance::Default);
 
     // Profile handling
     if let Some(ref prof) = options.provider_profile {
@@ -261,15 +269,17 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
 
     // Explicit review provider override
     if let Some(ref rev_prov) = options.review_provider {
-        bindings.insert(
-            Capability::Review,
-            CapabilityBinding {
-                provider: rev_prov.clone(),
-                provenance: BindingProvenance::Explicit,
-                evidence: None,
-            },
-        );
-        provenances.insert(Capability::Review, BindingProvenance::Explicit);
+        for capability in review_capabilities(rev_prov) {
+            bindings.insert(
+                capability,
+                CapabilityBinding {
+                    provider: rev_prov.clone(),
+                    provenance: BindingProvenance::Explicit,
+                    evidence: Some("explicit review provider".into()),
+                },
+            );
+            provenances.insert(capability, BindingProvenance::Explicit);
+        }
     }
 
     // Phase 5: Probe dependent capabilities (review & verification)
@@ -279,12 +289,19 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         provider_native_key: selected_candidate.workspace_key.clone(),
         capability_bindings: bindings.clone(),
         binding_provenance: provenances.clone(),
+        capability_readiness: bindings
+            .keys()
+            .copied()
+            .map(|capability| (capability, CapabilityReadiness::Ready))
+            .collect(),
         discovery_fingerprint: selected_candidate.fingerprint.clone(),
         last_successful_validation: current_timestamp(),
         current_project_id: selected_candidate
             .current_project
             .as_ref()
             .map(|p| p.identity.clone()),
+        generation: 0,
+        extensions: HashMap::new(),
     };
 
     if !bindings.contains_key(&Capability::Review) {
@@ -310,6 +327,21 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                 },
             );
             provenances.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+            for capability in [
+                Capability::ReviewIdentity,
+                Capability::ReviewTransport,
+                Capability::Landing,
+            ] {
+                bindings.insert(
+                    capability,
+                    CapabilityBinding {
+                        provider: "gerrit".into(),
+                        provenance: BindingProvenance::AutoDiscovered,
+                        evidence: Some("Gerrit route discovered".into()),
+                    },
+                );
+                provenances.insert(capability, BindingProvenance::AutoDiscovered);
+            }
         } else if let Ok(Some(_gh_route)) =
             crate::workspace::github_provider::probe_github_route(repo, Some(&temp_record))
         {
@@ -332,6 +364,22 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
                 },
             );
             provenances.insert(Capability::Verification, BindingProvenance::AutoDiscovered);
+            for capability in [
+                Capability::RepositoryRouting,
+                Capability::ReviewIdentity,
+                Capability::ReviewTransport,
+                Capability::Landing,
+            ] {
+                bindings.insert(
+                    capability,
+                    CapabilityBinding {
+                        provider: "github".into(),
+                        provenance: BindingProvenance::AutoDiscovered,
+                        evidence: Some("GitHub repository route discovered".into()),
+                    },
+                );
+                provenances.insert(capability, BindingProvenance::AutoDiscovered);
+            }
         }
     }
 
@@ -340,6 +388,19 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         .current_project
         .as_ref()
         .map(|p| p.identity.clone());
+    let capability_readiness = Capability::ALL
+        .into_iter()
+        .map(|capability| {
+            (
+                capability,
+                if bindings.contains_key(&capability) {
+                    CapabilityReadiness::Ready
+                } else {
+                    CapabilityReadiness::Unavailable
+                },
+            )
+        })
+        .collect();
 
     let record = WorkspaceRecord {
         workspace_id,
@@ -347,9 +408,12 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
         provider_native_key: selected_candidate.workspace_key.clone(),
         capability_bindings: bindings,
         binding_provenance: provenances,
+        capability_readiness,
         discovery_fingerprint: selected_candidate.fingerprint.clone(),
         last_successful_validation: current_timestamp(),
         current_project_id,
+        generation: 0,
+        extensions: HashMap::new(),
     };
 
     // Phase 7: Persist configuration
@@ -475,6 +539,9 @@ fn make_default_core_git_record(workdir: &PathBuf) -> WorkspaceRecord {
     );
 
     provenances.insert(Capability::Workspace, BindingProvenance::Default);
+    provenances.insert(Capability::ProjectMapping, BindingProvenance::Default);
+    provenances.insert(Capability::IntegrationContext, BindingProvenance::Default);
+    provenances.insert(Capability::Transport, BindingProvenance::Default);
 
     WorkspaceRecord {
         workspace_id: uuid::Uuid::new_v4().to_string(),
@@ -482,8 +549,161 @@ fn make_default_core_git_record(workdir: &PathBuf) -> WorkspaceRecord {
         provider_native_key: Some(format!("core.git:{}", workdir.display())),
         capability_bindings: bindings,
         binding_provenance: provenances,
+        capability_readiness: HashMap::from([
+            (Capability::Workspace, CapabilityReadiness::Ready),
+            (Capability::ProjectMapping, CapabilityReadiness::Ready),
+            (Capability::IntegrationContext, CapabilityReadiness::Ready),
+            (Capability::Transport, CapabilityReadiness::Ready),
+        ]),
         discovery_fingerprint: HashMap::from([("provider".to_string(), "core.git".to_string())]),
         last_successful_validation: current_timestamp(),
         current_project_id: workdir.file_name().map(|s| s.to_string_lossy().to_string()),
+        generation: 0,
+        extensions: HashMap::new(),
     }
+}
+
+fn review_capabilities(provider: &str) -> Vec<Capability> {
+    let mut capabilities = vec![
+        Capability::Review,
+        Capability::ReviewIdentity,
+        Capability::Verification,
+        Capability::ReviewTransport,
+        Capability::Landing,
+    ];
+    if provider == "github" {
+        capabilities.insert(0, Capability::RepositoryRouting);
+    }
+    capabilities
+}
+
+fn bind_capability(
+    record: &mut WorkspaceRecord,
+    capability: Capability,
+    provider: &str,
+    provenance: BindingProvenance,
+    evidence: Option<String>,
+) {
+    record.capability_bindings.insert(
+        capability,
+        CapabilityBinding {
+            provider: provider.into(),
+            provenance: provenance.clone(),
+            evidence,
+        },
+    );
+    record.binding_provenance.insert(capability, provenance);
+    record
+        .capability_readiness
+        .insert(capability, CapabilityReadiness::Ready);
+}
+
+fn bind_review_capabilities(
+    record: &mut WorkspaceRecord,
+    provider: &str,
+    provenance: BindingProvenance,
+    evidence: Option<String>,
+) {
+    for capability in review_capabilities(provider) {
+        bind_capability(
+            record,
+            capability,
+            provider,
+            provenance.clone(),
+            evidence.clone(),
+        );
+    }
+}
+
+fn revalidate_record(repo: &GitRepo, record: &mut WorkspaceRecord) -> Result<()> {
+    let workspace_provider = record
+        .capability_bindings
+        .get(&Capability::Workspace)
+        .map(|binding| binding.provider.clone())
+        .unwrap_or_else(|| "core.git".into());
+    if workspace_provider == "repo" {
+        match crate::workspace::repo_provider::observe_repo_workspace(repo)? {
+            Some(observation) => {
+                record.canonical_root = observation.candidate.workspace_root.clone();
+                record.current_project_id = Some(observation.mapping.project_name);
+                record.discovery_fingerprint = observation.candidate.fingerprint;
+                for capability in [
+                    Capability::Workspace,
+                    Capability::ProjectMapping,
+                    Capability::IntegrationContext,
+                    Capability::WorkspaceHints,
+                ] {
+                    record
+                        .capability_readiness
+                        .insert(capability, CapabilityReadiness::Ready);
+                }
+            }
+            None => {
+                for capability in [
+                    Capability::Workspace,
+                    Capability::ProjectMapping,
+                    Capability::IntegrationContext,
+                    Capability::WorkspaceHints,
+                ] {
+                    record
+                        .capability_readiness
+                        .insert(capability, CapabilityReadiness::Stale);
+                }
+            }
+        }
+    }
+
+    let existing_review = record
+        .capability_bindings
+        .get(&Capability::Review)
+        .map(|binding| (binding.provider.clone(), binding.provenance.clone()));
+    let provider = existing_review
+        .as_ref()
+        .map(|(provider, _)| provider.clone())
+        .or_else(|| {
+            crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(record))
+                .ok()
+                .flatten()
+                .map(|_| "gerrit".to_string())
+        })
+        .or_else(|| {
+            crate::workspace::github_provider::probe_github_route(repo, Some(record))
+                .ok()
+                .flatten()
+                .map(|_| "github".to_string())
+        });
+    if let Some(provider) = provider {
+        let ready = match provider.as_str() {
+            "gerrit" => {
+                crate::workspace::gerrit_provider::probe_gerrit_route(repo, Some(record))?.is_some()
+            }
+            "github" => {
+                crate::workspace::github_provider::probe_github_route(repo, Some(record))?.is_some()
+            }
+            _ => false,
+        };
+        let provenance = existing_review
+            .map(|(_, provenance)| provenance)
+            .unwrap_or(BindingProvenance::AutoDiscovered);
+        if !record.capability_bindings.contains_key(&Capability::Review) {
+            bind_review_capabilities(
+                record,
+                &provider,
+                provenance,
+                Some(format!("{} route discovered", provider)),
+            );
+        }
+        for capability in review_capabilities(&provider) {
+            record.capability_readiness.insert(
+                capability,
+                if ready {
+                    CapabilityReadiness::Ready
+                } else {
+                    CapabilityReadiness::RouteIncomplete
+                },
+            );
+        }
+    }
+    record.last_successful_validation = current_timestamp();
+    Ok(())
 }

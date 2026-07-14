@@ -30,18 +30,20 @@ fn test_selector_ambiguity_with_git_revision() {
 
     // ASSERT: Verify it fails with an ambiguity error
     match result {
-        Err(git_staircase::error::StaircaseError::Ambiguous(msg)) => {
+        Err(git_staircase::error::StaircaseError::SelectorAmbiguous {
+            selector,
+            candidates,
+        }) => {
+            assert_eq!(selector, "auth");
             assert!(
-                msg.contains("error: selector 'auth' is ambiguous"),
-                "Message should have error prefix"
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.kind == "managed")
             );
             assert!(
-                msg.contains("managed staircase:"),
-                "Message should contain managed staircase"
-            );
-            assert!(
-                msg.contains("Git revision:"),
-                "Message should contain Git revision"
+                candidates
+                    .iter()
+                    .any(|candidate| candidate.kind == "git-revision")
             );
         }
         _ => panic!("Expected Ambiguous error, but got {:?}", result),

@@ -29,24 +29,19 @@ fn test_canonical_descriptor_format() {
         .run(&["cat-file", "-p", &format!("{}:structure", ref_name)])
         .unwrap();
 
-    // ASSERT: Verify it starts with the mandatory header (Spec 8.4)
-    assert!(
-        content.starts_with("git-staircase-descriptor 1\n"),
-        "Descriptor should start with header, but was:\n{}",
-        content
-    );
-
-    // ASSERT: Verify it follows the KVP format and NOT JSON (Spec 8.5)
-    assert!(
-        !content.trim().starts_with('{'),
-        "Descriptor should not be JSON"
-    );
-    assert!(content.contains(&format!("lineage {}", s.id)));
+    // ASSERT: generation-1 structure is canonical JSON.
+    let structure: serde_json::Value = serde_json::from_str(&content).unwrap();
+    assert_eq!(structure["schema"], "git-staircase/structure");
+    assert_eq!(structure["version"], 1);
+    assert_eq!(structure["kind"], "linear");
+    assert_eq!(structure["lineage_id"], s.id);
+    assert!(structure["policies"].is_object());
+    assert!(structure["discovery_overrides"].is_array());
 
     // ASSERT: Verify canonical name is EXCLUDED (Spec 8.5)
     assert!(
         !content.contains("my-staircase"),
-        "Descriptor should not contain the staircase name"
+        "Structure should not contain the staircase name"
     );
 
     // ACT: Parse the descriptor back using persistence::read_metadata

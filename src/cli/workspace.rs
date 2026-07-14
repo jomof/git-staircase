@@ -68,10 +68,7 @@ impl WorkspaceCmd {
     pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         match &self.command {
             WorkspaceSubcommands::Show(_) => {
-                let options = BootstrapOptions {
-                    no_bootstrap: true,
-                    ..Default::default()
-                };
+                let options = BootstrapOptions::default();
                 let res = bootstrap(repo, &options)?;
                 Ok(Box::new(WorkspaceShowOutput(res.record)))
             }
@@ -98,11 +95,6 @@ impl WorkspaceCmd {
                 Ok(Box::new(WorkspaceProvidersOutput(names)))
             }
             WorkspaceSubcommands::Refresh(_) => {
-                if let Ok(Some(rec)) =
-                    crate::workspace::storage::find_workspace_record_for_path(&repo.workdir)
-                {
-                    let _ = crate::workspace::storage::forget_workspace_record(&rec.workspace_id);
-                }
                 let options = BootstrapOptions::default();
                 let res = bootstrap(repo, &options)?;
                 Ok(Box::new(WorkspaceShowOutput(res.record)))
@@ -152,7 +144,16 @@ impl ToHuman for WorkspaceShowOutput {
         }
         lines.push("Capability Bindings:".to_string());
         for (cap, b) in &self.0.capability_bindings {
-            lines.push(format!("  {}: {} ({})", cap, b.provider, b.provenance));
+            let readiness = self
+                .0
+                .capability_readiness
+                .get(cap)
+                .map(ToString::to_string)
+                .unwrap_or_else(|| "unknown".into());
+            lines.push(format!(
+                "  {}: {} ({}, {})",
+                cap, b.provider, b.provenance, readiness
+            ));
         }
         lines.join("\n")
     }
@@ -203,8 +204,19 @@ impl ToHuman for WorkspaceDoctorOutput {
         lines.push(format!("Workspace ID: {}", self.0.workspace_id));
         lines.push(format!("Canonical Root: {}", self.0.canonical_root));
         lines.push("Bound Capabilities:".to_string());
-        for (k, v) in &self.0.bound_capabilities {
-            lines.push(format!("  {}: {}", k, v));
+        for capability in &self.0.capabilities {
+            lines.push(format!(
+                "  {}: {} [{}; {}]{}",
+                capability.capability,
+                capability.provider.as_deref().unwrap_or("<unbound>"),
+                capability.provenance.as_deref().unwrap_or("no-provenance"),
+                capability.readiness,
+                capability
+                    .evidence
+                    .as_ref()
+                    .map(|evidence| format!(" — {}", evidence))
+                    .unwrap_or_default()
+            ));
         }
         if !self.0.missing_capabilities.is_empty() {
             lines.push(format!(
@@ -229,6 +241,15 @@ impl ToPorcelain for WorkspaceDoctorOutput {
         lines.push(format!("id\t{}", self.0.workspace_id));
         for (k, v) in &self.0.bound_capabilities {
             lines.push(format!("binding\t{}\t{}", k, v));
+        }
+        for capability in &self.0.capabilities {
+            lines.push(format!(
+                "capability\t{}\t{}\t{}\t{}",
+                capability.capability,
+                capability.provider.as_deref().unwrap_or(""),
+                capability.provenance.as_deref().unwrap_or(""),
+                capability.readiness
+            ));
         }
         lines.join("\n")
     }
