@@ -7,6 +7,7 @@ pub mod provider;
 pub mod repo_provider;
 pub mod review_provider;
 pub mod storage;
+#[cfg(test)] mod review_provider_test;
 
 pub use bootstrap::{BootstrapOptions, BootstrapResult, bootstrap};
 pub use doctor::{WorkspaceDoctorReport, doctor};
@@ -30,7 +31,7 @@ pub use repo_provider::{
 };
 pub use review_provider::{
     FakeTransport, OperationJournal, ProductionTransport, ProviderTransport, ReviewProvider,
-    ReviewProviderInstance, SynchronizationState, TransportRequest, TransportResponse,
+    ReviewProviderInstance, prepare_review_state, SynchronizationState, TransportRequest, TransportResponse,
     publish_provider_extension_cas,
 };
 pub use storage::{

@@ -2,7 +2,12 @@ use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
-use crate::workspace::review_provider::ProviderTransport;
+use crate::workspace::review_provider::{
+    prepare_review_state, OperationJournal, ProductionTransport, ProviderTransport,
+    ReviewAssociation, ReviewOperationPlan, ReviewPlanItem, SynchronizationState,
+    TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
+    publish_provider_extension_cas,
+};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -451,7 +456,7 @@ pub struct GerritReviewAssociation {
     pub confirmed: Option<GerritConfirmedReview>,
     pub last_observed_patch_set: Option<u32>,
     pub last_observed_revision: Option<String>,
-    pub synchronization: crate::workspace::review_provider::SynchronizationState,
+    pub synchronization: SynchronizationState,
     pub provider_status: Option<String>,
     pub retired: bool,
 }
@@ -503,7 +508,7 @@ pub struct GerritPlanItem {
     pub local_oid: String,
     pub change_id: Option<String>,
     pub action: String,
-    pub synchronization: crate::workspace::review_provider::SynchronizationState,
+    pub synchronization: SynchronizationState,
     pub expected_remote_patch_set: Option<u32>,
     pub expected_remote_revision: Option<String>,
     pub blocked_reason: Option<String>,
@@ -534,11 +539,11 @@ pub struct GerritMutationResult {
     pub journal_operation_id: Option<String>,
 }
 
-pub struct GerritStateMachine<T: crate::workspace::review_provider::ProviderTransport> {
+pub struct GerritStateMachine<T: ProviderTransport> {
     pub transport: T,
 }
 
-impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine<T> {
+impl<T: ProviderTransport> GerritStateMachine<T> {
     pub fn new(transport: T) -> Self {
         Self { transport }
     }
@@ -635,7 +640,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                     last_observed_patch_set: None,
                     last_observed_revision: None,
                     synchronization:
-                        crate::workspace::review_provider::SynchronizationState::NotUploaded,
+                        SynchronizationState::NotUploaded,
                     provider_status: None,
                     retired: false,
                 })
@@ -650,65 +655,47 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
         plan: &GerritReviewOperationPlan,
         existing: Option<GerritProviderState>,
     ) -> Result<GerritProviderState> {
-        let Some(mut state) = existing else {
-            return self.create(plan);
-        };
-        if state.route.server_id != plan.route.server_id
-            || state.route.project != plan.route.project
-            || state.route.destination_branch != plan.route.destination_branch
-        {
-            return Err(crate::error::StaircaseError::Other(
-                "existing Gerrit associations belong to a different route".into(),
-            ));
-        }
-        let active_subjects = plan
-            .items
-            .iter()
-            .map(|item| item.subject_id.as_str())
-            .collect::<Vec<_>>();
-        for association in state
-            .associations
-            .iter_mut()
-            .filter(|association| !association.retired)
-        {
-            if !active_subjects.contains(&association.subject_id.as_str()) {
-                association.retired = true;
-            }
-        }
-        for item in &plan.items {
-            if let Some(association) = state
-                .associations
-                .iter_mut()
-                .find(|association| association.subject_id == item.subject_id)
-            {
-                association.local_commit_oid = item.local_oid.clone();
-                association.retired = false;
-                continue;
-            }
-            let change_id = item.change_id.clone().ok_or_else(|| {
-                crate::error::StaircaseError::Other(format!(
-                    "missing-change-id: subject {} requires explicit normalization",
-                    item.subject_id
-                ))
-            })?;
-            state.associations.push(GerritReviewAssociation {
-                subject_id: item.subject_id.clone(),
-                local_commit_oid: item.local_oid.clone(),
-                pending: GerritPendingReviewKey {
-                    server_id: plan.route.server_id.clone(),
-                    project: plan.route.project.clone(),
-                    branch: plan.route.destination_branch.clone(),
-                    change_id,
-                },
-                confirmed: None,
-                last_observed_patch_set: None,
-                last_observed_revision: None,
-                synchronization:
-                    crate::workspace::review_provider::SynchronizationState::NotUploaded,
-                provider_status: None,
-                retired: false,
-            });
-        }
+        let mut state = prepare_review_state(
+            plan,
+            existing,
+            |plan| self.create(plan),
+            |state, plan| {
+                if state.route.server_id != plan.route.server_id
+                    || state.route.project != plan.route.project
+                    || state.route.destination_branch != plan.route.destination_branch
+                {
+                    return Err(crate::error::StaircaseError::Other(
+                        "existing Gerrit associations belong to a different route".into(),
+                    ));
+                }
+                Ok(())
+            },
+            |state| &mut state.associations,
+            |item| {
+                let change_id = item.change_id.clone().ok_or_else(|| {
+                    crate::error::StaircaseError::Other(format!(
+                        "missing-change-id: subject {} requires explicit normalization",
+                        item.subject_id
+                    ))
+                })?;
+                Ok(GerritReviewAssociation {
+                    subject_id: item.subject_id.clone(),
+                    local_commit_oid: item.local_oid.clone(),
+                    pending: GerritPendingReviewKey {
+                        server_id: plan.route.server_id.clone(),
+                        project: plan.route.project.clone(),
+                        branch: plan.route.destination_branch.clone(),
+                        change_id,
+                    },
+                    confirmed: None,
+                    last_observed_patch_set: None,
+                    last_observed_revision: None,
+                    synchronization: SynchronizationState::NotUploaded,
+                    provider_status: None,
+                    retired: false,
+                })
+            },
+        )?;
         state.mapping_policy = plan.mapping_policy.clone();
         state.topology = plan.topology.clone();
         Ok(state)
@@ -765,9 +752,9 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
             || plan.items.iter().any(|item| {
                 matches!(
                     item.synchronization,
-                    crate::workspace::review_provider::SynchronizationState::RemoteNewer
-                        | crate::workspace::review_provider::SynchronizationState::Diverged
-                        | crate::workspace::review_provider::SynchronizationState::UploadUnknown
+                    SynchronizationState::RemoteNewer
+                        | SynchronizationState::Diverged
+                        | SynchronizationState::UploadUnknown
                 )
             })
         {
@@ -795,7 +782,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
             .last()
             .map(|item| item.local_oid.clone())
             .ok_or_else(|| crate::error::StaircaseError::Other("empty Gerrit plan".into()))?;
-        let request = crate::workspace::review_provider::TransportRequest::GitPush {
+        let request = TransportRequest::GitPush {
             remote: plan
                 .route
                 .transport_endpoint
@@ -817,9 +804,9 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                     .filter(|association| !association.retired)
                 {
                     association.synchronization =
-                        crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+                        SynchronizationState::UploadUnknown;
                 }
-                let journal = crate::workspace::review_provider::OperationJournal::for_repo(repo)?;
+                let journal = OperationJournal::for_repo(repo)?;
                 let entry = journal.record(
                     "gerrit",
                     "upload",
@@ -849,9 +836,9 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                 .filter(|association| !association.retired)
             {
                 association.synchronization =
-                    crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+                    SynchronizationState::UploadUnknown;
             }
-            let journal = crate::workspace::review_provider::OperationJournal::for_repo(repo)?;
+            let journal = OperationJournal::for_repo(repo)?;
             let entry = journal.record(
                 "gerrit",
                 "upload",
@@ -906,7 +893,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                         .unwrap_or(&association.pending.branch),
                     association.pending.change_id
                 );
-                let request = crate::workspace::review_provider::TransportRequest::Api {
+                let request = TransportRequest::Api {
                     tool: "curl".into(),
                     method: "GET".into(),
                     endpoint,
@@ -937,13 +924,13 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                 accepted += 1;
             } else {
                 association.synchronization =
-                    crate::workspace::review_provider::SynchronizationState::UploadUnknown;
+                    SynchronizationState::UploadUnknown;
                 unknown += 1;
             }
         }
         state.reconciliation_required = unknown > 0;
         let journal_operation_id = if unknown > 0 {
-            let journal = crate::workspace::review_provider::OperationJournal::for_repo(repo)?;
+            let journal = OperationJournal::for_repo(repo)?;
             Some(
                 journal
                     .record(
@@ -951,7 +938,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                         "upload",
                         plan.expected_record_oid.clone(),
                         request,
-                        serde_json::json!({"unresolved_change_ids": state.associations.iter().filter(|association| association.synchronization == crate::workspace::review_provider::SynchronizationState::UploadUnknown).map(|association| association.pending.change_id.clone()).collect::<Vec<_>>() }),
+                        serde_json::json!({"unresolved_change_ids": state.associations.iter().filter(|association| association.synchronization == SynchronizationState::UploadUnknown).map(|association| association.pending.change_id.clone()).collect::<Vec<_>>() }),
                     )?
                     .operation_id,
             )
@@ -990,10 +977,10 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                 apply_remote_change(association, matches[0]);
             } else if matches.len() > 1 {
                 association.synchronization =
-                    crate::workspace::review_provider::SynchronizationState::IdentityAmbiguous;
+                    SynchronizationState::IdentityAmbiguous;
             } else {
                 association.synchronization =
-                    crate::workspace::review_provider::SynchronizationState::Unknown;
+                    SynchronizationState::Unknown;
             }
         }
         state.reconciliation_required = state
@@ -1003,9 +990,9 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
             .any(|association| {
                 matches!(
                     association.synchronization,
-                    crate::workspace::review_provider::SynchronizationState::IdentityAmbiguous
-                        | crate::workspace::review_provider::SynchronizationState::Unknown
-                        | crate::workspace::review_provider::SynchronizationState::UploadUnknown
+                    SynchronizationState::IdentityAmbiguous
+                        | SynchronizationState::Unknown
+                        | SynchronizationState::UploadUnknown
                 )
             });
         state
@@ -1052,7 +1039,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
         record: &crate::model::StaircaseRecord,
         state: &GerritProviderState,
     ) -> Result<crate::model::StaircaseRecord> {
-        crate::workspace::review_provider::publish_provider_extension_cas(
+        publish_provider_extension_cas(
             repo,
             record,
             "git-staircase.gerrit",
@@ -1066,7 +1053,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
         state: &GerritProviderState,
         mode: &str,
         topic_members: &[u64],
-    ) -> Result<crate::workspace::review_provider::UnifiedProviderLanding> {
+    ) -> Result<UnifiedProviderLanding> {
         let selected: Vec<u64> = state
             .associations
             .iter()
@@ -1083,7 +1070,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                 .iter()
                 .any(|member| !selected.contains(member))
         {
-            return Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+            return Ok(UnifiedProviderLanding {
                 provider_label: "Gerrit".into(),
                 mode: mode.into(),
                 status: "landing-blocked".into(),
@@ -1118,7 +1105,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                 })
             });
             if !verified {
-                return Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+                return Ok(UnifiedProviderLanding {
                     provider_label: "Gerrit".into(),
                     mode: mode.into(),
                     status: "landing-blocked".into(),
@@ -1131,7 +1118,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
         }
         let mut landed = Vec::new();
         for target in targets {
-            let request = crate::workspace::review_provider::TransportRequest::Api {
+            let request = TransportRequest::Api {
                 tool: "curl".into(),
                 method: "POST".into(),
                 endpoint: format!(
@@ -1144,14 +1131,14 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
             let response = match self.transport.execute(repo, &request) {
                 Ok(response) => response,
                 Err(error) => {
-                    crate::workspace::review_provider::OperationJournal::for_repo(repo)?.record(
+                    OperationJournal::for_repo(repo)?.record(
                         "gerrit",
                         "landing",
                         None,
                         request,
                         serde_json::json!({"error": error.to_string()}),
                     )?;
-                    return Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+                    return Ok(UnifiedProviderLanding {
                         provider_label: "Gerrit".into(),
                         mode: mode.into(),
                         status: "landing-unknown".into(),
@@ -1164,7 +1151,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
             };
             if !response.success || response.uncertain {
                 if response.uncertain {
-                    crate::workspace::review_provider::OperationJournal::for_repo(repo)?.record(
+                    OperationJournal::for_repo(repo)?.record(
                         "gerrit",
                         "landing",
                         None,
@@ -1172,7 +1159,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
                         response.observations.clone(),
                     )?;
                 }
-                return Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+                return Ok(UnifiedProviderLanding {
                     provider_label: "Gerrit".into(),
                     mode: mode.into(),
                     status: if response.uncertain {
@@ -1188,7 +1175,7 @@ impl<T: crate::workspace::review_provider::ProviderTransport> GerritStateMachine
             }
             landed.push(target.to_string());
         }
-        Ok(crate::workspace::review_provider::UnifiedProviderLanding {
+        Ok(UnifiedProviderLanding {
             provider_label: "Gerrit".into(),
             mode: mode.into(),
             status: "landed".into(),
@@ -1204,30 +1191,30 @@ fn classify_gerrit_item(
     planned: &GerritPlannedCommit,
     association: Option<&GerritReviewAssociation>,
 ) -> (
-    crate::workspace::review_provider::SynchronizationState,
+    SynchronizationState,
     String,
     Option<String>,
 ) {
     if planned.change_id.is_none() || planned.change_id_status != "valid" {
         return (
-            crate::workspace::review_provider::SynchronizationState::NotCreated,
+            SynchronizationState::NotCreated,
             "blocked".into(),
             Some("missing or invalid Change-Id requires explicit normalization".into()),
         );
     }
     let Some(association) = association else {
         return (
-            crate::workspace::review_provider::SynchronizationState::NotCreated,
+            SynchronizationState::NotCreated,
             "create".into(),
             None,
         );
     };
     if matches!(
         association.synchronization,
-        crate::workspace::review_provider::SynchronizationState::RemoteNewer
-            | crate::workspace::review_provider::SynchronizationState::Diverged
-            | crate::workspace::review_provider::SynchronizationState::UploadUnknown
-            | crate::workspace::review_provider::SynchronizationState::IdentityAmbiguous
+        SynchronizationState::RemoteNewer
+            | SynchronizationState::Diverged
+            | SynchronizationState::UploadUnknown
+            | SynchronizationState::IdentityAmbiguous
     ) {
         return (
             association.synchronization,
@@ -1237,7 +1224,7 @@ fn classify_gerrit_item(
     }
     if association.pending.change_id != planned.change_id.clone().unwrap_or_default() {
         return (
-            crate::workspace::review_provider::SynchronizationState::Retargeted,
+            SynchronizationState::Retargeted,
             "blocked".into(),
             Some("local Change-Id differs from durable review association".into()),
         );
@@ -1247,7 +1234,7 @@ fn classify_gerrit_item(
         association.confirmed.as_ref(),
     ) {
         (Some(remote), Some(_)) if remote == planned.oid => (
-            crate::workspace::review_provider::SynchronizationState::Current,
+            SynchronizationState::Current,
             "no-op".into(),
             None,
         ),
@@ -1255,18 +1242,18 @@ fn classify_gerrit_item(
             if association.last_observed_patch_set == Some(confirmed.patch_set) =>
         {
             (
-                crate::workspace::review_provider::SynchronizationState::LocalNewer,
+                SynchronizationState::LocalNewer,
                 "update".into(),
                 None,
             )
         }
         (Some(_), Some(_)) => (
-            crate::workspace::review_provider::SynchronizationState::RemoteNewer,
+            SynchronizationState::RemoteNewer,
             "blocked".into(),
             Some("remote-newer: reconcile before upload".into()),
         ),
         _ => (
-            crate::workspace::review_provider::SynchronizationState::NotUploaded,
+            SynchronizationState::NotUploaded,
             "create".into(),
             None,
         ),
@@ -1299,17 +1286,17 @@ fn apply_remote_change(association: &mut GerritReviewAssociation, remote: &Gerri
     association.last_observed_revision = Some(remote.revision.clone());
     association.provider_status = Some(remote.status.clone());
     association.synchronization = if remote.status.eq_ignore_ascii_case("merged") {
-        crate::workspace::review_provider::SynchronizationState::Merged
+        SynchronizationState::Merged
     } else if remote.status.eq_ignore_ascii_case("abandoned") {
-        crate::workspace::review_provider::SynchronizationState::Abandoned
+        SynchronizationState::Abandoned
     } else if remote.revision == association.local_commit_oid {
-        crate::workspace::review_provider::SynchronizationState::Current
+        SynchronizationState::Current
     } else if prior_patch_set.is_some_and(|patch_set| remote.patch_set > patch_set)
         && prior_revision.as_deref() != Some(&remote.revision)
     {
-        crate::workspace::review_provider::SynchronizationState::RemoteNewer
+        SynchronizationState::RemoteNewer
     } else {
-        crate::workspace::review_provider::SynchronizationState::Diverged
+        SynchronizationState::Diverged
     };
 }
 
@@ -1387,7 +1374,7 @@ pub fn parse_gerrit_api_change(value: &serde_json::Value) -> Option<GerritRemote
 }
 
 use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance, UnifiedProviderLanding, UnifiedProviderVerification,
+    ReviewProvider, ReviewProviderInstance,
     UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
     UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
 };
@@ -1468,7 +1455,7 @@ impl ReviewProviderInstance for GerritInstance {
                         "reconciliation-required".into()
                     } else if state.associations.iter().all(|association| {
                         association.synchronization
-                            == crate::workspace::review_provider::SynchronizationState::Current
+                            == SynchronizationState::Current
                     }) {
                         "current".into()
                     } else {
@@ -1546,7 +1533,7 @@ impl ReviewProviderInstance for GerritInstance {
                         format!("refs/for/{}", destination.trim_start_matches("refs/heads/"));
                 }
                 let machine =
-                    GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                    GerritStateMachine::new(ProductionTransport);
                 let metadata = &record.metadata;
                 let subjects = metadata
                     .steps
@@ -1585,7 +1572,7 @@ impl ReviewProviderInstance for GerritInstance {
             active_route.upload_ref = format!("refs/for/{}", dest);
         }
         let machine =
-            GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+            GerritStateMachine::new(ProductionTransport);
         let subject_ids: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
@@ -1613,7 +1600,7 @@ impl ReviewProviderInstance for GerritInstance {
             if let Some(value) = record.user_metadata.extensions.get("git-staircase.gerrit") {
                 let state: GerritProviderState = serde_json::from_value(value.clone())?;
                 let machine =
-                    GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                    GerritStateMachine::new(ProductionTransport);
                 let mut observations = Vec::new();
                 for association in &state.associations {
                     let selector = association
@@ -1621,7 +1608,7 @@ impl ReviewProviderInstance for GerritInstance {
                         .as_ref()
                         .map(|confirmed| confirmed.numeric_id.to_string())
                         .unwrap_or_else(|| association.pending.change_id.clone());
-                    let request = crate::workspace::review_provider::TransportRequest::Api {
+                    let request = TransportRequest::Api {
                         tool: "curl".into(),
                         method: "GET".into(),
                         endpoint: format!(
@@ -1716,7 +1703,7 @@ impl ReviewProviderInstance for GerritInstance {
                 crate::error::StaircaseError::Other("Gerrit route is incomplete".into())
             })?;
             let machine =
-                GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                GerritStateMachine::new(ProductionTransport);
             let existing = record
                 .user_metadata
                 .extensions
@@ -1750,7 +1737,7 @@ impl ReviewProviderInstance for GerritInstance {
             });
         }
         let machine =
-            GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+            GerritStateMachine::new(ProductionTransport);
         let subjects: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
@@ -1794,7 +1781,7 @@ impl ReviewProviderInstance for GerritInstance {
                         )
                     })?;
                 let machine =
-                    GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                    GerritStateMachine::new(ProductionTransport);
                 if review.is_empty()
                     || !review.chars().all(|character| {
                         character.is_ascii_alphanumeric() || "~._-".contains(character)
@@ -1804,7 +1791,7 @@ impl ReviewProviderInstance for GerritInstance {
                         "unsafe Gerrit review selector".into(),
                     ));
                 }
-                let request = crate::workspace::review_provider::TransportRequest::Api {
+                let request = TransportRequest::Api {
                     tool: "curl".into(),
                     method: "GET".into(),
                     endpoint: format!(
@@ -1874,7 +1861,7 @@ impl ReviewProviderInstance for GerritInstance {
                         )
                     })?;
                 let machine =
-                    GerritStateMachine::new(crate::workspace::review_provider::ProductionTransport);
+                    GerritStateMachine::new(ProductionTransport);
                 let state = machine.detach(state, &subject_id)?;
                 let next = machine.persist(repo, &record, &state)?;
                 return Ok(UnifiedReviewMutation {
@@ -1943,5 +1930,36 @@ impl ReviewProviderInstance for GerritInstance {
             destination_oid: None,
             details: vec!["confirmed identities and exact verification are required".into()],
         })
+    }
+}
+
+impl ReviewAssociation for GerritReviewAssociation {
+    fn subject_id(&self) -> &str {
+        &self.subject_id
+    }
+    fn is_retired(&self) -> bool {
+        self.retired
+    }
+    fn set_retired(&mut self, retired: bool) {
+        self.retired = retired;
+    }
+    fn update_local_oid(&mut self, oid: String) {
+        self.local_commit_oid = oid;
+    }
+}
+
+impl ReviewPlanItem for GerritPlanItem {
+    fn subject_id(&self) -> &str {
+        &self.subject_id
+    }
+    fn local_oid(&self) -> &str {
+        &self.local_oid
+    }
+}
+
+impl ReviewOperationPlan for GerritReviewOperationPlan {
+    type Item = GerritPlanItem;
+    fn items(&self) -> &[Self::Item] {
+        &self.items
     }
 }

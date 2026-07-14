@@ -5,7 +5,7 @@ use crate::model::StaircaseRecord;
 use crate::workspace::model::WorkspaceRecord;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
-use std::collections::{HashMap, VecDeque};
+use std::collections::{HashMap, HashSet, VecDeque};
 use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
@@ -522,4 +522,68 @@ pub trait ReviewProviderInstance {
         method: Option<&str>,
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderLanding>;
+}
+
+pub trait ReviewAssociation: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
+    fn subject_id(&self) -> &str;
+    fn is_retired(&self) -> bool;
+    fn set_retired(&mut self, retired: bool);
+    fn update_local_oid(&mut self, oid: String);
+}
+
+pub trait ReviewPlanItem: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
+    fn subject_id(&self) -> &str;
+    fn local_oid(&self) -> &str;
+}
+
+pub trait ReviewOperationPlan: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
+    type Item: ReviewPlanItem;
+    fn items(&self) -> &[Self::Item];
+}
+
+
+pub fn prepare_review_state<S, P, A, I>(
+    plan: &P,
+    existing: Option<S>,
+    create_state: impl FnOnce(&P) -> Result<S>,
+    check_route: impl FnOnce(&S, &P) -> Result<()>,
+    get_associations_mut: impl FnOnce(&mut S) -> &mut Vec<A>,
+    create_association: impl Fn(&I) -> Result<A>,
+) -> Result<S>
+where
+    P: ReviewOperationPlan<Item = I>,
+    A: ReviewAssociation,
+    I: ReviewPlanItem,
+{
+    let mut state = match existing {
+        Some(s) => {
+            check_route(&s, plan)?;
+            s
+        }
+        None => return create_state(plan),
+    };
+
+    let active_subjects: HashSet<&str> =
+        plan.items().iter().map(|i| i.subject_id()).collect();
+
+    let associations = get_associations_mut(&mut state);
+    for assoc in associations.iter_mut().filter(|a| !a.is_retired()) {
+        if !active_subjects.contains(assoc.subject_id()) {
+            assoc.set_retired(true);
+        }
+    }
+
+    for item in plan.items() {
+        if let Some(assoc) = associations
+            .iter_mut()
+            .find(|a| a.subject_id() == item.subject_id())
+        {
+            assoc.update_local_oid(item.local_oid().to_string());
+            assoc.set_retired(false);
+        } else {
+            associations.push(create_association(item)?);
+        }
+    }
+
+    Ok(state)
 }
