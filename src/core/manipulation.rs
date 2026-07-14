@@ -501,7 +501,8 @@ pub fn restack(
     let mut metadata = status.metadata.clone();
     ensure_rewrite_supported(repo, &metadata, "restack")?;
     let mut groups = Vec::new();
-    let mut recorded_predecessor = recorded_target(repo, &metadata)?;
+    let mut actual_predecessor = recorded_target(repo, &metadata)?;
+    let mut recorded_predecessor = actual_predecessor.clone();
     let mut current_base = repo.resolve_commit(&metadata.target)?;
     let mut start_step = 0;
     for index in 0..metadata.steps.len() {
@@ -510,7 +511,12 @@ pub fn restack(
             .actual_oid
             .clone()
             .unwrap_or_else(|| step.cut.clone());
-        if !repo.is_ancestor(&recorded_predecessor, &actual)? {
+
+        let predecessor = if repo.is_ancestor(&actual_predecessor, &actual)? {
+            &actual_predecessor
+        } else if repo.is_ancestor(&recorded_predecessor, &actual)? {
+            &recorded_predecessor
+        } else {
             return Err(StaircaseError::UnsupportedTopology {
                 operation: "restack".into(),
                 reason: format!(
@@ -518,14 +524,16 @@ pub fn restack(
                     step.name
                 ),
             });
-        }
+        };
+
         if groups.is_empty() && repo.is_ancestor(&current_base, &actual)? {
             metadata.steps[index].cut = actual.clone();
-            current_base = actual;
+            current_base = actual.clone();
             start_step = index + 1;
         } else {
-            groups.push(repo.commits_between(&recorded_predecessor, &actual)?);
+            groups.push(repo.commits_between(predecessor, &actual)?);
         }
+        actual_predecessor = actual;
         recorded_predecessor = step.cut;
     }
     if groups.is_empty() {
