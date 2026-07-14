@@ -228,9 +228,12 @@ impl ProviderTransport for ProductionTransport {
                     .stderr(Stdio::piped());
                 if let Some(body) = body {
                     let mut child = command.stdin(Stdio::piped()).spawn()?;
+                    let body_str = serde_json::to_string(body)?;
                     if let Some(mut stdin) = child.stdin.take() {
-                        use std::io::Write;
-                        stdin.write_all(serde_json::to_string(body)?.as_bytes())?;
+                        std::thread::spawn(move || {
+                            use std::io::Write;
+                            let _ = stdin.write_all(body_str.as_bytes());
+                        });
                     }
                     child.wait_with_output()?
                 } else {
