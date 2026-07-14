@@ -43,6 +43,7 @@ pub mod transport;
 pub mod unarchive;
 pub mod verify;
 pub mod workspace;
+pub mod formatting_impls;
 
 pub use formatting::*;
 

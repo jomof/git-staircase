@@ -778,28 +778,3 @@ pub(crate) fn hex_decode(value: &str) -> Result<Vec<u8>> {
         .collect()
 }
 
-use crate::presentation::{Presentation, ToPresentation, UsePresentation};
-
-impl ToPresentation for MaterializeResult {
-    fn to_presentation(&self) -> Presentation {
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
-                "Materialized draft as commit {} on step '{}' of staircase '{}'",
-                if self.commit_oid.len() >= 7 {
-                    &self.commit_oid[..7]
-                } else {
-                    &self.commit_oid
-                },
-                self.step_name,
-                self.staircase_name
-            )))),
-            Presentation::Porcelain(Box::new(Presentation::Record(vec![
-                "materialized".to_string(),
-                self.staircase_name.clone(),
-                self.step_name.clone(),
-                self.commit_oid.clone(),
-            ]))),
-        ])
-    }
-}
-impl UsePresentation for MaterializeResult {}

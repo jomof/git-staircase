@@ -1,3 +1,5 @@
+use std::collections::BTreeMap;
+use serde_json::Value;
 pub use crate::model::{StaircaseFamily, StaircaseStatus, Step};
 pub use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use serde::Serialize;
@@ -327,7 +329,7 @@ impl ToPresentation for LogOutput {
 }
 impl UsePresentation for LogOutput {}
 
-impl ToPresentation for std::collections::BTreeMap<String, serde_json::Value> {
+impl ToPresentation for BTreeMap<String, Value> {
     fn to_presentation(&self) -> Presentation {
         let mut fields = vec![];
         for (k, v) in self {
@@ -342,4 +344,4 @@ impl ToPresentation for std::collections::BTreeMap<String, serde_json::Value> {
         }
     }
 }
-impl UsePresentation for std::collections::BTreeMap<String, serde_json::Value> {}
+impl UsePresentation for BTreeMap<String, Value> {}
