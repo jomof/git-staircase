@@ -450,7 +450,15 @@ fn gerrit_black_box_create_persists_pending_associations() {
     let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(&local.repo.workdir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", workspace.path())
-        .args(["review", "create", "provider-cli", "--provider", "gerrit"])
+        .args([
+            "review",
+            "create",
+            "provider-cli",
+            "--provider",
+            "gerrit",
+            "--onto",
+            &local.oids[0],
+        ])
         .output()
         .unwrap();
     assert!(
