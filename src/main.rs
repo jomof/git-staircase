@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use clap::{Parser, Subcommand, Args, error::ErrorKind};
+use clap::{Args, Parser, Subcommand, error::ErrorKind};
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
@@ -279,12 +279,16 @@ fn run(cli: Cli) -> Result<()> {
 fn determine_requested_format_fallback() -> OutputFormat {
     let args: Vec<String> = std::env::args().collect();
     let is_json = args.iter().any(|arg| arg == "--json")
-        || args.windows(2).any(|pair| pair[0] == "--format" && pair[1] == "json")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "json")
         || args.iter().any(|arg| arg == "--format=json");
     let is_porcelain = args.iter().any(|arg| arg == "--porcelain")
-        || args.windows(2).any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
         || args.iter().any(|arg| arg == "--format=porcelain");
-    
+
     if is_json {
         OutputFormat::Json
     } else if is_porcelain {
