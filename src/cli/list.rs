@@ -154,7 +154,10 @@ pub struct ListResult(pub Vec<ListEntry>);
 impl ToPresentation for ListResult {
     fn to_presentation(&self) -> Presentation {
         if self.0.is_empty() {
-            Presentation::Plain("No staircases.".to_string())
+            Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Plain("No staircases.".to_string()))),
+                Presentation::Porcelain(Box::new(Presentation::Empty)),
+            ])
         } else {
             self.0.to_presentation()
         }
