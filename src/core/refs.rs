@@ -15,6 +15,8 @@
  */
 
 use crate::model::LifecycleState;
+use crate::model::StaircaseMetadata;
+use std::collections::BTreeMap;
 
 pub const PUBLIC_PREFIX: &str = "refs/staircases/";
 pub const STATE_PREFIX: &str = "refs/staircase-state/";
@@ -23,6 +25,26 @@ pub const ARCHIVE_PREFIX: &str = "refs/staircase-archive/";
 pub struct StaircaseRefs;
 
 impl StaircaseRefs {
+    pub fn local(branch: &str) -> String {
+        if branch.starts_with("refs/heads/") {
+            branch.into()
+        } else {
+            format!("refs/heads/{}", branch)
+        }
+    }
+
+    pub fn owned_branches(metadata: &StaircaseMetadata) -> BTreeMap<String, String> {
+        metadata
+            .steps
+            .iter()
+            .filter_map(|step| {
+                step.branch
+                    .as_ref()
+                    .map(|branch| (Self::local(branch), step.cut.clone()))
+            })
+            .collect()
+    }
+
     pub fn public(name: &str) -> String {
         format!("{}{}", PUBLIC_PREFIX, name)
     }

@@ -101,7 +101,7 @@ pub fn append(
         let branch = tip.branch.as_ref().ok_or_else(|| {
             StaircaseError::Other("append without a materializing branch requires adoption".into())
         })?;
-        let reference = local_ref(branch);
+        let reference = StaircaseRefs::local(branch);
         let expected = repo.resolve_ref_opt(&reference)?;
         if !new_step && expected.as_deref() != Some(old_top.as_str()) {
             return Err(StaircaseError::RefCollision {
@@ -140,7 +140,7 @@ pub fn layout_state(repo: &GitRepo, selector: &ResolvedSelector) -> Result<Layou
     for (index, step) in metadata.steps.iter().enumerate() {
         let expected_ref = expected_names
             .as_ref()
-            .map(|names| local_ref(&names[index]));
+            .map(|names| StaircaseRefs::local(&names[index]));
         let actual_oid = expected_ref
             .as_ref()
             .map(|reference| repo.resolve_ref_opt(reference))
@@ -570,41 +570,10 @@ fn add_branch_permutation(
     plan: &mut MutationPlan,
     overridden_refs: &BTreeSet<String>,
 ) -> Result<()> {
-    let old_owned: BTreeMap<String, String> = old
-        .steps
-        .iter()
-        .filter_map(|step| {
-            step.branch
-                .as_ref()
-                .map(|branch| (local_ref(branch), step.cut.clone()))
-        })
-        .collect();
-    let new_owned: BTreeMap<String, String> = new
-        .steps
-        .iter()
-        .filter_map(|step| {
-            step.branch
-                .as_ref()
-                .map(|branch| (local_ref(branch), step.cut.clone()))
-        })
-        .collect();
+    let old_owned = StaircaseRefs::owned_branches(old);
+    let new_owned = StaircaseRefs::owned_branches(new);
     let all_refs: BTreeSet<_> = old_owned.keys().chain(new_owned.keys()).cloned().collect();
-    let current_worktree = repo
-        .workdir
-        .canonicalize()
-        .unwrap_or_else(|_| repo.workdir.clone());
-    let checked_out: BTreeMap<_, _> = repo
-        .worktrees()?
-        .into_iter()
-        .filter(|worktree| {
-            worktree
-                .path
-                .canonicalize()
-                .unwrap_or_else(|_| worktree.path.clone())
-                != current_worktree
-        })
-        .filter_map(|worktree| worktree.branch.map(|branch| (branch, worktree.path)))
-        .collect();
+    repo.check_worktree_safety(&all_refs, "branch-layout")?;
     for reference in all_refs {
         if overridden_refs.contains(&reference) {
             continue;
@@ -631,24 +600,11 @@ fn add_branch_permutation(
         }
         let planned = new_owned.get(&reference).cloned();
         if actual != planned {
-            if let Some(path) = checked_out.get(&reference) {
-                return Err(StaircaseError::UnsupportedTopology {
-                    operation: "branch-layout".into(),
-                    reason: format!(
-                        "branch {} is checked out in worktree {}; move or detach that worktree first",
-                        reference,
-                        path.display()
-                    ),
-                });
-            }
-        }
-        if actual != planned {
             plan.update(reference, actual, planned);
         }
     }
     Ok(())
 }
-
 fn resolve_linear_append(repo: &GitRepo, old_top: &str, range: &str) -> Result<Vec<String>> {
     let commits = repo.rev_list(&["--reverse", range])?;
     if commits.is_empty() {
@@ -861,14 +817,6 @@ fn check_name_available(repo: &GitRepo, name: &str, same_lineage: Option<&str>) 
         }
     }
     Ok(())
-}
-
-fn local_ref(branch: &str) -> String {
-    if branch.starts_with("refs/heads/") {
-        branch.into()
-    } else {
-        format!("refs/heads/{}", branch)
-    }
 }
 
 fn result(

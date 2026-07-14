@@ -4,6 +4,7 @@ use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
 use crate::process::ProcessExecutor;
 use serde::Serialize;
+use std::collections::BTreeSet;
 use std::path::PathBuf;
 use std::process::Command;
 
@@ -622,6 +623,35 @@ impl GitRepo {
             }
         }
         Ok(branches)
+    }
+
+    pub fn check_worktree_safety(&self, refs: &BTreeSet<String>, operation: &str) -> Result<()> {
+        let current_worktree = self
+            .workdir
+            .canonicalize()
+            .unwrap_or_else(|_| self.workdir.clone());
+        for worktree in self.worktrees()? {
+            let path = worktree
+                .path
+                .canonicalize()
+                .unwrap_or_else(|_| worktree.path.clone());
+            if path != current_worktree
+                && worktree
+                    .branch
+                    .as_ref()
+                    .is_some_and(|branch| refs.contains(branch))
+            {
+                return Err(StaircaseError::UnsupportedTopology {
+                    operation: operation.into(),
+                    reason: format!(
+                        "branch {} is checked out in worktree {}; move or detach that worktree first",
+                        worktree.branch.expect("checked"),
+                        worktree.path.display()
+                    ),
+                });
+            }
+        }
+        Ok(())
     }
 
     pub fn worktrees(&self) -> Result<Vec<WorktreeInfo>> {
