@@ -334,3 +334,34 @@ fn sequential_branch_name(index: usize, total: usize, base: &str) -> String {
         format!("{}-{}", base, index + 1)
     }
 }
+
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
+
+impl ToPresentation for ResolvedStaircase {
+    fn to_presentation(&self) -> Presentation {
+        match self {
+            ResolvedStaircase::ImplicitFamily(f) => Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Heading(format!(
+                    "Implicit Staircase Family: {}",
+                    f.name
+                )))),
+                f.to_presentation(),
+            ]),
+            ResolvedStaircase::Managed(m) => Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Heading(format!(
+                    "Managed Staircase: {}",
+                    m.name
+                )))),
+                m.to_presentation(),
+            ]),
+            ResolvedStaircase::Implicit(m) => Presentation::List(vec![
+                Presentation::Human(Box::new(Presentation::Heading(format!(
+                    "Implicit Staircase: {}",
+                    m.name
+                )))),
+                m.to_presentation(),
+            ]),
+        }
+    }
+}
+impl UsePresentation for ResolvedStaircase {}

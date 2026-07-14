@@ -44,10 +44,7 @@ pub mod unarchive;
 pub mod verify;
 pub mod workspace;
 
-pub use formatting::{
-    CommitInfo, LogOutput, PlainOutput, Presentation, ReorderResult, StaircaseCommits, StepCommits,
-    StepsList, Success, Summary, ToHuman, ToPorcelain, ToPresentation, UsePresentation,
-};
+pub use formatting::*;
 
 #[derive(Clone, Copy, Debug)]
 pub enum OutputFormat {

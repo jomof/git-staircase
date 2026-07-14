@@ -897,3 +897,79 @@ fn result(
         changed_refs,
     }
 }
+
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
+
+impl ToPresentation for LocalMutationResult {
+    fn to_presentation(&self) -> Presentation {
+        let mut children = vec![
+            Presentation::Field {
+                label: "kind".to_string(),
+                value: self.kind.clone(),
+            },
+            Presentation::Field {
+                label: "staircase".to_string(),
+                value: self.staircase_name.clone(),
+            },
+        ];
+        if let Some(ref oid) = self.record_oid {
+             children.push(Presentation::Field {
+                label: "record oid".to_string(),
+                value: oid[..7].to_string(),
+            });
+        }
+        if self.dry_run {
+            children.push(Presentation::Plain("(dry run)".to_string()));
+        }
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Operation '{}' completed successfully:", self.kind),
+                children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.kind.clone(),
+                self.staircase_name.clone(),
+                self.record_oid.clone().unwrap_or_default(),
+            ]))),
+        ])
+    }
+}
+
+impl ToPresentation for LayoutState {
+    fn to_presentation(&self) -> Presentation {
+        let mut branches = vec![];
+        for b in &self.branches {
+            branches.push(vec![
+                b.step_name.clone(),
+                b.expected_oid[..7].to_string(),
+                b.actual_oid.as_deref().unwrap_or("none")[..7.min(b.actual_oid.as_deref().unwrap_or("none").len())].to_string(),
+            ]);
+        }
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Layout state for staircase {}:", self.staircase_id),
+                children: vec![
+                    Presentation::Field { label: "profile".to_string(), value: self.profile.clone().unwrap_or("none".into()) },
+                    Presentation::Field { label: "base".to_string(), value: self.base.clone().unwrap_or("none".into()) },
+                    Presentation::Field { label: "state".to_string(), value: self.state.clone() },
+                    Presentation::Table { name: Some("branches".into()), rows: branches },
+                ],
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "layout".to_string(),
+                self.staircase_id.clone(),
+                self.state.clone(),
+            ]))),
+        ])
+    }
+}
+
+impl ToPresentation for DiscoveryOverride {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Record(vec![self.id.clone(), self.kind.clone(), self.value.clone()])
+    }
+}
+impl UsePresentation for LocalMutationResult {}
+impl UsePresentation for LayoutState {}
+impl UsePresentation for DiscoveryOverride {}

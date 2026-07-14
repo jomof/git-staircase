@@ -849,3 +849,25 @@ fn restore_dirty_files(repo: &GitRepo, files: &[crate::model::DraftFileSnapshot]
     }
     Ok(())
 }
+
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
+
+impl ToPresentation for OperationResult {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain(format!("Operation {} completed (ID: {})", self.transition, self.operation_id))
+    }
+}
+
+impl ToPresentation for OperationJournal {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Section {
+            title: format!("Operation '{}' (ID: {})", self.kind, self.operation_id),
+            children: vec![
+                Presentation::Field { label: "Phase".into(), value: format!("{:?}", self.phase) },
+                Presentation::Field { label: "Disposition".into(), value: self.disposition.clone() },
+            ],
+        }
+    }
+}
+impl UsePresentation for OperationResult {}
+impl UsePresentation for OperationJournal {}
