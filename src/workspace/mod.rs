@@ -4,6 +4,7 @@ pub mod gerrit_provider;
 pub mod github_provider;
 pub mod model;
 pub mod provider;
+pub mod provider_base;
 pub mod provider_utils;
 #[cfg(test)]
 mod provider_utils_test;

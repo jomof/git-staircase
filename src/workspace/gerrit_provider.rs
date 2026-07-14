@@ -1,13 +1,16 @@
-use crate::error::Result;
+use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::parse_git_url;
+use crate::workspace::provider_base::{self, ProviderAssociation};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
-    ReviewOperationPlan, ReviewPlanItem, SynchronizationState, TransportRequest,
-    UnifiedProviderLanding, UnifiedProviderVerification, prepare_review_state,
-    publish_provider_extension_cas,
+    ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
+    SynchronizationState, TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
+    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
+    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
+    prepare_review_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -61,16 +64,12 @@ pub fn resolve_gerrit_route(
         .server_id
         .clone()
         .or_else(|| discovered.as_ref().map(|route| route.server_id.clone()))
-        .ok_or_else(|| {
-            crate::error::StaircaseError::Other("gerrit.route-incomplete: server".into())
-        })?;
+        .ok_or_else(|| StaircaseError::Other("gerrit.route-incomplete: server".into()))?;
     let project = overrides
         .project
         .clone()
         .or_else(|| discovered.as_ref().map(|route| route.project.clone()))
-        .ok_or_else(|| {
-            crate::error::StaircaseError::Other("gerrit.route-incomplete: project".into())
-        })?;
+        .ok_or_else(|| StaircaseError::Other("gerrit.route-incomplete: project".into()))?;
     let destination = overrides
         .destination_branch
         .clone()
@@ -79,9 +78,7 @@ pub fn resolve_gerrit_route(
                 .as_ref()
                 .map(|route| route.destination_branch.clone())
         })
-        .ok_or_else(|| {
-            crate::error::StaircaseError::Other("gerrit.route-incomplete: destination".into())
-        })?;
+        .ok_or_else(|| StaircaseError::Other("gerrit.route-incomplete: destination".into()))?;
     let destination = normalize_gerrit_branch(&destination);
     let branch = destination
         .strip_prefix("refs/heads/")
@@ -308,7 +305,7 @@ pub fn create_gerrit_upload_plan(
 ) -> Result<GerritUploadPlan> {
     let mapping_policy = mapping_policy.unwrap_or("per-commit");
     if !matches!(mapping_policy, "per-commit" | "per-step" | "aggregate") {
-        return Err(crate::error::StaircaseError::Other(format!(
+        return Err(StaircaseError::Other(format!(
             "unsupported Gerrit review mapping '{}'; expected per-commit, per-step, or aggregate",
             mapping_policy
         )));
@@ -443,6 +440,15 @@ pub struct GerritReviewAssociation {
     pub retired: bool,
 }
 
+impl ProviderAssociation for GerritReviewAssociation {
+    fn local_oid(&self) -> &str {
+        &self.local_commit_oid
+    }
+    fn is_retired(&self) -> bool {
+        self.retired
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct GerritProviderState {
     pub schema_version: u32,
@@ -541,7 +547,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
         record_revision: Option<(&str, &str)>,
     ) -> Result<GerritReviewOperationPlan> {
         if commit_oids.len() != subject_ids.len() {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 "Gerrit subjects and commit OIDs must have equal length".into(),
             ));
         }
@@ -591,13 +597,13 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
 
     pub fn create(&self, plan: &GerritReviewOperationPlan) -> Result<GerritProviderState> {
         if let Some(item) = plan.items.iter().find(|item| item.change_id.is_none()) {
-            return Err(crate::error::StaircaseError::Other(format!(
+            return Err(StaircaseError::Other(format!(
                 "missing-change-id: subject {} requires explicit normalization",
                 item.subject_id
             )));
         }
         if let Some(item) = plan.items.iter().find(|item| item.blocked_reason.is_some()) {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 item.blocked_reason.clone().unwrap_or_default(),
             ));
         }
@@ -645,7 +651,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                     || state.route.project != plan.route.project
                     || state.route.destination_branch != plan.route.destination_branch
                 {
-                    return Err(crate::error::StaircaseError::Other(
+                    return Err(StaircaseError::Other(
                         "existing Gerrit associations belong to a different route".into(),
                     ));
                 }
@@ -654,7 +660,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             |state| &mut state.associations,
             |item| {
                 let change_id = item.change_id.clone().ok_or_else(|| {
-                    crate::error::StaircaseError::Other(format!(
+                    StaircaseError::Other(format!(
                         "missing-change-id: subject {} requires explicit normalization",
                         item.subject_id
                     ))
@@ -691,7 +697,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
         if remote.project != state.route.project
             || normalize_gerrit_branch(&remote.branch) != state.route.destination_branch
         {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 "Gerrit review route does not match staircase route".into(),
             ));
         }
@@ -699,9 +705,9 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             .associations
             .iter_mut()
             .find(|association| association.subject_id == subject_id)
-            .ok_or_else(|| crate::error::StaircaseError::NotFound(subject_id.into()))?;
+            .ok_or_else(|| StaircaseError::NotFound(subject_id.into()))?;
         if association.pending.change_id != remote.change_id {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 "Gerrit review Change-Id does not match local subject".into(),
             ));
         }
@@ -718,7 +724,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             .associations
             .iter_mut()
             .find(|association| association.subject_id == subject_id)
-            .ok_or_else(|| crate::error::StaircaseError::NotFound(subject_id.into()))?;
+            .ok_or_else(|| StaircaseError::NotFound(subject_id.into()))?;
         association.retired = true;
         Ok(state)
     }
@@ -739,13 +745,13 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                 )
             })
         {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 "reconciliation-required: Gerrit remote state must be reconciled before upload"
                     .into(),
             ));
         }
         if let Some(item) = plan.items.iter().find(|item| item.blocked_reason.is_some()) {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 item.blocked_reason.clone().unwrap_or_default(),
             ));
         }
@@ -762,7 +768,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             .items
             .last()
             .map(|item| item.local_oid.clone())
-            .ok_or_else(|| crate::error::StaircaseError::Other("empty Gerrit plan".into()))?;
+            .ok_or_else(|| StaircaseError::Other("empty Gerrit plan".into()))?;
         let request = TransportRequest::GitPush {
             remote: plan
                 .route
@@ -1015,12 +1021,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
         record: &crate::model::StaircaseRecord,
         state: &GerritProviderState,
     ) -> Result<crate::model::StaircaseRecord> {
-        publish_provider_extension_cas(
-            repo,
-            record,
-            "git-staircase.gerrit",
-            serde_json::to_value(state)?,
-        )
+        provider_base::persist_provider_state(repo, record, "git-staircase.gerrit", state)
     }
 
     pub fn land(
@@ -1092,74 +1093,28 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                 });
             }
         }
-        let mut landed = Vec::new();
-        for target in targets {
-            let request = TransportRequest::Api {
-                tool: "curl".into(),
-                method: "POST".into(),
-                endpoint: format!(
-                    "https://{}/a/changes/{}/submit",
-                    state.route.server_id, target
-                ),
-                arguments: Vec::new(),
-                body: Some(serde_json::json!({})),
-            };
-            let response = match self.transport.execute(repo, &request) {
-                Ok(response) => response,
-                Err(error) => {
-                    OperationJournal::for_repo(repo)?.record(
-                        "gerrit",
-                        "landing",
-                        None,
-                        request,
-                        serde_json::json!({"error": error.to_string()}),
-                    )?;
-                    return Ok(UnifiedProviderLanding {
-                        provider_label: "Gerrit".into(),
-                        mode: mode.into(),
-                        status: "landing-unknown".into(),
-                        landed,
-                        blocked: vec![target.to_string()],
-                        destination_oid: None,
-                        details: vec!["reconciliation required before another submit".into()],
-                    });
-                }
-            };
-            if !response.success || response.uncertain {
-                if response.uncertain {
-                    OperationJournal::for_repo(repo)?.record(
-                        "gerrit",
-                        "landing",
-                        None,
-                        request,
-                        response.observations.clone(),
-                    )?;
-                }
-                return Ok(UnifiedProviderLanding {
-                    provider_label: "Gerrit".into(),
-                    mode: mode.into(),
-                    status: if response.uncertain {
-                        "landing-unknown".into()
-                    } else {
-                        "partial".into()
-                    },
-                    landed,
-                    blocked: vec![target.to_string()],
-                    destination_oid: None,
-                    details: vec!["reconciliation required before another submit".into()],
-                });
-            }
-            landed.push(target.to_string());
-        }
-        Ok(UnifiedProviderLanding {
-            provider_label: "Gerrit".into(),
-            mode: mode.into(),
-            status: "landed".into(),
-            landed,
-            blocked: Vec::new(),
-            destination_oid: None,
-            details: vec!["destination must be refreshed before upper repair".into()],
-        })
+        provider_base::land_loop_common(
+            repo,
+            &self.transport,
+            "gerrit",
+            "Gerrit",
+            mode,
+            targets,
+            |target| {
+                Ok(TransportRequest::Api {
+                    tool: "curl".into(),
+                    method: "POST".into(),
+                    endpoint: format!(
+                        "https://{}/a/changes/{}/submit",
+                        state.route.server_id, target
+                    ),
+                    arguments: Vec::new(),
+                    body: Some(serde_json::json!({})),
+                })
+            },
+            |target| target.to_string(),
+            "reconciliation required before another submit",
+        )
     }
 }
 
@@ -1331,12 +1286,6 @@ pub fn parse_gerrit_api_change(value: &serde_json::Value) -> Option<GerritRemote
     })
 }
 
-use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance, UnifiedReviewItem, UnifiedReviewMutation,
-    UnifiedReviewOpen, UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow,
-    UnifiedReviewStatus, UnifiedReviewUpload,
-};
-
 pub struct GerritProvider;
 
 impl ReviewProvider for GerritProvider {
@@ -1398,34 +1347,36 @@ impl ReviewProviderInstance for GerritInstance {
         oids: &[String],
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewStatus> {
-        if let Some(record) = record {
-            if let Some(value) = record.user_metadata.extensions.get("git-staircase.gerrit") {
-                let state: GerritProviderState = serde_json::from_value(value.clone())?;
-                let mut counts = HashMap::<String, usize>::new();
-                for association in &state.associations {
-                    *counts
-                        .entry(format!("{:?}", association.synchronization).to_ascii_lowercase())
-                        .or_default() += 1;
-                }
-                return Ok(UnifiedReviewStatus {
-                    provider_label: "Gerrit".into(),
-                    status: if state.reconciliation_required {
-                        "reconciliation-required".into()
-                    } else if state.associations.iter().all(|association| {
-                        association.synchronization == SynchronizationState::Current
-                    }) {
-                        "current".into()
-                    } else {
-                        "pending".into()
-                    },
-                    host: state.route.server_id,
-                    project: state.route.project,
-                    details: counts
-                        .into_iter()
-                        .map(|(state, count)| (format!("sync.{}", state), count.to_string()))
-                        .collect(),
-                });
+        if let Some(state) = provider_base::status_from_record::<GerritProviderState>(
+            record,
+            "git-staircase.gerrit",
+        )? {
+            let mut counts = HashMap::<String, usize>::new();
+            for association in &state.associations {
+                *counts
+                    .entry(format!("{:?}", association.synchronization).to_ascii_lowercase())
+                    .or_default() += 1;
             }
+            return Ok(UnifiedReviewStatus {
+                provider_label: "Gerrit".into(),
+                status: if state.reconciliation_required {
+                    "reconciliation-required".into()
+                } else if state
+                    .associations
+                    .iter()
+                    .all(|association| association.synchronization == SynchronizationState::Current)
+                {
+                    "current".into()
+                } else {
+                    "pending".into()
+                },
+                host: state.route.server_id,
+                project: state.route.project,
+                details: counts
+                    .into_iter()
+                    .map(|(state, count)| (format!("sync.{}", state), count.to_string()))
+                    .collect(),
+            });
         }
         let plan = create_gerrit_upload_plan(_repo, &self.route, oids, None)?;
         let mut details = HashMap::new();
@@ -1574,7 +1525,7 @@ impl ReviewProviderInstance for GerritInstance {
                     };
                     let response = machine.transport.execute(repo, &request)?;
                     if response.uncertain {
-                        return Err(crate::error::StaircaseError::Other(
+                        return Err(StaircaseError::Other(
                             "Gerrit reconciliation query outcome is uncertain".into(),
                         ));
                     }
@@ -1653,9 +1604,8 @@ impl ReviewProviderInstance for GerritInstance {
                 repo,
                 &crate::workspace::bootstrap::BootstrapOptions::default(),
             )?;
-            let route = probe_gerrit_route(repo, Some(&workspace.record))?.ok_or_else(|| {
-                crate::error::StaircaseError::Other("Gerrit route is incomplete".into())
-            })?;
+            let route = probe_gerrit_route(repo, Some(&workspace.record))?
+                .ok_or_else(|| StaircaseError::Other("Gerrit route is incomplete".into()))?;
             let machine = GerritStateMachine::new(ProductionTransport);
             let existing = record
                 .user_metadata
@@ -1728,9 +1678,7 @@ impl ReviewProviderInstance for GerritInstance {
                     .get(subject_index)
                     .map(|association| association.subject_id.clone())
                     .ok_or_else(|| {
-                        crate::error::StaircaseError::Other(
-                            "selected step has no Gerrit association".into(),
-                        )
+                        StaircaseError::Other("selected step has no Gerrit association".into())
                     })?;
                 let machine = GerritStateMachine::new(ProductionTransport);
                 if review.is_empty()
@@ -1738,7 +1686,7 @@ impl ReviewProviderInstance for GerritInstance {
                         character.is_ascii_alphanumeric() || "~._-".contains(character)
                     })
                 {
-                    return Err(crate::error::StaircaseError::Other(
+                    return Err(StaircaseError::Other(
                         "unsafe Gerrit review selector".into(),
                     ));
                 }
@@ -1754,14 +1702,12 @@ impl ReviewProviderInstance for GerritInstance {
                 };
                 let response = machine.transport.execute(repo, &request)?;
                 if !response.success || response.uncertain {
-                    return Err(crate::error::StaircaseError::Other(
+                    return Err(StaircaseError::Other(
                         "Gerrit attachment validation failed or is uncertain".into(),
                     ));
                 }
                 let remote = parse_gerrit_api_change(&response.observations).ok_or_else(|| {
-                    crate::error::StaircaseError::Other(
-                        "Gerrit returned malformed change metadata".into(),
-                    )
+                    StaircaseError::Other("Gerrit returned malformed change metadata".into())
                 })?;
                 let state = machine.attach(state, &subject_id, remote)?;
                 let next = machine.persist(repo, &record, &state)?;
@@ -1776,7 +1722,7 @@ impl ReviewProviderInstance for GerritInstance {
             }
         }
         if review.trim().is_empty() {
-            return Err(crate::error::StaircaseError::Other(
+            return Err(StaircaseError::Other(
                 "Gerrit review selector is empty".into(),
             ));
         }
@@ -1807,9 +1753,7 @@ impl ReviewProviderInstance for GerritInstance {
                     .get(subject_index)
                     .map(|association| association.subject_id.clone())
                     .ok_or_else(|| {
-                        crate::error::StaircaseError::Other(
-                            "selected step has no Gerrit association".into(),
-                        )
+                        StaircaseError::Other("selected step has no Gerrit association".into())
                     })?;
                 let machine = GerritStateMachine::new(ProductionTransport);
                 let state = machine.detach(state, &subject_id)?;
