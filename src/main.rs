@@ -60,6 +60,30 @@ impl FormatArgs {
             OutputFormat::Human
         }
     }
+
+    /// Detect requested format from raw command line arguments.
+    /// Used as a fallback when full argument parsing fails.
+    fn detect_from_args() -> OutputFormat {
+        let args: Vec<String> = std::env::args().collect();
+        let is_json = args.iter().any(|arg| arg == "--json")
+            || args
+                .windows(2)
+                .any(|pair| pair[0] == "--format" && pair[1] == "json")
+            || args.iter().any(|arg| arg == "--format=json");
+        let is_porcelain = args.iter().any(|arg| arg == "--porcelain")
+            || args
+                .windows(2)
+                .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
+            || args.iter().any(|arg| arg == "--format=porcelain");
+
+        if is_json {
+            OutputFormat::Json
+        } else if is_porcelain {
+            OutputFormat::Porcelain
+        } else {
+            OutputFormat::Human
+        }
+    }
 }
 
 #[derive(Subcommand)]
@@ -276,28 +300,6 @@ fn run(cli: Cli) -> Result<()> {
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
 
-fn determine_requested_format_fallback() -> OutputFormat {
-    let args: Vec<String> = std::env::args().collect();
-    let is_json = args.iter().any(|arg| arg == "--json")
-        || args
-            .windows(2)
-            .any(|pair| pair[0] == "--format" && pair[1] == "json")
-        || args.iter().any(|arg| arg == "--format=json");
-    let is_porcelain = args.iter().any(|arg| arg == "--porcelain")
-        || args
-            .windows(2)
-            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
-        || args.iter().any(|arg| arg == "--format=porcelain");
-
-    if is_json {
-        OutputFormat::Json
-    } else if is_porcelain {
-        OutputFormat::Porcelain
-    } else {
-        OutputFormat::Human
-    }
-}
-
 fn escape_machine_field(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -350,7 +352,7 @@ fn main() {
     let cli_res = Cli::try_parse();
     let format = match &cli_res {
         Ok(cli) => cli.format.determine_format(),
-        Err(_) => determine_requested_format_fallback(),
+        Err(_) => FormatArgs::detect_from_args(),
     };
 
     match cli_res {
