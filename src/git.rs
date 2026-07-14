@@ -2,11 +2,10 @@ use crate::core::refs::StaircaseRefs;
 use crate::error::{Result, StaircaseError};
 use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
+use crate::process::ProcessExecutor;
 use serde::Serialize;
-use std::io::Write;
 use std::path::PathBuf;
-use std::process::{Command, Stdio};
-use std::thread;
+use std::process::Command;
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
@@ -92,31 +91,18 @@ impl<'a> GitCommand<'a> {
         cmd.args(&self.args);
 
         let output = if self.interactive {
-            let status = cmd.status()?;
+            let status = cmd.status().map_err(StaircaseError::Io)?;
             std::process::Output {
                 status,
                 stdout: Vec::new(),
                 stderr: Vec::new(),
             }
-        } else if let Some(input) = self.stdin {
-            let mut child = cmd
-                .stdin(Stdio::piped())
-                .stdout(Stdio::piped())
-                .stderr(Stdio::piped())
-                .spawn()?;
-
-            let mut child_stdin = child.stdin.take().ok_or_else(|| {
-                StaircaseError::Other("Failed to open stdin for git command".into())
-            })?;
-
-            thread::scope(|s| {
-                s.spawn(move || {
-                    let _ = child_stdin.write_all(input.as_bytes());
-                });
-                child.wait_with_output()
-            })?
         } else {
-            cmd.output()?
+            let mut executor = ProcessExecutor::new(cmd);
+            if let Some(stdin) = self.stdin {
+                executor = executor.stdin(stdin);
+            }
+            executor.run()?
         };
 
         if self.check_status && !output.status.success() {
