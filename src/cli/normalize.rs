@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, StructuredOutput};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core;
 use anyhow::Result;
 use clap::Args;
@@ -15,10 +15,10 @@ pub struct Normalize {
 impl Command for Normalize {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let selector = self.selector.resolve(repo)?;
-        Ok(Box::new(StructuredOutput(core::normalize(
+        Ok(Box::new(core::normalize(
             repo,
             &selector,
             self.dry_run,
-        )?)))
+        )?))
     }
 }

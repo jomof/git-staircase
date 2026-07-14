@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, StructuredOutput};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::core::refs::StaircaseRefs;
 use crate::core::{self, MutationPlan};
 use crate::error::StaircaseError;
@@ -34,6 +34,47 @@ pub struct TagResult {
     pub replaced_oid: Option<String>,
     pub replaced_record_oid: Option<String>,
     pub dry_run: bool,
+}
+
+impl ToPresentation for TagResult {
+    fn to_presentation(&self) -> Presentation {
+        let mut children = vec![
+            Presentation::Field {
+                label: "tag".to_string(),
+                value: self.tag_ref.clone(),
+            },
+            Presentation::Field {
+                label: "tag oid".to_string(),
+                value: self.tag_oid[..7].to_string(),
+            },
+            Presentation::Field {
+                label: "record oid".to_string(),
+                value: self.record_oid[..7].to_string(),
+            },
+        ];
+        if let Some(ref old) = self.replaced_oid {
+            children.push(Presentation::Field {
+                label: "replaced".to_string(),
+                value: old[..7].to_string(),
+            });
+        }
+        if self.dry_run {
+            children.push(Presentation::Plain("(dry run)".to_string()));
+        }
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: "Created snapshot tag:".to_string(),
+                children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "tag".to_string(),
+                self.tag_ref.clone(),
+                self.tag_oid.clone(),
+                self.record_oid.clone(),
+            ]))),
+        ])
+    }
 }
 
 impl Command for Tag {
@@ -96,7 +137,7 @@ impl Command for Tag {
             .expected_record(Some(record.record_oid.clone()));
         plan.update(tag_ref.clone(), replaced_oid.clone(), Some(tag_oid.clone()));
         plan.publish(repo, self.dry_run)?;
-        Ok(Box::new(StructuredOutput(TagResult {
+        Ok(Box::new(TagResult {
             schema: "git-staircase/tag-result".into(),
             version: 1,
             tag_ref,
@@ -105,7 +146,7 @@ impl Command for Tag {
             replaced_oid,
             replaced_record_oid,
             dry_run: self.dry_run,
-        })))
+        }))
     }
 }
 

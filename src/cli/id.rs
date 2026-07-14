@@ -1,5 +1,4 @@
-use super::formatting::{ToHuman, ToPorcelain};
-use super::{PresentationOutput, StaircaseSelectorArgs};
+use super::{PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::GitRepo;
 use crate::IdentityKind;
 use crate::core;
@@ -40,19 +39,17 @@ pub struct IdResult {
     pub name: String,
 }
 
-impl ToHuman for IdResult {
-    fn to_human(&self) -> String {
-        let mut out = String::new();
+impl ToPresentation for IdResult {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_items = vec![];
         if self.was_implicit && self.kind == IdentityKind::Lineage {
-            out.push_str(&format!("adopted implicit staircase '{}'\n", self.name));
+            h_items.push(Presentation::Plain(format!("adopted implicit staircase '{}'", self.name)));
         }
-        out.push_str(&self.id);
-        out
-    }
-}
+        h_items.push(Presentation::Plain(self.id.clone()));
 
-impl ToPorcelain for IdResult {
-    fn to_porcelain(&self) -> String {
-        self.id.clone()
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::List(h_items))),
+            Presentation::Porcelain(Box::new(Presentation::Plain(self.id.clone()))),
+        ])
     }
 }

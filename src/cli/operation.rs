@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StructuredOutput};
+use crate::cli::{Command, PresentationOutput};
 use crate::core;
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -23,13 +23,13 @@ pub enum OperationSubcommand {
 
 impl Command for Continue {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        Ok(Box::new(StructuredOutput(core::continue_active(repo)?)))
+        Ok(Box::new(core::continue_active(repo)?))
     }
 }
 
 impl Command for Abort {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        Ok(Box::new(StructuredOutput(core::abort_active(repo)?)))
+        Ok(Box::new(core::abort_active(repo)?))
     }
 }
 
@@ -39,7 +39,7 @@ impl Command for OperationCmd {
             OperationSubcommand::Show => {
                 let operation = core::active_operation(repo)?
                     .ok_or(crate::StaircaseError::NoActiveOperation)?;
-                Ok(Box::new(StructuredOutput(operation)))
+                Ok(Box::new(operation))
             }
         }
     }

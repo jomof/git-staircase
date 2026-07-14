@@ -49,22 +49,6 @@ pub use formatting::{
     StepsList, Success, Summary, ToHuman, ToPorcelain, ToPresentation, UsePresentation,
 };
 
-#[derive(Serialize, Clone, Debug)]
-#[serde(transparent)]
-pub struct StructuredOutput<T: Serialize>(pub T);
-
-impl<T: Serialize> ToHuman for StructuredOutput<T> {
-    fn to_human(&self) -> String {
-        serde_json::to_string_pretty(&self.0).unwrap_or_default()
-    }
-}
-
-impl<T: Serialize> ToPorcelain for StructuredOutput<T> {
-    fn to_porcelain(&self) -> String {
-        serde_json::to_string(&self.0).unwrap_or_default()
-    }
-}
-
 #[derive(Clone, Copy, Debug)]
 pub enum OutputFormat {
     Human,
@@ -206,40 +190,35 @@ impl NonStepsStaircaseSelectorArgs {
 
 pub trait PresentationOutput {
     fn present(&self, format: OutputFormat, repo: &GitRepo) -> Result<()>;
-    fn to_json(&self) -> Result<String>;
 }
 
 impl<T> PresentationOutput for T
 where
-    T: Serialize + ToHuman + ToPorcelain,
+    T: ToPresentation + Serialize,
 {
     fn present(&self, format: OutputFormat, _repo: &GitRepo) -> Result<()> {
         match format {
             OutputFormat::Human => {
-                let human = self.to_human();
+                let p = self.to_presentation();
+                let human = formatting::render_human(&p, 0).trim_end().to_string();
                 if !human.is_empty() {
-                    print!("{}", human);
-                    if !human.ends_with('\n') {
-                        println!();
-                    }
+                    println!("{}", human);
                 }
                 Ok(())
             }
             OutputFormat::Json => {
-                println!("{}", self.to_json()?);
+                println!("{}", serde_json::to_string_pretty(self)?);
                 Ok(())
             }
             OutputFormat::Porcelain => {
-                let porcelain = self.to_porcelain();
+                let p = self.to_presentation();
+                let porcelain = formatting::render_porcelain(&p);
                 if !porcelain.is_empty() {
-                    println!("{}", porcelain);
+                    print!("{}", porcelain);
                 }
                 Ok(())
             }
         }
-    }
-    fn to_json(&self) -> Result<String> {
-        Ok(serde_json::to_string_pretty(self)?)
     }
 }
 

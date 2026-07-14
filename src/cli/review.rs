@@ -1,5 +1,4 @@
 use super::PresentationOutput;
-use super::formatting::{ToHuman, ToPorcelain};
 use crate::cli::StaircaseSelectorArgs;
 use crate::core::persistence::read_record;
 use crate::model::StaircaseRecord;
@@ -7,9 +6,7 @@ use crate::workspace::bootstrap::{BootstrapOptions, bootstrap};
 use crate::workspace::gerrit_provider::GerritProvider;
 use crate::workspace::github_provider::GitHubProvider;
 use crate::workspace::review_provider::{
-    ReviewProvider, ReviewProviderInstance, UnifiedReviewMutation, UnifiedReviewOpen,
-    UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus,
-    UnifiedReviewUpload,
+    ReviewProvider, ReviewProviderInstance,
 };
 use crate::{GitRepo, ResolvedSelector};
 use anyhow::{Result, anyhow};
@@ -235,159 +232,4 @@ impl ReviewCmd {
 fn managed_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
     let reference = format!("refs/staircase-state/{}/record", selector.metadata().id);
     Ok(read_record(repo, &reference)?)
-}
-
-impl ToHuman for UnifiedReviewShow {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("{} Host: {}", self.provider_label, self.host));
-        lines.push(format!("Project: {}", self.project));
-        lines.push(format!("Destination Branch: {}", self.destination_branch));
-        for (k, v) in &self.details {
-            lines.push(format!("{}: {}", k, v));
-        }
-        lines.push("Commits:".to_string());
-        for item in &self.items {
-            lines.push(format!(
-                "  {} {} [{}]",
-                &item.oid[..7.min(item.oid.len())],
-                item.title,
-                item.detail
-            ));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for UnifiedReviewShow {
-    fn to_porcelain(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("host\t{}", self.host));
-        lines.push(format!("project\t{}", self.project));
-        for item in &self.items {
-            lines.push(format!("commit\t{}\t{}", item.oid, item.detail));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToHuman for UnifiedReviewStatus {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!(
-            "{} Review Status: {}",
-            self.provider_label, self.status
-        ));
-        lines.push(format!("Host: {}", self.host));
-        lines.push(format!("Project: {}", self.project));
-        for (k, v) in &self.details {
-            lines.push(format!("{}: {}", k, v));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for UnifiedReviewStatus {
-    fn to_porcelain(&self) -> String {
-        format!("status\t{}", self.status)
-    }
-}
-
-impl ToHuman for UnifiedReviewPlan {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("{} Upload Plan:", self.provider_label));
-        lines.push(format!("  Target Ref: {}", self.target));
-        lines.push(format!("  Mapping Policy: {}", self.policy));
-        lines.push("  Commits to push:".to_string());
-        for item in &self.items {
-            lines.push(format!(
-                "    - {} {} ({})",
-                &item.oid[..7.min(item.oid.len())],
-                item.title,
-                item.detail
-            ));
-        }
-        if !self.warnings.is_empty() {
-            lines.push("  Warnings:".to_string());
-            for w in &self.warnings {
-                lines.push(format!("    - {}", w));
-            }
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for UnifiedReviewPlan {
-    fn to_porcelain(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("push_ref\t{}", self.target));
-        lines.push(format!("mapping_policy\t{}", self.policy));
-        for item in &self.items {
-            lines.push(format!("commit\t{}\t{}", item.oid, item.detail));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToHuman for UnifiedReviewUpload {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("{} Upload Complete:", self.provider_label));
-        lines.push(format!("  {}", self.summary));
-        for detail in &self.details {
-            lines.push(format!("  {}", detail));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for UnifiedReviewUpload {
-    fn to_porcelain(&self) -> String {
-        format!("result\t{}", self.summary)
-    }
-}
-
-impl ToHuman for UnifiedReviewReconcile {
-    fn to_human(&self) -> String {
-        format!("{} Reconcile Status: {}", self.provider_label, self.status)
-    }
-}
-
-impl ToPorcelain for UnifiedReviewReconcile {
-    fn to_porcelain(&self) -> String {
-        format!("status\t{}", self.status)
-    }
-}
-
-impl ToHuman for UnifiedReviewOpen {
-    fn to_human(&self) -> String {
-        format!("{} Review URL: {}", self.provider_label, self.url)
-    }
-}
-
-impl ToPorcelain for UnifiedReviewOpen {
-    fn to_porcelain(&self) -> String {
-        format!("url\t{}", self.url)
-    }
-}
-
-impl ToHuman for UnifiedReviewMutation {
-    fn to_human(&self) -> String {
-        let mut lines = vec![format!(
-            "{} review {}: {} association(s)",
-            self.provider_label, self.action, self.changed
-        )];
-        lines.extend(self.details.iter().map(|detail| format!("  {}", detail)));
-        if let (Some(before), Some(after)) = (&self.record_before, &self.record_after) {
-            lines.push(format!("record revision: {} -> {}", before, after));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for UnifiedReviewMutation {
-    fn to_porcelain(&self) -> String {
-        format!("{}\t{}\t{}", self.action, self.changed, self.provider_label)
-    }
 }

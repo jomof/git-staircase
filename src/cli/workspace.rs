@@ -1,5 +1,4 @@
-use super::PresentationOutput;
-use super::formatting::{ToHuman, ToPorcelain};
+use super::{PresentationOutput, Presentation, ToPresentation};
 use crate::GitRepo;
 use crate::workspace::{
     BootstrapOptions, WorkspaceDoctorReport, WorkspaceRecord, bootstrap,
@@ -134,138 +133,122 @@ impl WorkspaceCmd {
 #[derive(Serialize)]
 pub struct WorkspaceShowOutput(pub WorkspaceRecord);
 
-impl ToHuman for WorkspaceShowOutput {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("Workspace ID: {}", self.0.workspace_id));
-        lines.push(format!("Root: {}", self.0.canonical_root.display()));
+impl ToPresentation for WorkspaceShowOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![
+            Presentation::Field { label: "Root".into(), value: self.0.canonical_root.display().to_string() },
+        ];
         if let Some(ref proj) = self.0.current_project_id {
-            lines.push(format!("Current Project: {}", proj));
+            h_children.push(Presentation::Field { label: "Current Project".into(), value: proj.clone() });
         }
-        lines.push("Capability Bindings:".to_string());
+        let mut bindings = vec![];
         for (cap, b) in &self.0.capability_bindings {
-            let readiness = self
-                .0
-                .capability_readiness
-                .get(cap)
-                .map(ToString::to_string)
-                .unwrap_or_else(|| "unknown".into());
-            lines.push(format!(
-                "  {}: {} ({}, {})",
-                cap, b.provider, b.provenance, readiness
-            ));
+            let readiness = self.0.capability_readiness.get(cap).map(ToString::to_string).unwrap_or_else(|| "unknown".into());
+            bindings.push(Presentation::Field {
+                label: cap.to_string(),
+                value: format!("{} ({}, {})", b.provider, b.provenance, readiness),
+            });
         }
-        lines.join("\n")
-    }
-}
+        h_children.push(Presentation::Section { title: "Capability Bindings:".into(), children: bindings });
 
-impl ToPorcelain for WorkspaceShowOutput {
-    fn to_porcelain(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("id\t{}", self.0.workspace_id));
-        lines.push(format!("root\t{}", self.0.canonical_root.display()));
+        let mut p_records = vec![
+            Presentation::Record(vec!["id".into(), self.0.workspace_id.clone()]),
+            Presentation::Record(vec!["root".into(), self.0.canonical_root.display().to_string()]),
+        ];
         for (cap, b) in &self.0.capability_bindings {
-            lines.push(format!(
-                "binding\t{}\t{}\t{}",
-                cap, b.provider, b.provenance
-            ));
+             p_records.push(Presentation::Record(vec!["binding".into(), cap.to_string(), b.provider.clone(), b.provenance.to_string()]));
         }
-        lines.join("\n")
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Workspace ID: {}", self.0.workspace_id),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::List(p_records))),
+        ])
     }
 }
 
 #[derive(Serialize)]
 pub struct WorkspaceProvidersOutput(pub Vec<String>);
 
-impl ToHuman for WorkspaceProvidersOutput {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push("Installed Providers:".to_string());
-        for p in &self.0 {
-            lines.push(format!("  - {}", p));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for WorkspaceProvidersOutput {
-    fn to_porcelain(&self) -> String {
-        self.0.join("\n")
+impl ToPresentation for WorkspaceProvidersOutput {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: "Installed Providers:".into(),
+                children: self.0.iter().map(|p| Presentation::Plain(format!("- {}", p))).collect(),
+            })),
+            Presentation::Porcelain(Box::new(Presentation::List(self.0.iter().map(|p| Presentation::Plain(p.clone())).collect()))),
+        ])
     }
 }
 
 #[derive(Serialize)]
 pub struct WorkspaceDoctorOutput(pub WorkspaceDoctorReport);
 
-impl ToHuman for WorkspaceDoctorOutput {
-    fn to_human(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("Workspace Doctor Status: {}", self.0.status));
-        lines.push(format!("Workspace ID: {}", self.0.workspace_id));
-        lines.push(format!("Canonical Root: {}", self.0.canonical_root));
-        lines.push("Bound Capabilities:".to_string());
+impl ToPresentation for WorkspaceDoctorOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![
+            Presentation::Field { label: "Workspace ID".into(), value: self.0.workspace_id.clone() },
+            Presentation::Field { label: "Canonical Root".into(), value: self.0.canonical_root.clone() },
+        ];
+        let mut capabilities = vec![];
         for capability in &self.0.capabilities {
-            lines.push(format!(
-                "  {}: {} [{}; {}]{}",
-                capability.capability,
-                capability.provider.as_deref().unwrap_or("<unbound>"),
-                capability.provenance.as_deref().unwrap_or("no-provenance"),
-                capability.readiness,
-                capability
-                    .evidence
-                    .as_ref()
-                    .map(|evidence| format!(" — {}", evidence))
-                    .unwrap_or_default()
-            ));
+            capabilities.push(Presentation::Field {
+                label: capability.capability.clone(),
+                value: format!(
+                    "{} [{}; {}]{}",
+                    capability.provider.as_deref().unwrap_or("<unbound>"),
+                    capability.provenance.as_deref().unwrap_or("no-provenance"),
+                    capability.readiness,
+                    capability.evidence.as_ref().map(|evidence| format!(" — {}", evidence)).unwrap_or_default()
+                ),
+            });
         }
+        h_children.push(Presentation::Section { title: "Bound Capabilities:".into(), children: capabilities });
         if !self.0.missing_capabilities.is_empty() {
-            lines.push(format!(
-                "Missing Capabilities: {}",
-                self.0.missing_capabilities.join(", ")
-            ));
+            h_children.push(Presentation::Field { label: "Missing Capabilities".into(), value: self.0.missing_capabilities.join(", ") });
         }
         if !self.0.diagnostics.is_empty() {
-            lines.push("Diagnostics:".to_string());
-            for d in &self.0.diagnostics {
-                lines.push(format!("  - {}", d));
-            }
+             h_children.push(Presentation::Section {
+                title: "Diagnostics:".into(),
+                children: self.0.diagnostics.iter().map(|d| Presentation::Plain(format!("- {}", d))).collect(),
+            });
         }
-        lines.join("\n")
-    }
-}
 
-impl ToPorcelain for WorkspaceDoctorOutput {
-    fn to_porcelain(&self) -> String {
-        let mut lines = Vec::new();
-        lines.push(format!("status\t{}", self.0.status));
-        lines.push(format!("id\t{}", self.0.workspace_id));
+        let mut p_records = vec![
+            Presentation::Record(vec!["status".into(), self.0.status.clone()]),
+            Presentation::Record(vec!["id".into(), self.0.workspace_id.clone()]),
+        ];
         for (k, v) in &self.0.bound_capabilities {
-            lines.push(format!("binding\t{}\t{}", k, v));
+             p_records.push(Presentation::Record(vec!["binding".into(), k.clone(), v.clone()]));
         }
         for capability in &self.0.capabilities {
-            lines.push(format!(
-                "capability\t{}\t{}\t{}\t{}",
-                capability.capability,
-                capability.provider.as_deref().unwrap_or(""),
-                capability.provenance.as_deref().unwrap_or(""),
-                capability.readiness
-            ));
+             p_records.push(Presentation::Record(vec![
+                "capability".into(),
+                capability.capability.clone(),
+                capability.provider.as_deref().unwrap_or("").into(),
+                capability.provenance.as_deref().unwrap_or("").into(),
+                capability.readiness.to_string(),
+            ]));
         }
-        lines.join("\n")
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Workspace Doctor Status: {}", self.0.status),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::List(p_records))),
+        ])
     }
 }
 
 #[derive(Serialize)]
 pub struct WorkspaceMessageOutput(pub String);
 
-impl ToHuman for WorkspaceMessageOutput {
-    fn to_human(&self) -> String {
-        self.0.clone()
-    }
-}
-
-impl ToPorcelain for WorkspaceMessageOutput {
-    fn to_porcelain(&self) -> String {
-        self.0.clone()
+impl ToPresentation for WorkspaceMessageOutput {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain(self.0.clone())
     }
 }

@@ -1,4 +1,4 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::core::{self, UnarchiveBranchesMode, UnarchiveOptions, UnarchiveResult};
 use crate::git::GitRepo;
 use anyhow::{Result, anyhow};
@@ -36,28 +36,27 @@ pub struct UnarchiveOutput {
     pub result: UnarchiveResult,
 }
 
-impl ToHuman for UnarchiveOutput {
-    fn to_human(&self) -> String {
-        let mut out = format!(
-            "Restored staircase '{}' ({}) to active state\n",
-            self.result.canonical_name, self.result.restored_staircase_id
-        );
+impl ToPresentation for UnarchiveOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
         if !self.result.restored_branches.is_empty() {
-            out.push_str("Restored local branches:\n");
-            for b in &self.result.restored_branches {
-                out.push_str(&format!("  refs/heads/{}\n", b));
-            }
+             h_children.push(Presentation::Section {
+                title: "Restored local branches:".into(),
+                children: self.result.restored_branches.iter().map(|b| Presentation::Plain(format!("  refs/heads/{}", b))).collect(),
+            });
         }
-        out
-    }
-}
 
-impl ToPorcelain for UnarchiveOutput {
-    fn to_porcelain(&self) -> String {
-        format!(
-            "unarchived\t{}\t{}",
-            self.result.canonical_name, self.result.restored_staircase_id
-        )
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Restored staircase '{}' ({}) to active state", self.result.canonical_name, self.result.restored_staircase_id),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "unarchived".into(),
+                self.result.canonical_name.clone(),
+                self.result.restored_staircase_id.clone(),
+            ]))),
+        ])
     }
 }
 

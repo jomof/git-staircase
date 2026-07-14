@@ -1,6 +1,6 @@
 use crate::GitRepo;
 use crate::cli::{
-    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs, StructuredOutput,
+    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
 };
 use crate::core;
 use anyhow::Result;
@@ -51,9 +51,9 @@ impl Command for DiscoveryCmd {
         match &self.command {
             DiscoverySubcommand::Show(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::discovery_overrides(
+                Ok(Box::new(core::discovery_overrides(
                     repo, &selector,
-                )?)))
+                )?))
             }
             DiscoverySubcommand::IncludeRef(args) => mutate(repo, args, "include-ref"),
             DiscoverySubcommand::ExcludeRef(args) => mutate(repo, args, "exclude-ref"),
@@ -61,12 +61,12 @@ impl Command for DiscoveryCmd {
             DiscoverySubcommand::IgnoreCut(args) => mutate(repo, args, "ignore-cut"),
             DiscoverySubcommand::Clear(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::clear_discovery_override(
+                Ok(Box::new(core::clear_discovery_override(
                     repo,
                     &selector,
                     &args.override_id,
                     args.dry_run,
-                )?)))
+                )?))
             }
         }
     }
@@ -74,11 +74,11 @@ impl Command for DiscoveryCmd {
 
 fn mutate(repo: &GitRepo, args: &OverrideValue, kind: &str) -> Result<Box<dyn PresentationOutput>> {
     let selector = args.selector.resolve(repo)?;
-    Ok(Box::new(StructuredOutput(core::add_discovery_override(
+    Ok(Box::new(core::add_discovery_override(
         repo,
         &selector,
         kind,
         &args.value,
         args.dry_run,
-    )?)))
+    )?))
 }

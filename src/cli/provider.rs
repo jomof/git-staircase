@@ -1,5 +1,4 @@
-use super::PresentationOutput;
-use super::formatting::{ToHuman, ToPorcelain};
+use super::{PresentationOutput, Presentation, ToPresentation};
 use crate::GitRepo;
 use crate::workspace::gerrit_provider::probe_gerrit_route;
 use crate::workspace::github_provider::probe_github_route;
@@ -48,6 +47,52 @@ pub struct ProviderDoctorReport {
     pub diagnostics: Vec<String>,
     pub passive_network_requests: usize,
     pub workspace_mutations: usize,
+}
+
+impl ToPresentation for ProviderDoctorReport {
+    fn to_presentation(&self) -> Presentation {
+        let mut route_fields = vec![];
+        let mut route_keys: Vec<_> = self.route.keys().collect();
+        route_keys.sort();
+        for key in route_keys {
+            route_fields.push(Presentation::Field {
+                label: key.clone(),
+                value: self.route.get(key).unwrap().clone(),
+            });
+        }
+
+        let mut h_children = vec![
+            Presentation::Field { label: "Applicable".to_string(), value: self.applicable.to_string() },
+            Presentation::Field { label: "Readiness".to_string(), value: self.readiness.clone() },
+            Presentation::Section { title: "Route:".to_string(), children: route_fields },
+            Presentation::Plain(format!(
+                "Passive effects: {} network request(s), {} workspace mutation(s)",
+                self.passive_network_requests, self.workspace_mutations
+            )),
+        ];
+        for d in &self.diagnostics {
+            h_children.push(Presentation::Field { label: "Diagnostic".to_string(), value: d.clone() });
+        }
+
+        let mut p_records = vec![
+            Presentation::Record(vec!["provider".into(), self.provider.clone()]),
+            Presentation::Record(vec!["applicable".into(), self.applicable.to_string()]),
+            Presentation::Record(vec!["readiness".into(), self.readiness.clone()]),
+        ];
+        let mut route_keys: Vec<_> = self.route.keys().collect();
+        route_keys.sort();
+        for key in route_keys {
+            p_records.push(Presentation::Record(vec!["route".into(), key.clone(), self.route.get(key).unwrap().clone()]));
+        }
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Provider: {}", self.provider),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::List(p_records))),
+        ])
+    }
 }
 
 impl ProviderCmd {
@@ -146,49 +191,5 @@ fn unavailable(provider: &str, diagnostic: &str) -> ProviderDoctorReport {
         diagnostics: vec![diagnostic.into()],
         passive_network_requests: 0,
         workspace_mutations: 0,
-    }
-}
-
-impl ToHuman for ProviderDoctorReport {
-    fn to_human(&self) -> String {
-        let mut lines = vec![
-            format!("Provider: {}", self.provider),
-            format!("Applicable: {}", self.applicable),
-            format!("Readiness: {}", self.readiness),
-            "Route:".into(),
-        ];
-        let mut route = self.route.iter().collect::<Vec<_>>();
-        route.sort_by_key(|(key, _)| *key);
-        lines.extend(
-            route
-                .into_iter()
-                .map(|(key, value)| format!("  {}: {}", key, value)),
-        );
-        lines.push(format!(
-            "Passive effects: {} network request(s), {} workspace mutation(s)",
-            self.passive_network_requests, self.workspace_mutations
-        ));
-        for diagnostic in &self.diagnostics {
-            lines.push(format!("Diagnostic: {}", diagnostic));
-        }
-        lines.join("\n")
-    }
-}
-
-impl ToPorcelain for ProviderDoctorReport {
-    fn to_porcelain(&self) -> String {
-        let mut lines = vec![
-            format!("provider\t{}", self.provider),
-            format!("applicable\t{}", self.applicable),
-            format!("readiness\t{}", self.readiness),
-        ];
-        let mut route = self.route.iter().collect::<Vec<_>>();
-        route.sort_by_key(|(key, _)| *key);
-        lines.extend(
-            route
-                .into_iter()
-                .map(|(key, value)| format!("route\t{}\t{}", key, value)),
-        );
-        lines.join("\n")
     }
 }

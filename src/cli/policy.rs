@@ -1,6 +1,6 @@
 use crate::GitRepo;
 use crate::cli::{
-    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs, StructuredOutput,
+    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
 };
 use crate::core;
 use anyhow::{Result, anyhow};
@@ -50,9 +50,9 @@ impl Command for PolicyCmd {
         match &self.command {
             PolicySubcommand::Show(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::policy_values(
+                Ok(Box::new(core::policy_values(
                     repo, &selector,
-                )?)))
+                )?))
             }
             PolicySubcommand::Set(args) => {
                 let selector = args.selector.resolve(repo)?;
@@ -68,12 +68,12 @@ impl Command for PolicyCmd {
                         Ok((key.to_string(), Some(value)))
                     })
                     .collect::<Result<Vec<_>>>()?;
-                Ok(Box::new(StructuredOutput(core::update_policies(
+                Ok(Box::new(core::update_policies(
                     repo,
                     &selector,
                     &assignments,
                     args.dry_run,
-                )?)))
+                )?))
             }
             PolicySubcommand::Unset(args) => {
                 let selector = args.selector.resolve(repo)?;
@@ -82,12 +82,12 @@ impl Command for PolicyCmd {
                     .iter()
                     .map(|key| (key.clone(), None))
                     .collect::<Vec<_>>();
-                Ok(Box::new(StructuredOutput(core::update_policies(
+                Ok(Box::new(core::update_policies(
                     repo,
                     &selector,
                     &assignments,
                     args.dry_run,
-                )?)))
+                )?))
             }
         }
     }

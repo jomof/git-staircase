@@ -1,4 +1,4 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::core::{self, ArchiveOptions, ArchiveResult};
 use crate::git::GitRepo;
 use anyhow::Result;
@@ -51,38 +51,35 @@ pub struct ArchiveOutput {
     pub result: ArchiveResult,
 }
 
-impl ToHuman for ArchiveOutput {
-    fn to_human(&self) -> String {
-        let mut out = String::new();
-        if self.result.is_dry_run {
-            out.push_str("Dry run: planned archive operations:\n");
-        } else {
-            out.push_str(&format!(
-                "Archived staircase '{}' ({})\n",
-                self.result.canonical_name, self.result.archived_staircase_id
-            ));
-        }
+impl ToPresentation for ArchiveOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
         if !self.result.moved_branches.is_empty() {
-            out.push_str("Moved owned branches from refs/heads/:\n");
-            for b in &self.result.moved_branches {
-                out.push_str(&format!("  {}\n", b));
-            }
+            h_children.push(Presentation::Section {
+                title: "Moved owned branches from refs/heads/:".into(),
+                children: self.result.moved_branches.iter().map(|b| Presentation::Plain(format!("  {}", b))).collect(),
+            });
         }
         for warn in &self.result.unowned_warnings {
-            out.push_str(&format!("{}\n", warn));
+            h_children.push(Presentation::Plain(warn.clone()));
         }
-        out
-    }
-}
 
-impl ToPorcelain for ArchiveOutput {
-    fn to_porcelain(&self) -> String {
-        format!(
-            "archived\t{}\t{}\t{}",
-            self.result.canonical_name,
-            self.result.archived_staircase_id,
-            self.result.archive_event_id
-        )
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: if self.result.is_dry_run {
+                    "Dry run: planned archive operations:".into()
+                } else {
+                    format!("Archived staircase '{}' ({})", self.result.canonical_name, self.result.archived_staircase_id)
+                },
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "archived".into(),
+                self.result.canonical_name.clone(),
+                self.result.archived_staircase_id.clone(),
+                self.result.archive_event_id.clone(),
+            ]))),
+        ])
     }
 }
 
@@ -91,18 +88,15 @@ pub struct ReleaseNameOutput {
     pub record_oid: String,
 }
 
-impl ToHuman for ReleaseNameOutput {
-    fn to_human(&self) -> String {
-        format!(
-            "Released canonical name reservation (record OID: {})",
-            self.record_oid
-        )
-    }
-}
-
-impl ToPorcelain for ReleaseNameOutput {
-    fn to_porcelain(&self) -> String {
-        format!("name_released\t{}", self.record_oid)
+impl ToPresentation for ReleaseNameOutput {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Released canonical name reservation (record OID: {})",
+                self.record_oid
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["name_released".into(), self.record_oid.clone()]))),
+        ])
     }
 }
 

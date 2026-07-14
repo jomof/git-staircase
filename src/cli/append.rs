@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, StructuredOutput};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core;
 use anyhow::Result;
 use clap::Args;
@@ -29,6 +29,6 @@ impl Command for Append {
             self.branch.as_deref(),
             self.dry_run,
         )?;
-        Ok(Box::new(StructuredOutput(result)))
+        Ok(Box::new(result))
     }
 }

@@ -1,6 +1,6 @@
 use crate::GitRepo;
 use crate::cli::{
-    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs, StructuredOutput,
+    Command, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
 };
 use crate::core;
 use anyhow::Result;
@@ -35,34 +35,34 @@ pub struct Unname {
 impl Command for Name {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let selector = self.selector.resolve(repo)?;
-        Ok(Box::new(StructuredOutput(core::name_staircase(
+        Ok(Box::new(core::name_staircase(
             repo,
             &selector,
             &self.new_name,
             self.dry_run,
-        )?)))
+        )?))
     }
 }
 
 impl Command for Rename {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let selector = self.selector.resolve(repo)?;
-        Ok(Box::new(StructuredOutput(core::rename_staircase(
+        Ok(Box::new(core::rename_staircase(
             repo,
             &selector,
             &self.new_name,
             self.dry_run,
-        )?)))
+        )?))
     }
 }
 
 impl Command for Unname {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let selector = self.selector.resolve(repo)?;
-        Ok(Box::new(StructuredOutput(core::unname_staircase(
+        Ok(Box::new(core::unname_staircase(
             repo,
             &selector,
             self.dry_run,
-        )?)))
+        )?))
     }
 }

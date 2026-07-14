@@ -99,7 +99,7 @@ fn get_draft_fields(draft: &WorktreeDraft) -> Vec<Presentation> {
     children
 }
 
-fn render_human(p: &Presentation, indent: usize) -> String {
+pub(crate) fn render_human(p: &Presentation, indent: usize) -> String {
     let space = "  ".repeat(indent);
     match p {
         Presentation::Empty => String::new(),
@@ -157,7 +157,7 @@ fn render_human(p: &Presentation, indent: usize) -> String {
     }
 }
 
-fn render_porcelain(p: &Presentation) -> String {
+pub(crate) fn render_porcelain(p: &Presentation) -> String {
     match p {
         Presentation::Empty => String::new(),
         Presentation::Plain(s) => format!("{}\n", s),
@@ -868,20 +868,301 @@ impl ToPresentation for crate::core::draft::MaterializeResult {
 }
 impl UsePresentation for crate::core::draft::MaterializeResult {}
 
-impl<T: ToHuman> ToHuman for Vec<T> {
-    fn to_human(&self) -> String {
-        self.iter()
-            .map(|x| x.to_human())
-            .collect::<Vec<_>>()
-            .join("\n")
-    }
-}
 
-impl<T: ToPorcelain> ToPorcelain for Vec<T> {
-    fn to_porcelain(&self) -> String {
-        self.iter()
-            .map(|x| x.to_porcelain())
-            .collect::<Vec<_>>()
-            .join("\n")
+impl ToPresentation for crate::core::local::LocalMutationResult {
+    fn to_presentation(&self) -> Presentation {
+        let mut children = vec![
+            Presentation::Field {
+                label: "kind".to_string(),
+                value: self.kind.clone(),
+            },
+            Presentation::Field {
+                label: "staircase".to_string(),
+                value: self.staircase_name.clone(),
+            },
+        ];
+        if let Some(ref oid) = self.record_oid {
+             children.push(Presentation::Field {
+                label: "record oid".to_string(),
+                value: oid[..7].to_string(),
+            });
+        }
+        if self.dry_run {
+            children.push(Presentation::Plain("(dry run)".to_string()));
+        }
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Operation '{}' completed successfully:", self.kind),
+                children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.kind.clone(),
+                self.staircase_name.clone(),
+                self.record_oid.clone().unwrap_or_default(),
+            ]))),
+        ])
     }
 }
+impl UsePresentation for crate::core::local::LocalMutationResult {}
+
+impl ToPresentation for crate::core::local::LayoutState {
+    fn to_presentation(&self) -> Presentation {
+        let mut branches = vec![];
+        for b in &self.branches {
+            branches.push(vec![
+                b.step_name.clone(),
+                b.expected_oid[..7].to_string(),
+                b.actual_oid.as_deref().unwrap_or("none")[..7.min(b.actual_oid.as_deref().unwrap_or("none").len())].to_string(),
+            ]);
+        }
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("Layout state for staircase {}:", self.staircase_id),
+                children: vec![
+                    Presentation::Field { label: "profile".to_string(), value: self.profile.clone().unwrap_or("none".into()) },
+                    Presentation::Field { label: "base".to_string(), value: self.base.clone().unwrap_or("none".into()) },
+                    Presentation::Field { label: "state".to_string(), value: self.state.clone() },
+                    Presentation::Table { name: Some("branches".into()), rows: branches },
+                ],
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "layout".to_string(),
+                self.staircase_id.clone(),
+                self.state.clone(),
+            ]))),
+        ])
+    }
+}
+impl UsePresentation for crate::core::local::LayoutState {}
+
+impl ToPresentation for crate::core::local::DiscoveryOverride {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Record(vec![self.id.clone(), self.kind.clone(), self.value.clone()])
+    }
+}
+impl UsePresentation for crate::core::local::DiscoveryOverride {}
+
+impl ToPresentation for crate::core::operation::OperationResult {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain(format!("Operation {} completed (ID: {})", self.transition, self.operation_id))
+    }
+}
+impl UsePresentation for crate::core::operation::OperationResult {}
+
+impl ToPresentation for crate::model::ActiveOperationStatus {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Section {
+            title: "Active Operation:".to_string(),
+            children: vec![
+                Presentation::Field { label: "ID".to_string(), value: self.operation_id.clone() },
+                Presentation::Field { label: "Kind".to_string(), value: self.kind.clone() },
+                Presentation::Field { label: "Phase".to_string(), value: self.phase.clone() },
+            ],
+        }
+    }
+}
+impl UsePresentation for crate::model::ActiveOperationStatus {}
+
+impl ToPresentation for crate::core::verification::DraftVerificationEvidence {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain(format!("Verification evidence for basis {}", self.basis_oid))
+    }
+}
+impl UsePresentation for crate::core::verification::DraftVerificationEvidence {}
+
+impl<T: ToPresentation> ToPresentation for Vec<T> {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(self.iter().map(|x| x.to_presentation()).collect())
+    }
+}
+impl<T: ToPresentation + Serialize> UsePresentation for Vec<T> {}
+
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedProviderLanding {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!("Landed {} items via {}", self.landed.len(), self.provider_label)))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["landed".into(), self.landed.len().to_string(), self.provider_label.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedProviderLanding {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewShow {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![
+            Presentation::Field { label: "Project".into(), value: self.project.clone() },
+            Presentation::Field { label: "Destination Branch".into(), value: self.destination_branch.clone() },
+        ];
+        for (k, v) in &self.details {
+            h_children.push(Presentation::Field { label: k.clone(), value: v.clone() });
+        }
+        let mut items = vec![];
+        for item in &self.items {
+            items.push(Presentation::Plain(format!("  {} {} [{}]", &item.oid[..7.min(item.oid.len())], item.title, item.detail)));
+        }
+        h_children.push(Presentation::Section { title: "Commits:".into(), children: items });
+
+        let mut p_records = vec![
+            Presentation::Record(vec!["host".into(), self.host.clone()]),
+            Presentation::Record(vec!["project".into(), self.project.clone()]),
+        ];
+        for item in &self.items {
+            p_records.push(Presentation::Record(vec!["commit".into(), item.oid.clone(), item.detail.clone()]));
+        }
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("{} Host: {}", self.provider_label, self.host),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::List(p_records))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewShow {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewStatus {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![
+            Presentation::Field { label: "Host".into(), value: self.host.clone() },
+            Presentation::Field { label: "Project".into(), value: self.project.clone() },
+        ];
+        for (k, v) in &self.details {
+            h_children.push(Presentation::Field { label: k.clone(), value: v.clone() });
+        }
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("{} Review Status: {}", self.provider_label, self.status),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["status".into(), self.status.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewStatus {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewPlan {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![
+            Presentation::Field { label: "Target Ref".into(), value: self.target.clone() },
+            Presentation::Field { label: "Mapping Policy".into(), value: self.policy.clone() },
+        ];
+        let mut items = vec![];
+        for item in &self.items {
+            items.push(Presentation::Plain(format!("    - {} {} ({})", &item.oid[..7.min(item.oid.len())], item.title, item.detail)));
+        }
+        h_children.push(Presentation::Section { title: "Commits to push:".into(), children: items });
+        if !self.warnings.is_empty() {
+             h_children.push(Presentation::Section {
+                title: "Warnings:".into(),
+                children: self.warnings.iter().map(|w| Presentation::Plain(format!("    - {}", w))).collect(),
+            });
+        }
+
+        let mut p_records = vec![
+            Presentation::Record(vec!["push_ref".into(), self.target.clone()]),
+            Presentation::Record(vec!["mapping_policy".into(), self.policy.clone()]),
+        ];
+        for item in &self.items {
+            p_records.push(Presentation::Record(vec!["commit".into(), item.oid.clone(), item.detail.clone()]));
+        }
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("{} Upload Plan:", self.provider_label),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::List(p_records))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewPlan {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewUpload {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("{} Upload Complete:", self.provider_label),
+                children: vec![Presentation::Plain(self.summary.clone())],
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["result".into(), self.summary.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewUpload {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewReconcile {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!("{} Reconcile Status: {}", self.provider_label, self.status)))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["status".into(), self.status.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewReconcile {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewOpen {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!("{} Review URL: {}", self.provider_label, self.url)))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["url".into(), self.url.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewOpen {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedReviewMutation {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
+        for detail in &self.details {
+            h_children.push(Presentation::Plain(format!("  {}", detail)));
+        }
+        if let (Some(before), Some(after)) = (&self.record_before, &self.record_after) {
+            h_children.push(Presentation::Plain(format!("record revision: {} -> {}", before, after)));
+        }
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Section {
+                title: format!("{} review {}: {} association(s)", self.provider_label, self.action, self.changed),
+                children: h_children,
+            })),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![self.action.clone(), self.changed.to_string(), self.provider_label.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedReviewMutation {}
+
+impl ToPresentation for crate::workspace::review_provider::UnifiedProviderVerification {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!("Provider verification status: {}", self.status)))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec!["status".into(), self.status.clone()]))),
+        ])
+    }
+}
+impl UsePresentation for crate::workspace::review_provider::UnifiedProviderVerification {}
+
+impl ToPresentation for crate::core::operation::OperationJournal {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Section {
+            title: format!("Operation '{}' (ID: {})", self.kind, self.operation_id),
+            children: vec![
+                Presentation::Field { label: "Phase".into(), value: format!("{:?}", self.phase) },
+                Presentation::Field { label: "Disposition".into(), value: self.disposition.clone() },
+            ],
+        }
+    }
+}
+impl UsePresentation for crate::core::operation::OperationJournal {}
+
+impl ToPresentation for std::collections::BTreeMap<String, serde_json::Value> {
+    fn to_presentation(&self) -> Presentation {
+        let mut fields = vec![];
+        for (k, v) in self {
+            fields.push(Presentation::Field { label: k.clone(), value: v.to_string() });
+        }
+        Presentation::Section { title: "Values:".into(), children: fields }
+    }
+}
+impl UsePresentation for std::collections::BTreeMap<String, serde_json::Value> {}

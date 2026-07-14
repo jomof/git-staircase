@@ -1,5 +1,4 @@
-use super::formatting::{ToHuman, ToPorcelain};
-use super::{PresentationOutput, Summary};
+use super::{PresentationOutput, Summary, ToPresentation, Presentation};
 use crate::GitRepo;
 use crate::core;
 use crate::core::persistence;
@@ -152,22 +151,12 @@ impl super::Command for List {
 #[serde(transparent)]
 pub struct ListResult(pub Vec<ListEntry>);
 
-impl ToHuman for ListResult {
-    fn to_human(&self) -> String {
+impl ToPresentation for ListResult {
+    fn to_presentation(&self) -> Presentation {
         if self.0.is_empty() {
-            "No staircases.".to_string()
+            Presentation::Plain("No staircases.".to_string())
         } else {
-            self.0.to_human()
-        }
-    }
-}
-
-impl ToPorcelain for ListResult {
-    fn to_porcelain(&self) -> String {
-        if self.0.is_empty() {
-            String::new()
-        } else {
-            self.0.to_porcelain()
+            self.0.to_presentation()
         }
     }
 }
@@ -179,20 +168,11 @@ pub enum ListEntry {
     Family(Summary<crate::model::StaircaseFamily>),
 }
 
-impl ToHuman for ListEntry {
-    fn to_human(&self) -> String {
+impl ToPresentation for ListEntry {
+    fn to_presentation(&self) -> Presentation {
         match self {
-            ListEntry::Staircase(s) => s.to_human(),
-            ListEntry::Family(f) => f.to_human(),
-        }
-    }
-}
-
-impl ToPorcelain for ListEntry {
-    fn to_porcelain(&self) -> String {
-        match self {
-            ListEntry::Staircase(s) => s.to_porcelain(),
-            ListEntry::Family(f) => f.to_porcelain(),
+            ListEntry::Staircase(s) => s.to_presentation(),
+            ListEntry::Family(f) => f.to_presentation(),
         }
     }
 }

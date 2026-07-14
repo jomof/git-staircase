@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::core;
 use crate::core::refs::StaircaseRefs;
 use crate::error::StaircaseError;
@@ -39,19 +39,17 @@ pub struct RevParseResult {
     pub step_id: Option<String>,
 }
 
-impl ToHuman for RevParseResult {
-    fn to_human(&self) -> String {
-        self.value.clone()
-    }
-}
-
-impl ToPorcelain for RevParseResult {
-    fn to_porcelain(&self) -> String {
-        format!(
-            "identity\t1\t{}\t{}",
-            serde_json::to_string(&self.kind).unwrap_or_default(),
-            serde_json::to_string(&self.value).unwrap_or_default()
-        )
+impl ToPresentation for RevParseResult {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(self.value.clone()))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                "identity".into(),
+                "1".into(),
+                self.kind.clone(),
+                self.value.clone(),
+            ]))),
+        ])
     }
 }
 

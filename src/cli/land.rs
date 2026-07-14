@@ -1,4 +1,4 @@
-use super::{PresentationOutput, StaircaseSelectorArgs, StructuredOutput, Success};
+use super::{PresentationOutput, StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 use crate::model::LandingPolicy;
@@ -69,13 +69,13 @@ impl super::Command for Land {
             } else {
                 "stepwise"
             };
-            return Ok(Box::new(StructuredOutput(instance.land(
+            return Ok(Box::new(instance.land(
                 repo,
                 &oids,
                 mode,
                 self.method.as_deref(),
                 None,
-            )?)));
+            )?));
         }
         if let Some(through) = &self.through {
             let token = through

@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StructuredOutput};
+use crate::cli::{Command, PresentationOutput, ToPresentation, Presentation};
 use crate::core;
 use crate::core::refs::{ARCHIVE_PREFIX, PUBLIC_PREFIX, STATE_PREFIX, StaircaseRefs};
 use crate::error::StaircaseError;
@@ -36,6 +36,22 @@ pub struct TransportResult {
     pub refspecs: Vec<String>,
     pub review_publication: bool,
     pub dry_run: bool,
+}
+
+impl ToPresentation for TransportResult {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::Plain(format!(
+                "Successfully {}ed to/from remote '{}' ({} refspecs)",
+                self.direction, self.remote, self.refspecs.len()
+            )))),
+            Presentation::Porcelain(Box::new(Presentation::Record(vec![
+                self.direction.clone(),
+                self.remote.clone(),
+                self.refspecs.len().to_string(),
+            ]))),
+        ])
+    }
 }
 
 impl Command for Push {
@@ -78,7 +94,7 @@ impl Command for Push {
         args.push(remote);
         args.extend(refspecs.iter().map(String::as_str));
         repo.run(&args)?;
-        Ok(Box::new(StructuredOutput(TransportResult {
+        Ok(Box::new(TransportResult {
             schema: "git-staircase/transport-result".into(),
             version: 1,
             direction: "push".into(),
@@ -86,7 +102,7 @@ impl Command for Push {
             refspecs,
             review_publication: false,
             dry_run: self.dry_run,
-        })))
+        }))
     }
 }
 
@@ -114,7 +130,7 @@ impl Command for Fetch {
         args.push(remote);
         args.extend(refspecs.iter().map(String::as_str));
         repo.run(&args)?;
-        Ok(Box::new(StructuredOutput(TransportResult {
+        Ok(Box::new(TransportResult {
             schema: "git-staircase/transport-result".into(),
             version: 1,
             direction: "fetch".into(),
@@ -122,6 +138,6 @@ impl Command for Fetch {
             refspecs,
             review_publication: false,
             dry_run: self.dry_run,
-        })))
+        }))
     }
 }

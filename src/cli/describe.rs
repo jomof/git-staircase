@@ -1,4 +1,4 @@
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToHuman, ToPorcelain};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::core;
 use crate::git::GitRepo;
 use anyhow::{Result, anyhow};
@@ -24,36 +24,33 @@ pub struct DescribeOutput {
     pub description: Option<String>,
 }
 
-impl ToHuman for DescribeOutput {
-    fn to_human(&self) -> String {
-        let mut out = String::new();
+impl ToPresentation for DescribeOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
         if let Some(ref t) = self.title {
-            out.push_str(&format!("Title: {}\n", t));
+            h_children.push(Presentation::Field { label: "Title".into(), value: t.clone() });
         }
         if let Some(ref d) = self.description {
-            if !out.is_empty() {
-                out.push('\n');
-            }
-            out.push_str(d);
+            h_children.push(Presentation::Plain(d.clone()));
         }
-        if out.is_empty() {
-            out = format!("No description for staircase '{}'", self.name);
+        if h_children.is_empty() {
+            h_children.push(Presentation::Plain(format!("No description for staircase '{}'", self.name)));
         }
-        out
-    }
-}
 
-impl ToPorcelain for DescribeOutput {
-    fn to_porcelain(&self) -> String {
-        let mut out = String::new();
-        out.push_str(&format!("name\t{}\n", self.name));
+        let mut p_records = vec![
+            Presentation::Record(vec!["name".into(), self.name.clone()]),
+        ];
         if let Some(ref t) = self.title {
-            out.push_str(&format!("title\t{}\n", t));
+            p_records.push(Presentation::Record(vec!["title".into(), t.clone()]));
         }
         if let Some(ref d) = self.description {
-            out.push_str(&format!("description\t{}\n", d.replace('\n', "\\n")));
+            p_records.push(Presentation::Record(vec!["description".into(), d.replace('\n', "\n")]));
         }
-        out
+
+        Presentation::List(vec![
+            Presentation::Human(Box::new(Presentation::List(h_children))),
+            Presentation::Porcelain(Box::new(Presentation::List(p_records))),
+        ])
     }
 }
 

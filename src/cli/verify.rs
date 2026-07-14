@@ -1,5 +1,4 @@
-use super::formatting::{ToHuman, ToPorcelain};
-use super::{PresentationOutput, StaircaseSelectorArgs, StructuredOutput};
+use super::{PresentationOutput, StaircaseSelectorArgs, ToPresentation, Presentation};
 use crate::GitRepo;
 use crate::core;
 use crate::model::VerificationResult;
@@ -37,7 +36,7 @@ impl super::Command for Verify {
         if self.draft {
             let evidence =
                 core::verify_draft(repo, self.build_command.clone(), self.test_command.clone())?;
-            return Ok(Box::new(StructuredOutput(evidence)));
+            return Ok(Box::new(evidence));
         }
         let aggregate_opt = if self.aggregate { Some(true) } else { None };
         let each_prefix_opt = if self.each_prefix { Some(true) } else { None };
@@ -70,9 +69,7 @@ impl super::Command for Verify {
                 .iter()
                 .map(|step| step.cut.clone())
                 .collect::<Vec<_>>();
-            return Ok(Box::new(StructuredOutput(
-                instance.verify_provider(repo, &oids, None)?,
-            )));
+            return Ok(Box::new(instance.verify_provider(repo, &oids, None)?));
         }
         let results = core::verify(
             repo,
@@ -90,14 +87,8 @@ impl super::Command for Verify {
 #[serde(transparent)]
 pub struct VerificationResults(pub Vec<VerificationResult>);
 
-impl ToHuman for VerificationResults {
-    fn to_human(&self) -> String {
-        self.0.to_human()
-    }
-}
-
-impl ToPorcelain for VerificationResults {
-    fn to_porcelain(&self) -> String {
-        self.0.to_porcelain()
+impl ToPresentation for VerificationResults {
+    fn to_presentation(&self) -> Presentation {
+        self.0.to_presentation()
     }
 }

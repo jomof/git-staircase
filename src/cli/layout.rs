@@ -1,5 +1,5 @@
 use crate::GitRepo;
-use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs, StructuredOutput};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core;
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
@@ -86,9 +86,9 @@ impl Command for LayoutCmd {
         match &self.command {
             LayoutSubcommand::Show(args) | LayoutSubcommand::Check(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::layout_state(
+                Ok(Box::new(core::layout_state(
                     repo, &selector,
-                )?)))
+                )?))
             }
             LayoutSubcommand::Set(args) => {
                 if args.primary_branches != "sequential" {
@@ -109,29 +109,29 @@ impl Command for LayoutCmd {
                     }
                     _ => return Err(anyhow!("provide exactly one of --base or --infer-base")),
                 };
-                Ok(Box::new(StructuredOutput(core::set_layout(
+                Ok(Box::new(core::set_layout(
                     repo,
                     &selector,
                     &base,
                     args.dry_run,
-                )?)))
+                )?))
             }
             LayoutSubcommand::Normalize(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::normalize(
+                Ok(Box::new(core::normalize(
                     repo,
                     &selector,
                     args.dry_run,
-                )?)))
+                )?))
             }
             LayoutSubcommand::Rename(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::set_layout(
+                Ok(Box::new(core::set_layout(
                     repo,
                     &selector,
                     &args.base,
                     args.dry_run,
-                )?)))
+                )?))
             }
             LayoutSubcommand::Branch(args) => {
                 let selector = args.selector.resolve(repo)?;
@@ -143,24 +143,24 @@ impl Command for LayoutCmd {
                 let index = explicit_index
                     .or(selector.step_index)
                     .ok_or_else(|| anyhow!("select a step with :<ordinal> or --step"))?;
-                Ok(Box::new(StructuredOutput(core::assign_step_branch(
+                Ok(Box::new(core::assign_step_branch(
                     repo,
                     &selector,
                     index,
                     &args.name,
                     args.dry_run,
-                )?)))
+                )?))
             }
             LayoutSubcommand::Unset(args) => {
                 if !args.primary_branches {
                     return Err(anyhow!("--primary-branches is required"));
                 }
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(StructuredOutput(core::unset_layout(
+                Ok(Box::new(core::unset_layout(
                     repo,
                     &selector,
                     args.dry_run,
-                )?)))
+                )?))
             }
         }
     }
