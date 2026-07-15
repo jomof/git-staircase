@@ -64,7 +64,6 @@ impl super::Command for Reorder {
             repo,
             updated_rs.metadata().clone(),
             !updated_rs.is_managed(),
-            false,
         )?;
 
         Ok(Box::new(ReorderResult { status }))

@@ -95,12 +95,3 @@ fn test_repo_provider_outside_workspace() {
     let cand = probe_repo_workspace(&repo).unwrap();
     assert!(cand.is_none());
 }
-
-#[test]
-fn test_repo_provider_list_projects() {
-    let (_guard, _client_root_dir, _client_root, repo, _storage_dir) = setup_repo_workspace();
-
-    let projects =
-        git_staircase::workspace::repo_provider::list_repo_workspace_projects(&repo).unwrap();
-    assert_eq!(projects, vec![PathBuf::from("tools/example")]);
-}

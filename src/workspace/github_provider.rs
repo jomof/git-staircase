@@ -3,7 +3,7 @@ use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::parse_git_url;
-use crate::workspace::provider_base::{self, ProviderAssociation, ReviewStateMachine};
+use crate::workspace::provider_base::{self, ProviderAssociation};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
@@ -456,14 +456,12 @@ pub struct GitHubMutationResult {
 }
 
 pub struct GitHubStateMachine<T: ProviderTransport> {
-    pub base: ReviewStateMachine<T>,
+    pub transport: T,
 }
 
 impl<T: ProviderTransport> GitHubStateMachine<T> {
     pub fn new(transport: T) -> Self {
-        Self {
-            base: ReviewStateMachine::new(transport, "github".into()),
-        }
+        Self { transport }
     }
 
     #[allow(clippy::too_many_arguments)]
@@ -716,7 +714,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                 force_with_lease: item.expected_remote_head_oid.clone(),
                 push_options: Vec::new(),
             };
-            let response = match self.base.transport.execute(repo, &request) {
+            let response = match self.transport.execute(repo, &request) {
                 Ok(response) => response,
                 Err(error) => {
                     return self.github_unknown_result(
@@ -780,7 +778,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                         "draft": association.draft,
                     })),
                 };
-                let response = match self.base.transport.execute(repo, &request) {
+                let response = match self.transport.execute(repo, &request) {
                     Ok(response) => response,
                     Err(error) => {
                         state.reconciliation_required = true;
@@ -1011,7 +1009,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                 arguments: Vec::new(),
                 body: Some(serde_json::json!({"merge_method": method})),
             };
-            let response = self.base.transport.execute(repo, &request)?;
+            let response = self.transport.execute(repo, &request)?;
             if response.uncertain {
                 state.reconciliation_required = true;
                 OperationJournal::for_repo(repo)?.record(
@@ -1053,7 +1051,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                 arguments: Vec::new(),
                 body: Some(serde_json::json!({})),
             };
-            let response = self.base.transport.execute(repo, &request)?;
+            let response = self.transport.execute(repo, &request)?;
             if response.uncertain {
                 state.reconciliation_required = true;
                 OperationJournal::for_repo(repo)?.record(
@@ -1140,7 +1138,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
         }
         let mut landing = provider_base::land_loop_common(
             repo,
-            &self.base.transport,
+            &self.transport,
             "github",
             "GitHub",
             mode,
@@ -1528,7 +1526,7 @@ impl GitHubInstance {
                         arguments: Vec::new(),
                         body: None,
                     };
-                    let response = machine.base.transport.execute(repo, &request)?;
+                    let response = machine.transport.execute(repo, &request)?;
                     if response.uncertain {
                         return Err(StaircaseError::Other(
                             "GitHub reconciliation query outcome is uncertain".into(),
@@ -1714,7 +1712,7 @@ impl GitHubInstance {
                     arguments: Vec::new(),
                     body: None,
                 };
-                let response = machine.base.transport.execute(repo, &request)?;
+                let response = machine.transport.execute(repo, &request)?;
                 if !response.success || response.uncertain {
                     return Err(StaircaseError::Other(
                         "GitHub attachment validation failed or is uncertain".into(),

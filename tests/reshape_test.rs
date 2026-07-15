@@ -32,8 +32,7 @@ fn test_reorder() {
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
         .expect("Staircase found");
-    let status =
-        core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed(), false).unwrap();
+    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
     assert_eq!(status.metadata.steps.len(), 3);
 
     // Expected order: step1, step3, step2
@@ -98,8 +97,7 @@ fn test_drop() {
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
         .expect("Staircase found");
-    let status =
-        core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed(), false).unwrap();
+    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "step1");
     assert_eq!(status.metadata.steps[1].name, "step3");
@@ -141,8 +139,7 @@ fn test_move() {
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
         .expect("Staircase found");
-    let status =
-        core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed(), false).unwrap();
+    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "step1");
     assert_eq!(status.metadata.steps[1].name, "step2");
@@ -182,7 +179,7 @@ fn test_reorder_refuses_missing_owned_branches() {
         landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),
@@ -253,7 +250,7 @@ fn test_restack_without_branches() {
         landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),

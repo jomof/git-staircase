@@ -12,7 +12,7 @@ impl ToPresentation for Success {
 
 impl ToPresentation for Summary<StaircaseStatus> {
     fn to_presentation(&self) -> Presentation {
-        let s = &self.value;
+        let s = &self.0;
         let m = &s.metadata;
         let steps_count = m.steps.len();
         let steps_word = if steps_count == 1 { "step" } else { "steps" };
@@ -20,14 +20,7 @@ impl ToPresentation for Summary<StaircaseStatus> {
         Presentation::pair(
             Presentation::Plain(format!(
                 "{} [{}] {} {} {}{}",
-                format!(
-                    "{}{}",
-                    m.name,
-                    self.qualification
-                        .as_ref()
-                        .map(|q| format!(" ({})", q))
-                        .unwrap_or_default()
-                ),
+                m.name,
                 m.id,
                 steps_count,
                 steps_word,
@@ -41,23 +34,13 @@ impl ToPresentation for Summary<StaircaseStatus> {
 
 impl ToPresentation for Summary<StaircaseFamily> {
     fn to_presentation(&self) -> Presentation {
-        let f = &self.value;
+        let f = &self.0;
         let path_count = f.steps.values().filter(|s| s.children.is_empty()).count();
         let paths_word = if path_count == 1 { "path" } else { "paths" };
         Presentation::pair(
             Presentation::Plain(format!(
                 "{} [{}] {} {} (implicit)",
-                format!(
-                    "{}{}",
-                    f.name,
-                    self.qualification
-                        .as_ref()
-                        .map(|q| format!(" ({})", q))
-                        .unwrap_or_default()
-                ),
-                f.id,
-                path_count,
-                paths_word
+                f.name, f.id, path_count, paths_word
             )),
             Presentation::Record(vec![
                 f.name.clone(),
@@ -192,33 +175,9 @@ use crate::cli::archive::{ArchiveOutput, ReleaseNameOutput};
 impl ToPresentation for ArchiveOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
-
-        if self.result.archive_kind == "implicit-snapshot" {
-            if let Some(ref aid) = self.result.archive_id {
-                h_children.push(Presentation::Plain(format!("  archive ID: {}", aid)));
-            }
-            if let Some(ref key) = self.result.originating_structural_key {
-                h_children.push(Presentation::Plain(format!(
-                    "  originating structural key: {}",
-                    key
-                )));
-            }
-            h_children.push(Presentation::Plain(format!(
-                "  adopted: {}",
-                if self.result.adopted { "yes" } else { "no" }
-            )));
-        } else if self.result.adopted {
-            if let Some(ref lid) = self.result.lineage_id {
-                h_children.push(Presentation::Plain(format!("  lineage: {}", lid)));
-            }
-            h_children.push(Presentation::Plain(
-                "  archive kind: managed lineage".into(),
-            ));
-        }
-
         if !self.result.moved_branches.is_empty() {
             h_children.push(Presentation::Section {
-                title: "archived branches:".into(),
+                title: "Moved owned branches from refs/heads/:".into(),
                 children: self
                     .result
                     .moved_branches
@@ -227,49 +186,27 @@ impl ToPresentation for ArchiveOutput {
                     .collect(),
             });
         }
-
         for warn in &self.result.unowned_warnings {
             h_children.push(Presentation::Plain(warn.clone()));
         }
 
-        let title = if self.result.is_dry_run {
-            format!(
-                "Dry run: planned archive for staircase '{}':",
-                self.result.canonical_name
-            )
-        } else if self.result.archive_kind == "implicit-snapshot" {
-            format!(
-                "Archived implicit staircase '{}'.",
-                self.result.canonical_name
-            )
-        } else if self.result.adopted {
-            format!(
-                "Adopted & archived implicit staircase '{}'.",
-                self.result.canonical_name
-            )
-        } else {
-            format!(
-                "Archived managed staircase '{}'.",
-                self.result.canonical_name
-            )
-        };
-
-        let rec_id = self
-            .result
-            .archive_id
-            .clone()
-            .or_else(|| self.result.lineage_id.clone())
-            .unwrap_or_default();
-
         Presentation::pair(
             Presentation::Section {
-                title,
+                title: if self.result.is_dry_run {
+                    "Dry run: planned archive operations:".into()
+                } else {
+                    format!(
+                        "Archived staircase '{}' ({})",
+                        self.result.canonical_name, self.result.archived_staircase_id
+                    )
+                },
                 children: h_children,
             },
             Presentation::Record(vec![
                 "archived".into(),
                 self.result.canonical_name.clone(),
-                rec_id,
+                self.result.archived_staircase_id.clone(),
+                self.result.archive_event_id.clone(),
             ]),
         )
     }

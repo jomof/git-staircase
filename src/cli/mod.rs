@@ -23,7 +23,6 @@ pub mod layout;
 pub mod list;
 pub mod log;
 pub mod metadata;
-pub mod monorepo;
 pub mod move_cmd;
 pub mod naming;
 pub mod normalize;
@@ -47,8 +46,7 @@ pub mod workspace;
 
 pub use formatting::*;
 
-#[derive(clap::ValueEnum, serde::Deserialize, Clone, Copy, Debug, PartialEq, Eq)]
-#[serde(rename_all = "kebab-case")]
+#[derive(Clone, Copy, Debug)]
 pub enum OutputFormat {
     Human,
     Json,
@@ -69,7 +67,7 @@ pub struct BaseStaircaseSelectorArgs {
     #[arg(long)]
     pub record: Option<String>,
     /// Select by managed staircase name.
-    #[arg(long("select-name"))]
+    #[arg(long("name"))]
     pub explicit_name: Option<String>,
     /// Select by full staircase refname.
     #[arg(long("ref"))]
@@ -81,15 +79,6 @@ pub struct BaseStaircaseSelectorArgs {
 
 impl BaseStaircaseSelectorArgs {
     pub fn resolve(&self, repo: &GitRepo, steps: Option<&[String]>) -> Result<ResolvedSelector> {
-        self.resolve_with_default(repo, steps, None)
-    }
-
-    pub fn resolve_with_default(
-        &self,
-        repo: &GitRepo,
-        steps: Option<&[String]>,
-        default: Option<&str>,
-    ) -> Result<ResolvedSelector> {
         let selector_count = [
             self.id.is_some(),
             self.record.is_some(),
@@ -147,11 +136,12 @@ impl BaseStaircaseSelectorArgs {
                 });
             }
         }
-        let name = self.name.as_deref().or(default).ok_or_else(|| {
-            anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --record, --structural-key) must be provided")
-        })?;
+        let name = self
+            .name
+            .as_ref()
+            .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --record, --structural-key) must be provided"))?;
         core::resolve_staircase(repo, name, self.onto.as_deref())?
-            .ok_or_else(|| StaircaseError::NotFound(name.to_string()).into())
+            .ok_or_else(|| StaircaseError::NotFound(name.clone()).into())
     }
 }
 
@@ -167,11 +157,6 @@ pub struct StaircaseSelectorArgs {
 impl StaircaseSelectorArgs {
     pub fn resolve(&self, repo: &GitRepo) -> Result<ResolvedSelector> {
         self.base.resolve(repo, self.steps.as_deref())
-    }
-
-    pub fn resolve_with_default(&self, repo: &GitRepo, default: &str) -> Result<ResolvedSelector> {
-        self.base
-            .resolve_with_default(repo, self.steps.as_deref(), Some(default))
     }
 }
 

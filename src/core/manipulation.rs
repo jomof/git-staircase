@@ -98,8 +98,7 @@ pub fn validate_split(
     let at_oid = repo.resolve_commit(at_commit)?;
     let cut_oid = &staircase.metadata().steps[step_index].cut;
     let prev_cut_oid = if step_index == 0 {
-        let target = repo.resolve_commit(&staircase.metadata().symbolic_integration_target)?;
-        repo.merge_base(&target, &at_oid).unwrap_or(target)
+        repo.resolve_commit(&staircase.metadata().target)?
     } else {
         staircase.metadata().steps[step_index - 1].cut.clone()
     };
@@ -493,7 +492,6 @@ pub fn restack(
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
-        false,
     )?;
 
     if status.is_clean {
@@ -505,7 +503,7 @@ pub fn restack(
     let mut groups = Vec::new();
     let mut actual_predecessor = recorded_target(repo, &metadata)?;
     let mut recorded_predecessor = actual_predecessor.clone();
-    let mut current_base = repo.resolve_commit(&metadata.symbolic_integration_target)?;
+    let mut current_base = repo.resolve_commit(&metadata.target)?;
     let mut start_step = 0;
     for index in 0..metadata.steps.len() {
         let step = metadata.steps[index].clone();
@@ -573,7 +571,6 @@ pub fn restack_from(
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
-        false,
     )?;
     let mut groups = Vec::new();
     for index in from_step..status.metadata.steps.len() {
@@ -598,7 +595,7 @@ pub fn restack_from(
         groups.push(repo.commits_between(&predecessor, &actual)?);
     }
     let base = if from_step == 0 {
-        repo.resolve_commit(&status.metadata.symbolic_integration_target)?
+        repo.resolve_commit(&status.metadata.target)?
     } else {
         status.metadata.steps[from_step - 1].cut.clone()
     };
@@ -635,7 +632,7 @@ pub fn rebase_with_dry_run(
     ensure_rewrite_supported(repo, original, "rebase")?;
     let groups = step_commit_groups(repo, original)?;
     let mut metadata = original.clone();
-    metadata.symbolic_integration_target = repo
+    metadata.target = repo
         .resolve_symbolic_full_name(onto)
         .unwrap_or_else(|_| onto.to_string());
     let groups = if options.leave_upper_steps_stale {
@@ -707,7 +704,7 @@ fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Strin
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .map(Ok)
-        .unwrap_or_else(|| repo.resolve_commit(&metadata.symbolic_integration_target))
+        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))
 }
 
 fn publish_metadata_common(
@@ -740,48 +737,40 @@ fn publish_metadata_common(
     Ok(())
 }
 
-pub fn delete(repo: &GitRepo, staircase: &ResolvedStaircase, delete_branches: bool) -> Result<()> {
-    let metadata = staircase.metadata();
+pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
+    let metadata = persistence::read_metadata(repo, id)?;
     let mut plan = super::operation::MutationPlan::new("delete", Some(metadata.id.clone()));
-
-    if staircase.is_managed() || matches!(staircase, ResolvedStaircase::ImplicitArchive(_)) {
-        for prefix in [
-            format!("{}{}/", STATE_PREFIX, metadata.id),
-            format!("{}{}/", ARCHIVE_PREFIX, metadata.id),
-        ] {
-            let lines = repo.for_each_ref(&prefix, "%(refname) %(objectname)", None)?;
-            for line in lines {
-                if let Some((reference, oid)) = line.split_once(" ") {
-                    plan.update(reference, Some(oid.into()), None);
-                }
+    for prefix in [
+        format!("{}{}/", STATE_PREFIX, metadata.id),
+        format!("{}{}/", ARCHIVE_PREFIX, metadata.id),
+    ] {
+        let lines = repo.for_each_ref(&prefix, "%(refname) %(objectname)", None)?;
+        for line in lines {
+            if let Some((reference, oid)) = line.split_once(" ") {
+                plan.update(reference, Some(oid.into()), None);
             }
         }
-        let public = StaircaseRefs::public(&metadata.name);
-        if let Some(oid) = repo.resolve_ref_opt(&public)? {
-            plan.update(public, Some(oid), None);
-        }
     }
-
+    let public = StaircaseRefs::public(&metadata.name);
+    if let Some(oid) = repo.resolve_ref_opt(&public)? {
+        plan.update(public, Some(oid), None);
+    }
     if delete_branches {
         for step in &metadata.steps {
             if let Some(branch) = &step.branch {
                 let reference = format!("refs/heads/{}", branch);
                 let actual = repo.resolve_ref_opt(&reference)?;
-                if let Some(oid) = actual {
-                    if oid == step.cut {
-                        plan.update(reference, Some(oid), None);
-                    } else {
-                        return Err(StaircaseError::RefCollision {
-                            reference,
-                            expected: step.cut.clone(),
-                            actual: oid,
-                        });
-                    }
+                if actual.as_deref() != Some(step.cut.as_str()) {
+                    return Err(StaircaseError::RefCollision {
+                        reference,
+                        expected: step.cut.clone(),
+                        actual: actual.unwrap_or_else(|| "<missing>".into()),
+                    });
                 }
+                plan.update(reference, actual, None);
             }
         }
     }
-
     plan.publish(repo, false)?;
     Ok(())
 }
@@ -796,7 +785,6 @@ pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions)
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
-        false,
     )?;
 
     if !status.is_clean {
@@ -818,20 +806,16 @@ pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions)
         .ok_or_else(|| StaircaseError::InvalidStructure("Empty staircase".to_string()))?
         .cut;
 
-    if metadata.symbolic_integration_target.starts_with("refs/") {
-        let expected = repo.resolve_ref_opt(&metadata.symbolic_integration_target)?;
+    if metadata.target.starts_with("refs/") {
+        let expected = repo.resolve_ref_opt(&metadata.target)?;
         let mut plan = super::operation::MutationPlan::new("land", Some(metadata.id.clone()));
         let _ = policy;
-        plan.update(
-            metadata.symbolic_integration_target.clone(),
-            expected,
-            Some(top_cut.to_string()),
-        );
+        plan.update(metadata.target.clone(), expected, Some(top_cut.to_string()));
         plan.publish(repo, false)?;
     } else {
         return Err(StaircaseError::Other(format!(
             "Target {} is not a ref, cannot land",
-            metadata.symbolic_integration_target
+            metadata.target
         )));
     }
 
@@ -865,12 +849,8 @@ pub fn land_through(
                 .into(),
         });
     }
-    let status = crate::core::status::get_status_metadata(
-        repo,
-        metadata.clone(),
-        !managed.is_managed(),
-        false,
-    )?;
+    let status =
+        crate::core::status::get_status_metadata(repo, metadata.clone(), !managed.is_managed())?;
     if !status.is_clean {
         return Err(StaircaseError::UnsupportedTopology {
             operation: "partial-land".into(),
@@ -878,8 +858,8 @@ pub fn land_through(
         });
     }
     let target_ref = repo
-        .resolve_symbolic_full_name(&metadata.symbolic_integration_target)
-        .unwrap_or_else(|_| metadata.symbolic_integration_target.clone());
+        .resolve_symbolic_full_name(&metadata.target)
+        .unwrap_or_else(|_| metadata.target.clone());
     if !target_ref.starts_with("refs/") {
         return Err(StaircaseError::InvalidStructure(
             "partial landing requires a symbolic target ref".into(),

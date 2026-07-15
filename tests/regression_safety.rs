@@ -82,7 +82,7 @@ fn test_reorder_data_loss_on_dirty_workdir() {
         landing_policy: None,
         id: "test".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "s1".to_string(),
@@ -211,7 +211,7 @@ fn test_verify_leaves_detached_head() {
         landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),

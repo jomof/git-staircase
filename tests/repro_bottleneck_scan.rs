@@ -75,7 +75,7 @@ fn test_bottleneck_worktree_scan() {
     let meta = git_staircase::model::StaircaseMetadata {
         id: uuid::Uuid::new_v4().to_string(),
         name: "test-staircase".to_string(),
-        symbolic_integration_target: "HEAD^".to_string(),
+        target: "HEAD^".to_string(),
         steps: vec![git_staircase::model::Step {
             id: uuid::Uuid::new_v4().to_string(),
             name: "step1".to_string(),

@@ -7,7 +7,6 @@ use serde::Serialize;
 use std::env;
 use std::fs;
 use std::process;
-use uuid::Uuid;
 
 #[derive(Args, Clone, Debug)]
 pub struct Describe {
@@ -37,8 +36,10 @@ impl Command for Describe {
             );
 
             let temp_dir = env::temp_dir();
-            let temp_file =
-                temp_dir.join(format!("STAIRCASE_DESC_{}.txt", Uuid::new_v4().simple()));
+            let temp_file = temp_dir.join(format!(
+                "STAIRCASE_DESC_{}.txt",
+                uuid::Uuid::new_v4().simple()
+            ));
             fs::write(&temp_file, &init_content)?;
 
             let editor = env::var("GIT_EDITOR")
@@ -67,7 +68,7 @@ impl Command for Describe {
                     if !t.is_empty() {
                         title = Some(t.to_string());
                     }
-                } else if line == "# Enter title above, description below." {
+                } else if line.starts_with("# ") {
                     continue;
                 } else {
                     desc_lines.push(line);

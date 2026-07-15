@@ -2,7 +2,6 @@ use crate::core::persistence::write_record;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
-use crate::process::ProcessExecutor;
 use crate::workspace::model::WorkspaceRecord;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
@@ -11,7 +10,6 @@ use std::fs;
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::sync::{Arc, Mutex};
-use std::time::Duration;
 use uuid::Uuid;
 
 #[derive(Serialize, Clone, Debug)]
@@ -228,11 +226,19 @@ impl ProviderTransport for ProductionTransport {
                     .current_dir(&repo.workdir)
                     .stdout(Stdio::piped())
                     .stderr(Stdio::piped());
-                let mut executor = ProcessExecutor::new(command);
                 if let Some(body) = body {
-                    executor = executor.stdin(serde_json::to_string(body)?);
+                    let mut child = command.stdin(Stdio::piped()).spawn()?;
+                    let body_str = serde_json::to_string(body)?;
+                    if let Some(mut stdin) = child.stdin.take() {
+                        std::thread::spawn(move || {
+                            use std::io::Write;
+                            let _ = stdin.write_all(body_str.as_bytes());
+                        });
+                    }
+                    child.wait_with_output()?
+                } else {
+                    command.output()?
                 }
-                executor.timeout(Duration::from_secs(30)).run()?
             }
         };
         let stdout = String::from_utf8_lossy(&output.stdout).into_owned();

@@ -7,16 +7,15 @@ use crate::model::{
 
 pub fn get_status(repo: &GitRepo, id: &str) -> Result<StaircaseStatus> {
     let metadata = persistence::read_metadata(repo, id)?;
-    get_status_metadata(repo, metadata, false, false)
+    get_status_metadata(repo, metadata, false)
 }
 
 pub fn get_status_metadata(
     repo: &GitRepo,
     metadata: StaircaseMetadata,
     is_implicit: bool,
-    all_worktrees: bool,
 ) -> Result<StaircaseStatus> {
-    get_status_metadata_ext(repo, metadata, is_implicit, None, None, all_worktrees)
+    get_status_metadata_ext(repo, metadata, is_implicit, None, None)
 }
 
 pub fn get_status_metadata_ext(
@@ -25,7 +24,6 @@ pub fn get_status_metadata_ext(
     is_implicit: bool,
     known_discoveries: Option<&[Discovery]>,
     cached_draft: Option<Option<WorktreeDraft>>,
-    all_worktrees: bool,
 ) -> Result<StaircaseStatus> {
     let mut steps = Vec::new();
     let mut is_clean = true;
@@ -68,7 +66,7 @@ pub fn get_status_metadata_ext(
         });
     }
 
-    let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
+    let target_oid = repo.resolve_commit(&metadata.target)?;
 
     for i in 0..steps.len() {
         let parent_oid = if i == 0 {
@@ -115,12 +113,9 @@ pub fn get_status_metadata_ext(
                     }
                 }
             }
-        } else if let Ok(discoveries) = super::discovery::discover(
-            repo,
-            Some(&metadata.symbolic_integration_target),
-            None,
-            false,
-        ) {
+        } else if let Ok(discoveries) =
+            super::discovery::discover(repo, Some(&metadata.target), None, false)
+        {
             for d in discoveries {
                 if let Discovery::Linear(m) = d {
                     if m.name == metadata.name && m.id != metadata.id {
@@ -154,18 +149,6 @@ pub fn get_status_metadata_ext(
             .filter(filter_draft),
     };
 
-    let mut all_worktree_drafts = Vec::new();
-    if all_worktrees {
-        for wt in repo.worktrees()? {
-            let wt_repo = GitRepo::new(wt.path.clone());
-            if let Ok(draft) = super::draft::get_worktree_draft(&wt_repo) {
-                if filter_draft(&draft) {
-                    all_worktree_drafts.push(draft);
-                }
-            }
-        }
-    }
-
     let active_operation =
         super::operation::active_operation(repo)
             .ok()
@@ -181,7 +164,6 @@ pub fn get_status_metadata_ext(
         .map(|(operation, owner)| crate::model::ExternalGitOperationStatus { operation, owner });
 
     Ok(StaircaseStatus {
-        all_worktree_drafts,
         metadata,
         steps,
         is_clean,

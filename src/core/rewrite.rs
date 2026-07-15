@@ -98,12 +98,7 @@ pub(crate) fn replay(
     let old_record_oid = repo.resolve_ref(&record_ref)?;
     let mut old_record = persistence::read_record(repo, &old_record_oid)?;
     old_record.metadata.name = managed.metadata().name.clone();
-    {
-        let mut all_refs = StaircaseRefs::owned_branches(&old_record.metadata);
-        all_refs.extend(StaircaseRefs::owned_branches(&desired));
-        let ref_names: std::collections::BTreeSet<_> = all_refs.into_keys().collect();
-        repo.check_worktree_safety(&ref_names, kind)?;
-    }
+    ensure_worktree_safety(repo, &old_record.metadata, &desired)?;
     let lease_plan = lease_plan(repo, &old_record.metadata, &desired, &old_record_oid, kind)?;
     let end_step = start_step + commit_groups.len();
     let mut user_metadata = old_record.user_metadata;
@@ -295,8 +290,8 @@ fn lease_plan(
         let actual = repo.resolve_ref_opt(&reference)?;
         plan.update(reference, actual.clone(), actual);
     }
-    let old_owned = StaircaseRefs::owned_branches(old);
-    let new_owned = StaircaseRefs::owned_branches(new);
+    let old_owned = owned_branches(old);
+    let new_owned = owned_branches(new);
     for reference in old_owned
         .keys()
         .chain(new_owned.keys())
@@ -400,8 +395,8 @@ fn publication_plan(
             new_steps.get(id).map(|step| step.cut.clone()),
         )?;
     }
-    let old_owned = StaircaseRefs::owned_branches(&state.original);
-    let new_owned = StaircaseRefs::owned_branches(&state.desired);
+    let old_owned = owned_branches(&state.original);
+    let new_owned = owned_branches(&state.desired);
     for reference in old_owned
         .keys()
         .chain(new_owned.keys())
@@ -410,4 +405,57 @@ fn publication_plan(
         update(reference.to_string(), new_owned.get(reference).cloned())?;
     }
     Ok(plan)
+}
+
+fn owned_branches(metadata: &StaircaseMetadata) -> BTreeMap<String, String> {
+    metadata
+        .steps
+        .iter()
+        .filter_map(|step| {
+            step.branch.as_ref().map(|branch| {
+                (
+                    format!("refs/heads/{}", branch.trim_start_matches("refs/heads/")),
+                    step.cut.clone(),
+                )
+            })
+        })
+        .collect()
+}
+
+fn ensure_worktree_safety(
+    repo: &GitRepo,
+    old: &StaircaseMetadata,
+    new: &StaircaseMetadata,
+) -> Result<()> {
+    let changed: BTreeSet<_> = owned_branches(old)
+        .into_iter()
+        .chain(owned_branches(new))
+        .map(|(reference, _)| reference)
+        .collect();
+    let current = repo
+        .workdir
+        .canonicalize()
+        .unwrap_or_else(|_| repo.workdir.clone());
+    for worktree in repo.worktrees()? {
+        let path = worktree
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| worktree.path.clone());
+        if path != current
+            && worktree
+                .branch
+                .as_ref()
+                .is_some_and(|branch| changed.contains(branch))
+        {
+            return Err(StaircaseError::UnsupportedTopology {
+                operation: "rewrite".into(),
+                reason: format!(
+                    "{} is checked out in worktree {}; detach it before rewriting",
+                    worktree.branch.expect("checked"),
+                    worktree.path.display()
+                ),
+            });
+        }
+    }
+    Ok(())
 }

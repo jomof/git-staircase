@@ -32,18 +32,6 @@ pub struct ArchiveCmd {
     /// Leave worktree unchanged (if not attached to a branch being removed)
     #[arg(long)]
     pub leave_worktrees: bool,
-
-    /// Explicitly adopt implicit staircase into managed state before archiving
-    #[arg(long)]
-    pub adopt: bool,
-
-    /// Explicitly confirm direct implicit archiving without adoption (default)
-    #[arg(long)]
-    pub no_adopt: bool,
-
-    /// Create archive-scoped name reservation for implicit snapshot
-    #[arg(long)]
-    pub reserve_name: bool,
 }
 
 #[derive(Subcommand, Clone, Debug)]
@@ -83,9 +71,6 @@ impl Command for ArchiveCmd {
             snapshot_drafts: self.snapshot_drafts,
             detach_dirty_worktrees: self.detach_dirty_worktrees,
             leave_worktrees: self.leave_worktrees,
-            adopt: self.adopt,
-            no_adopt: self.no_adopt,
-            reserve_name: self.reserve_name,
         };
 
         let res = core::archive_staircase(repo, &sel, &options)?;

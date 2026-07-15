@@ -21,7 +21,7 @@ impl super::Command for Rebase {
             .base
             .onto
             .as_deref()
-            .unwrap_or(&rs.metadata().symbolic_integration_target);
+            .unwrap_or(&rs.metadata().target);
         repo.resolve_commit(target)?;
         core::rebase_with_dry_run(
             repo,

@@ -27,7 +27,7 @@ fn test_discover_linear() {
         panic!("Expected linear discovery");
     };
     assert_eq!(s.name, "feature/auth");
-    assert_eq!(s.symbolic_integration_target, "refs/heads/main");
+    assert_eq!(s.target, "refs/heads/main");
     assert_eq!(s.steps.len(), 3);
 
     assert_eq!(s.steps[0].name, "feature/auth-core");
@@ -201,7 +201,7 @@ fn test_adopt_validation() {
         landing_policy: None,
         id: uuid::Uuid::new_v4().to_string(),
         name: "empty".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -414,7 +414,7 @@ fn test_slash_name_discovery() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "feature/foo".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "s1".to_string(),

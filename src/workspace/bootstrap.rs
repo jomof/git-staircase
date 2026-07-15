@@ -369,14 +369,7 @@ pub(crate) fn locate_existing_configuration(
         }
     }
 
-    let search_dir =
-        if let Ok(Some(shadow_entry)) = crate::monorepo::find_shadow_worktree_for_path(workdir) {
-            shadow_entry.primary_root.clone()
-        } else {
-            workdir.to_path_buf()
-        };
-
-    let mut existing = find_workspace_record_for_path(&search_dir)?;
+    let mut existing = find_workspace_record_for_path(workdir)?;
     if existing.is_none() {
         if let Some(candidate) = probe_repo_workspace(repo)? {
             existing = list_workspace_records()?.into_iter().find(|record| {

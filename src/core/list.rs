@@ -13,8 +13,6 @@ pub struct ListFilter {
     pub stale: bool,
     pub archived: bool,
     pub all: bool,
-    pub include_archived_materializations: bool,
-    pub diagnostics: bool,
     pub onto: Option<String>,
 }
 
@@ -49,13 +47,6 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
 
     let mut discovered_items = Vec::new();
 
-    let suppressed_keys =
-        if !filter.include_archived_materializations && !filter.diagnostics && !all {
-            persistence::list_archived_structural_keys(repo).unwrap_or_default()
-        } else {
-            std::collections::HashSet::new()
-        };
-
     if show_implicit || filter.families || show_all {
         match core::discover(repo, filter.onto.as_deref(), None, filter.families) {
             Ok(list) => {
@@ -63,7 +54,7 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
                 for d in &discovered_items {
                     match d {
                         Discovery::Linear(s) => {
-                            if (show_implicit || show_all) && !suppressed_keys.contains(&s.id) {
+                            if show_implicit || show_all {
                                 resolved_staircases.push(ResolvedStaircase::Implicit(s.clone()));
                             }
                         }
@@ -86,14 +77,11 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
     for staircase in resolved_staircases {
         let key = match &staircase {
             ResolvedStaircase::Managed(metadata) => {
-                let integration = repo.resolve_commit(&metadata.symbolic_integration_target)?;
+                let integration = repo.resolve_commit(&metadata.target)?;
                 core::discovery::compute_implicit_id(repo, &integration, &metadata.steps)?
             }
             ResolvedStaircase::Implicit(metadata) => metadata.id.clone(),
             ResolvedStaircase::ImplicitFamily(family) => format!("family:{}", family.id),
-            ResolvedStaircase::ImplicitArchive(snap) => {
-                snap.descriptor.originating_structural_key.clone()
-            }
         };
         match canonical.get(&key) {
             Some(ResolvedStaircase::Managed(_)) => {}
@@ -128,7 +116,6 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
                         !rs.is_managed(),
                         Some(&discovered_items),
                         Some(cached_draft.clone()),
-                        false,
                     )?;
                     if matches!(status.state(), crate::model::StaircaseState::Stale) {
                         final_results.push(rs);

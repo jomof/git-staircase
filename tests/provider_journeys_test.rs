@@ -389,15 +389,6 @@ fn repo_journey_9_missing_repo_executable_degrades_without_failure() {
 }
 
 #[test]
-fn repo_journey_10_list_projects_returns_relative_paths() {
-    let client = repo_client("main", Some("main"), true);
-    let projects =
-        git_staircase::workspace::repo_provider::list_repo_workspace_projects(&client.repo)
-            .unwrap();
-    assert_eq!(projects, vec![PathBuf::from("src/app")]);
-}
-
-#[test]
 fn gerrit_journey_1_prepare_and_publish_stack() {
     let local = local_repo(true, 3);
     let (fake, state) = uploaded_gerrit(&local);
@@ -433,7 +424,7 @@ fn gerrit_black_box_create_persists_pending_associations() {
         landing_policy: None,
         id: "implicit@provider-cli".into(),
         name: "provider-cli".into(),
-        symbolic_integration_target: local.oids[0].clone(),
+        target: local.oids[0].clone(),
         steps: vec![
             Step {
                 id: String::new(),
@@ -459,15 +450,7 @@ fn gerrit_black_box_create_persists_pending_associations() {
     let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(&local.repo.workdir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", workspace.path())
-        .args([
-            "review",
-            "create",
-            "provider-cli",
-            "--provider",
-            "gerrit",
-            "--onto",
-            &local.oids[0],
-        ])
+        .args(["review", "create", "provider-cli", "--provider", "gerrit"])
         .output()
         .unwrap();
     assert!(

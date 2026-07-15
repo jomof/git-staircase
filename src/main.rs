@@ -1,10 +1,9 @@
 use anyhow::{Context, Result, anyhow};
-use clap::{Args, Parser, Subcommand, error::ErrorKind};
+use clap::{Parser, Subcommand, error::ErrorKind};
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
-use git_staircase::cli::{self, Command, OutputFormat, Presentation};
-use git_staircase::core;
+use git_staircase::cli::{self, Command};
 use git_staircase::workspace::{BootstrapOptions, bootstrap};
 
 #[derive(Parser)]
@@ -14,8 +13,14 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[command(flatten)]
-    format: FormatArgs,
+    #[arg(long, global = true)]
+    json: bool,
+
+    #[arg(long, global = true)]
+    porcelain: bool,
+
+    #[arg(long, global = true)]
+    format: Option<String>,
 
     #[arg(long, global = true)]
     no_bootstrap: bool,
@@ -37,54 +42,6 @@ struct Cli {
 
     #[arg(long, global = true)]
     workspace_mode: Option<String>,
-}
-
-#[derive(Args, Debug, Clone, Copy)]
-struct FormatArgs {
-    #[arg(long, global = true)]
-    json: bool,
-
-    #[arg(long, global = true)]
-    porcelain: bool,
-
-    #[arg(long, global = true)]
-    format: Option<OutputFormat>,
-}
-
-impl FormatArgs {
-    fn determine_format(&self) -> OutputFormat {
-        if self.json || matches!(self.format, Some(OutputFormat::Json)) {
-            OutputFormat::Json
-        } else if self.porcelain || matches!(self.format, Some(OutputFormat::Porcelain)) {
-            OutputFormat::Porcelain
-        } else {
-            OutputFormat::Human
-        }
-    }
-
-    /// Detect requested format from raw command line arguments.
-    /// Used as a fallback when full argument parsing fails.
-    fn detect_from_args() -> OutputFormat {
-        let args: Vec<String> = std::env::args().collect();
-        let is_json = args.iter().any(|arg| arg == "--json")
-            || args
-                .windows(2)
-                .any(|pair| pair[0] == "--format" && pair[1] == "json")
-            || args.iter().any(|arg| arg == "--format=json");
-        let is_porcelain = args.iter().any(|arg| arg == "--porcelain")
-            || args
-                .windows(2)
-                .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
-            || args.iter().any(|arg| arg == "--format=porcelain");
-
-        if is_json {
-            OutputFormat::Json
-        } else if is_porcelain {
-            OutputFormat::Porcelain
-        } else {
-            OutputFormat::Human
-        }
-    }
 }
 
 #[derive(Subcommand)]
@@ -177,8 +134,6 @@ enum Commands {
     Archive(cli::archive::ArchiveCmd),
     /// Unarchive a staircase
     Unarchive(cli::unarchive::UnarchiveCmd),
-    /// Monorepo worktree image management
-    Monorepo(cli::monorepo::MonorepoCmd),
 }
 
 impl Commands {
@@ -228,7 +183,6 @@ impl Commands {
             Commands::Fetch(cmd) => cmd.run(repo),
             Commands::Archive(cmd) => cmd.run(repo),
             Commands::Unarchive(cmd) => cmd.run(repo),
-            Commands::Monorepo(cmd) => cmd.run(repo),
         }
     }
 
@@ -237,7 +191,6 @@ impl Commands {
             self,
             Commands::Workspace(_)
                 | Commands::Provider(_)
-                | Commands::Monorepo(_)
                 | Commands::Discover(_)
                 | Commands::List(_)
                 | Commands::Show(_)
@@ -275,12 +228,20 @@ fn run(cli: Cli) -> Result<()> {
     let repo_root = find_repo_root()?;
     let repo = GitRepo::new(repo_root);
     if cli.command.requires_clear_operation() {
-        core::ensure_no_active(&repo)?;
-        if let Some((operation, owner)) = core::external_git_operation(&repo)? {
+        git_staircase::core::ensure_no_active(&repo)?;
+        if let Some((operation, owner)) = git_staircase::core::external_git_operation(&repo)? {
             return Err(StaircaseError::ExternalOperation { operation, owner }.into());
         }
     }
-    let format = cli.format.determine_format();
+    let is_json = cli.json || matches!(cli.format.as_deref(), Some("json"));
+    let is_porcelain = cli.porcelain || matches!(cli.format.as_deref(), Some("porcelain"));
+    let format = if is_json {
+        cli::OutputFormat::Json
+    } else if is_porcelain {
+        cli::OutputFormat::Porcelain
+    } else {
+        cli::OutputFormat::Human
+    };
 
     let options = BootstrapOptions {
         no_bootstrap: cli.no_bootstrap,
@@ -290,13 +251,13 @@ fn run(cli: Cli) -> Result<()> {
         review_provider: cli.review_provider,
         provider_profile: cli.provider_profile,
         workspace_mode: cli.workspace_mode,
-        is_porcelain_or_json: !matches!(format, OutputFormat::Human),
+        is_porcelain_or_json: is_json || is_porcelain,
     };
 
     if !matches!(&cli.command, Commands::Provider(_)) {
         let bootstrap_res = bootstrap(&repo, &options)?;
         if let Some(ref msg) = bootstrap_res.message {
-            if matches!(format, OutputFormat::Human) {
+            if matches!(format, cli::OutputFormat::Human) {
                 eprintln!("{}", msg);
             }
         }
@@ -305,7 +266,43 @@ fn run(cli: Cli) -> Result<()> {
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
 
-fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
+#[derive(Clone, Copy)]
+enum ErrorFormat {
+    Human,
+    Json,
+    Porcelain,
+}
+
+fn requested_error_format() -> ErrorFormat {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--json")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "json")
+        || args.iter().any(|arg| arg == "--format=json")
+    {
+        ErrorFormat::Json
+    } else if args.iter().any(|arg| arg == "--porcelain")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
+        || args.iter().any(|arg| arg == "--format=porcelain")
+    {
+        ErrorFormat::Porcelain
+    } else {
+        ErrorFormat::Human
+    }
+}
+
+fn escape_machine_field(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+fn render_error(error: &anyhow::Error, format: ErrorFormat) -> i32 {
     let typed = error
         .chain()
         .find_map(|cause| cause.downcast_ref::<StaircaseError>());
@@ -314,10 +311,8 @@ fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
     let message = typed.map_or_else(|| error.to_string(), ToString::to_string);
     let details = typed.map_or(serde_json::Value::Null, StaircaseError::details);
 
-    let presentation = Presentation::error(code, &message, status, details.clone());
-
     match format {
-        OutputFormat::Json => {
+        ErrorFormat::Json => {
             let diagnostic = serde_json::json!({
                 "error": {
                     "code": code,
@@ -332,40 +327,25 @@ fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
                     .unwrap_or_else(|_| r#"{"error":{"code":"serialization-error"}}"#.into())
             );
         }
-        OutputFormat::Porcelain => {
-            eprint!("{}", cli::render_porcelain(&presentation));
+        ErrorFormat::Porcelain => {
+            eprintln!("error\t{}\t{}", code, escape_machine_field(&message));
         }
-        OutputFormat::Human => {
-            eprint!("{}", cli::render_human(&presentation, 0));
+        ErrorFormat::Human => {
+            eprintln!("error [{}]: {}", code, message);
+            if !details.is_null() {
+                if let Ok(rendered) = serde_json::to_string_pretty(&details) {
+                    eprintln!("{}", rendered);
+                }
+            }
         }
     }
     status
 }
 
 fn main() {
-    let mut args: Vec<String> = std::env::args().collect();
-    if let Some(arg0) = args.first() {
-        let path = std::path::Path::new(arg0);
-        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
-            if file_name == "git-monorepo" {
-                args[0] = "git-staircase".to_string();
-                args.insert(1, "monorepo".to_string());
-            }
-        }
-    }
-
-    let cli_res = Cli::try_parse_from(&args);
-    let format = match &cli_res {
-        Ok(cli) => cli.format.determine_format(),
-        Err(_) => FormatArgs::detect_from_args(),
-    };
-
-    match cli_res {
-        Ok(cli) => {
-            if let Err(error) = run(cli) {
-                std::process::exit(render_error(&error, format));
-            }
-        }
+    let format = requested_error_format();
+    let cli = match Cli::try_parse() {
+        Ok(cli) => cli,
         Err(error) => {
             if matches!(
                 error.kind(),
@@ -378,5 +358,9 @@ fn main() {
             let error = anyhow!(message);
             std::process::exit(render_error(&error, format));
         }
+    };
+
+    if let Err(error) = run(cli) {
+        std::process::exit(render_error(&error, format));
     }
 }

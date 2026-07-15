@@ -10,15 +10,7 @@ pub trait ToPorcelain {
     fn to_porcelain(&self) -> String;
 }
 
-pub(crate) fn escape_machine_field(value: &str) -> String {
-    value
-        .replace("\\", "\\\\")
-        .replace("\n", "\\n")
-        .replace("\r", "\\r")
-        .replace("\t", "\\t")
-}
-
-pub fn render_human(p: &Presentation, indent: usize) -> String {
+pub(crate) fn render_human(p: &Presentation, indent: usize) -> String {
     let space = "  ".repeat(indent);
     match p {
         Presentation::Empty => String::new(),
@@ -72,26 +64,11 @@ pub fn render_human(p: &Presentation, indent: usize) -> String {
             out
         }
         Presentation::Human(inner) => render_human(inner, indent),
-        Presentation::Error {
-            code,
-            message,
-            details,
-            ..
-        } => {
-            let mut out = format!("{}error [{}]: {}\n", space, code, message);
-            if !details.is_null() {
-                if let Ok(rendered) = serde_json::to_string_pretty(details) {
-                    out.push_str(&rendered);
-                    out.push('\n');
-                }
-            }
-            out
-        }
         Presentation::Porcelain(_) => String::new(),
     }
 }
 
-pub fn render_porcelain(p: &Presentation) -> String {
+pub(crate) fn render_porcelain(p: &Presentation) -> String {
     match p {
         Presentation::Empty => String::new(),
         Presentation::Plain(s) => format!("{}\n", s),
@@ -125,9 +102,6 @@ pub fn render_porcelain(p: &Presentation) -> String {
             .collect::<Vec<_>>()
             .join(""),
         Presentation::Human(_) => String::new(),
-        Presentation::Error { code, message, .. } => {
-            format!("error\t{}\t{}\n", code, escape_machine_field(message))
-        }
         Presentation::Porcelain(inner) => render_porcelain(inner),
     }
 }
@@ -166,28 +140,8 @@ impl Success {
 }
 
 #[derive(Serialize)]
-pub struct Summary<T> {
-    #[serde(flatten)]
-    pub value: T,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub qualification: Option<String>,
-}
-
-impl<T> Summary<T> {
-    pub fn new(value: T) -> Self {
-        Self {
-            value,
-            qualification: None,
-        }
-    }
-
-    pub fn qualified(value: T, qualification: String) -> Self {
-        Self {
-            value,
-            qualification: Some(qualification),
-        }
-    }
-}
+#[serde(transparent)]
+pub struct Summary<T>(pub T);
 
 #[derive(Serialize)]
 #[serde(transparent)]

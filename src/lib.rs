@@ -4,9 +4,7 @@ pub mod error;
 pub mod git;
 pub mod memoization;
 pub mod model;
-pub mod monorepo;
 pub mod presentation;
-pub mod process;
 pub mod workspace;
 
 pub use crate::core::{ResolvedSelector, ResolvedStaircase};

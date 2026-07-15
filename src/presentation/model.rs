@@ -38,8 +38,8 @@ impl ToPresentation for StaircaseMetadata {
                 value: self.id.clone(),
             },
             Presentation::Field {
-                label: "Integration Target".to_string(),
-                value: self.symbolic_integration_target.clone(),
+                label: "Target".to_string(),
+                value: self.target.clone(),
             },
         ];
 
@@ -114,8 +114,8 @@ impl ToPresentation for StaircaseStatus {
     fn to_presentation(&self) -> Presentation {
         let mut children = vec![
             Presentation::Field {
-                label: "integration-target".to_string(),
-                value: self.metadata.symbolic_integration_target.clone(),
+                label: "target".to_string(),
+                value: self.metadata.target.clone(),
             },
             Presentation::Field {
                 label: "state".to_string(),
@@ -191,17 +191,6 @@ impl ToPresentation for StaircaseStatus {
                 children: get_worktree_draft_presentation_fields(draft),
             });
         }
-        for draft in &self.all_worktree_drafts {
-            let title = if let Some(ref identity) = draft.worktree_identity {
-                format!("worktree draft ({}):", identity)
-            } else {
-                "worktree draft:".to_string()
-            };
-            children.push(Presentation::Section {
-                title,
-                children: get_worktree_draft_presentation_fields(draft),
-            });
-        }
 
         Presentation::pair(
             Presentation::Section {
@@ -218,10 +207,6 @@ impl ToPresentation for StaircaseStatus {
                     self.metadata.id.clone(),
                     self.state().to_string(),
                 ]),
-                Presentation::Field {
-                    label: "integration-target".to_string(),
-                    value: self.metadata.symbolic_integration_target.clone(),
-                },
                 Presentation::Table {
                     name: Some("step".to_string()),
                     rows: steps_rows,
@@ -239,8 +224,8 @@ impl ToPresentation for StaircaseFamily {
                 value: self.id.clone(),
             },
             Presentation::Field {
-                label: "integration-target".to_string(),
-                value: self.symbolic_integration_target.clone(),
+                label: "Target".to_string(),
+                value: self.target.clone(),
             },
             Presentation::Field {
                 label: "Roots".to_string(),

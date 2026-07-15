@@ -63,19 +63,8 @@ fn test_adopt_with_invalid_name() {
 
     // ACT
     let cmd = cli::adopt::Adopt {
-        selector: cli::StaircaseSelectorArgs {
-            base: cli::BaseStaircaseSelectorArgs {
-                name: None,
-                onto: Some("main".to_string()),
-                id: None,
-                record: None,
-                explicit_name: None,
-                r#ref: None,
-                structural_key: None,
-            },
-            steps: None,
-        },
-        rename: Some("invalid name".to_string()),
+        name: "invalid name".to_string(),
+        onto: Some("main".to_string()),
         branches: vec!["valid-branch".to_string()],
         build_command: None,
         test_command: None,

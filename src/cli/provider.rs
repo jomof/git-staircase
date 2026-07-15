@@ -2,7 +2,7 @@ use super::{Presentation, PresentationOutput, ToPresentation};
 use crate::GitRepo;
 use crate::workspace::gerrit_provider::probe_gerrit_route;
 use crate::workspace::github_provider::probe_github_route;
-use crate::workspace::repo_provider::{list_repo_workspace_projects, observe_repo_workspace};
+use crate::workspace::repo_provider::observe_repo_workspace;
 use crate::workspace::storage::find_workspace_record_for_path;
 use anyhow::Result;
 use clap::{Args, Subcommand};
@@ -35,35 +35,6 @@ pub struct ProviderAction {
 pub enum ProviderActionSubcommand {
     /// Run an offline, nonmutating provider diagnostic
     Doctor,
-    /// List all project paths defined in the effective manifest, relative to the workspace root
-    #[command(name = "list-projects")]
-    ListProjects,
-}
-
-#[derive(Debug, Clone, Serialize)]
-pub struct ProviderListProjectsOutput {
-    pub provider: String,
-    pub projects: Vec<String>,
-}
-
-impl ToPresentation for ProviderListProjectsOutput {
-    fn to_presentation(&self) -> Presentation {
-        let human_items = self
-            .projects
-            .iter()
-            .map(|p| Presentation::Plain(p.clone()))
-            .collect();
-        let porcelain_items = self
-            .projects
-            .iter()
-            .map(|p| Presentation::Plain(p.clone()))
-            .collect();
-
-        Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::List(human_items))),
-            Presentation::Porcelain(Box::new(Presentation::List(porcelain_items))),
-        ])
-    }
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -143,112 +114,86 @@ impl ToPresentation for ProviderDoctorReport {
 impl ProviderCmd {
     pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let record = find_workspace_record_for_path(&repo.workdir)?;
-        match &self.provider {
-            ProviderSubcommand::Repo(action) => match &action.action {
-                ProviderActionSubcommand::Doctor => {
-                    let report = if let Some(observation) = observe_repo_workspace(repo)? {
-                        ProviderDoctorReport {
-                            provider: "repo".into(),
-                            applicable: true,
-                            readiness: "ready".into(),
-                            route: HashMap::from([
-                                (
-                                    "workspace-root".into(),
-                                    observation.mapping.workspace_root.display().to_string(),
-                                ),
-                                ("project".into(), observation.mapping.project_name),
-                                (
-                                    "project-path".into(),
-                                    observation.mapping.project_path.display().to_string(),
-                                ),
-                                (
-                                    "git-common-dir".into(),
-                                    observation.mapping.git_common_dir.display().to_string(),
-                                ),
-                            ]),
-                            evidence: observation.candidate.evidence,
-                            diagnostics: observation.diagnostics,
-                            passive_network_requests: 0,
-                            workspace_mutations: 0,
-                        }
-                    } else {
-                        unavailable("repo", "current repository is not uniquely mapped by repo")
-                    };
-                    Ok(Box::new(report))
-                }
-                ProviderActionSubcommand::ListProjects => {
-                    let projects = list_repo_workspace_projects(repo)?;
-                    let paths = projects
-                        .into_iter()
-                        .map(|p| p.display().to_string())
-                        .collect();
-                    Ok(Box::new(ProviderListProjectsOutput {
+        let report = match &self.provider {
+            ProviderSubcommand::Repo(_) => {
+                if let Some(observation) = observe_repo_workspace(repo)? {
+                    ProviderDoctorReport {
                         provider: "repo".into(),
-                        projects: paths,
-                    }))
+                        applicable: true,
+                        readiness: "ready".into(),
+                        route: HashMap::from([
+                            (
+                                "workspace-root".into(),
+                                observation.mapping.workspace_root.display().to_string(),
+                            ),
+                            ("project".into(), observation.mapping.project_name),
+                            (
+                                "project-path".into(),
+                                observation.mapping.project_path.display().to_string(),
+                            ),
+                            (
+                                "git-common-dir".into(),
+                                observation.mapping.git_common_dir.display().to_string(),
+                            ),
+                        ]),
+                        evidence: observation.candidate.evidence,
+                        diagnostics: observation.diagnostics,
+                        passive_network_requests: 0,
+                        workspace_mutations: 0,
+                    }
+                } else {
+                    unavailable("repo", "current repository is not uniquely mapped by repo")
                 }
-            },
-            ProviderSubcommand::Gerrit(action) => match &action.action {
-                ProviderActionSubcommand::Doctor => {
-                    let report = if let Some(route) = probe_gerrit_route(repo, record.as_ref())? {
-                        ProviderDoctorReport {
-                            provider: "gerrit".into(),
-                            applicable: true,
-                            readiness: "ready".into(),
-                            route: HashMap::from([
-                                ("server".into(), route.server_id),
-                                ("project".into(), route.project),
-                                ("destination".into(), route.destination_branch),
-                                ("upload-ref".into(), route.upload_ref),
-                            ]),
-                            evidence: vec!["unique complete local Gerrit route".into()],
-                            diagnostics: vec![
-                                "authentication and remote permissions are not tested offline"
-                                    .into(),
-                            ],
-                            passive_network_requests: 0,
-                            workspace_mutations: 0,
-                        }
-                    } else {
-                        unavailable("gerrit", "no complete unique local Gerrit route")
-                    };
-                    Ok(Box::new(report))
+            }
+            ProviderSubcommand::Gerrit(_) => {
+                if let Some(route) = probe_gerrit_route(repo, record.as_ref())? {
+                    ProviderDoctorReport {
+                        provider: "gerrit".into(),
+                        applicable: true,
+                        readiness: "ready".into(),
+                        route: HashMap::from([
+                            ("server".into(), route.server_id),
+                            ("project".into(), route.project),
+                            ("destination".into(), route.destination_branch),
+                            ("upload-ref".into(), route.upload_ref),
+                        ]),
+                        evidence: vec!["unique complete local Gerrit route".into()],
+                        diagnostics: vec![
+                            "authentication and remote permissions are not tested offline".into(),
+                        ],
+                        passive_network_requests: 0,
+                        workspace_mutations: 0,
+                    }
+                } else {
+                    unavailable("gerrit", "no complete unique local Gerrit route")
                 }
-                ProviderActionSubcommand::ListProjects => Err(anyhow::anyhow!(
-                    "list-projects is only supported for repo workspace provider"
-                )),
-            },
-            ProviderSubcommand::Github(action) => match &action.action {
-                ProviderActionSubcommand::Doctor => {
-                    let report = if let Some(route) = probe_github_route(repo, record.as_ref())? {
-                        ProviderDoctorReport {
-                            provider: "github".into(),
-                            applicable: true,
-                            readiness: "ready".into(),
-                            route: HashMap::from([
-                                ("installation".into(), route.installation),
-                                ("base-repository".into(), route.base_repository.full_name()),
-                                ("destination".into(), route.destination_branch),
-                                ("remote".into(), route.remote_name),
-                            ]),
-                            evidence: vec!["canonical GitHub remote found locally".into()],
-                            diagnostics: vec![
-                                "authentication, default branch, and permissions are not guessed"
-                                    .into(),
-                            ],
-                            passive_network_requests: 0,
-                            workspace_mutations: 0,
-                        }
-                    } else {
-                        unavailable("github", "no unique local GitHub repository route")
-                    };
-                    Ok(Box::new(report))
+            }
+            ProviderSubcommand::Github(_) => {
+                if let Some(route) = probe_github_route(repo, record.as_ref())? {
+                    ProviderDoctorReport {
+                        provider: "github".into(),
+                        applicable: true,
+                        readiness: "ready".into(),
+                        route: HashMap::from([
+                            ("installation".into(), route.installation),
+                            ("base-repository".into(), route.base_repository.full_name()),
+                            ("destination".into(), route.destination_branch),
+                            ("remote".into(), route.remote_name),
+                        ]),
+                        evidence: vec!["canonical GitHub remote found locally".into()],
+                        diagnostics: vec![
+                            "authentication, default branch, and permissions are not guessed"
+                                .into(),
+                        ],
+                        passive_network_requests: 0,
+                        workspace_mutations: 0,
+                    }
+                } else {
+                    unavailable("github", "no unique local GitHub repository route")
                 }
-                ProviderActionSubcommand::ListProjects => Err(anyhow::anyhow!(
-                    "list-projects is only supported for repo workspace provider"
-                )),
-            },
-        }
+            }
+        };
+        Ok(Box::new(report))
     }
 }
 

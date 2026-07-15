@@ -587,7 +587,7 @@ fn split_renumber_is_transactional_and_preserves_upper_step_id() {
         landing_policy: None,
         id: "implicit@test".into(),
         name: "managed".into(),
-        symbolic_integration_target: "refs/heads/main".into(),
+        target: "refs/heads/main".into(),
         steps: vec![
             Step {
                 id: String::new(),

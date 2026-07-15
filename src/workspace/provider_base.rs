@@ -69,27 +69,22 @@ pub fn execute_and_journal<T: ProviderTransport>(
     operation: &str,
     expected_record_oid: Option<String>,
     request: TransportRequest,
-) -> Result<(TransportResponse, Option<String>)> {
+) -> Result<TransportResponse> {
     match transport.execute(repo, &request) {
         Ok(response) => {
-            let mut operation_id = None;
             if response.uncertain {
-                operation_id = Some(
-                    OperationJournal::for_repo(repo)?
-                        .record(
-                            provider,
-                            operation,
-                            expected_record_oid,
-                            request,
-                            response.observations.clone(),
-                        )?
-                        .operation_id,
-                );
+                OperationJournal::for_repo(repo)?.record(
+                    provider,
+                    operation,
+                    expected_record_oid,
+                    request,
+                    response.observations.clone(),
+                )?;
             }
-            Ok((response, operation_id))
+            Ok(response)
         }
         Err(error) => {
-            let _entry = OperationJournal::for_repo(repo)?.record(
+            OperationJournal::for_repo(repo)?.record(
                 provider,
                 operation,
                 expected_record_oid,
@@ -131,9 +126,9 @@ where
     for target in targets {
         let request = create_request(&target)?;
         let target_id = get_target_id(&target);
-        let (response, _) =
+        let response =
             match execute_and_journal(repo, transport, provider, "landing", None, request) {
-                Ok(res) => res,
+                Ok(response) => response,
                 Err(_) => {
                     return Ok(UnifiedProviderLanding {
                         provider_label: provider_label.into(),
@@ -172,110 +167,4 @@ where
         destination_oid: None,
         details: Vec::new(),
     })
-}
-
-pub struct ReviewMutationResult<S> {
-    pub state: S,
-    pub status: String,
-    pub accepted: usize,
-    pub rejected: usize,
-    pub unknown: usize,
-    pub journal_operation_id: Option<String>,
-}
-
-pub struct ReviewStateMachine<T: ProviderTransport> {
-    pub transport: T,
-    pub provider: String,
-}
-
-impl<T: ProviderTransport> ReviewStateMachine<T> {
-    pub fn new(transport: T, provider: String) -> Self {
-        Self {
-            transport,
-            provider,
-        }
-    }
-
-    pub fn execute_with_journal(
-        &self,
-        repo: &GitRepo,
-        operation: &str,
-        expected_record_oid: Option<String>,
-        request: TransportRequest,
-    ) -> Result<(TransportResponse, Option<String>)> {
-        execute_and_journal(
-            repo,
-            &self.transport,
-            &self.provider,
-            operation,
-            expected_record_oid,
-            request,
-        )
-    }
-
-    pub fn upload_common<S, P, I>(
-        &self,
-        repo: &GitRepo,
-        plan: &P,
-        mut state: S,
-        expected_record_oid: Option<String>,
-        create_request: impl Fn(&P) -> Result<TransportRequest>,
-        get_items: impl Fn(&P) -> &[I],
-        mark_all_unknown: impl Fn(&mut S),
-        apply_responses: impl Fn(&mut S, &P, &TransportResponse) -> Result<ReviewMutationResult<S>>,
-    ) -> Result<ReviewMutationResult<S>> {
-        let request = create_request(plan)?;
-        let (response, operation_id) = match self.execute_with_journal(
-            repo,
-            "upload",
-            expected_record_oid.clone(),
-            request.clone(),
-        ) {
-            Ok(res) => res,
-            Err(error) => {
-                mark_all_unknown(&mut state);
-                let journal = OperationJournal::for_repo(repo)?;
-                let entry = journal.record(
-                    &self.provider,
-                    "upload",
-                    expected_record_oid,
-                    request,
-                    serde_json::json!({"error": error.to_string()}),
-                )?;
-                return Ok(ReviewMutationResult {
-                    unknown: get_items(plan).len(),
-                    state,
-                    status: "upload-unknown".into(),
-                    accepted: 0,
-                    rejected: 0,
-                    journal_operation_id: Some(entry.operation_id),
-                });
-            }
-        };
-
-        if response.uncertain {
-            mark_all_unknown(&mut state);
-            return Ok(ReviewMutationResult {
-                unknown: get_items(plan).len(),
-                state,
-                status: "upload-unknown".into(),
-                accepted: 0,
-                rejected: 0,
-                journal_operation_id: operation_id,
-            });
-        }
-
-        if !response.success {
-            return Ok(ReviewMutationResult {
-                state,
-                status: "rejected".into(),
-                accepted: 0,
-                rejected: get_items(plan).len(),
-                unknown: 0,
-                journal_operation_id: None,
-            });
-        }
-
-        apply_responses(&mut state, plan, &response)
-    }
 }

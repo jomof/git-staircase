@@ -1,7 +1,7 @@
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{ImplicitArchiveSnapshot, StaircaseFamily, StaircaseMetadata, Step};
+use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -13,7 +13,6 @@ pub enum ResolvedStaircase {
     Managed(StaircaseMetadata),
     Implicit(StaircaseMetadata),
     ImplicitFamily(StaircaseFamily),
-    ImplicitArchive(ImplicitArchiveSnapshot),
 }
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
@@ -42,7 +41,6 @@ impl ResolvedStaircase {
             ResolvedStaircase::Managed(s) => s,
             ResolvedStaircase::Implicit(s) => s,
             ResolvedStaircase::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
-            ResolvedStaircase::ImplicitArchive(snap) => &snap.metadata,
         }
     }
 
@@ -131,7 +129,7 @@ fn publish_managed(
 }
 
 pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
-    let target_oid = match repo.resolve_commit(&staircase.symbolic_integration_target) {
+    let target_oid = match repo.resolve_commit(&staircase.target) {
         Ok(oid) => oid,
         Err(_) => return Ok(false),
     };
@@ -159,13 +157,13 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
 }
 
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
-    let target = match repo.resolve_symbolic_full_name(&staircase.symbolic_integration_target) {
+    let target = match repo.resolve_symbolic_full_name(&staircase.target) {
         Ok(t) => t,
-        Err(_) => repo.resolve_commit(&staircase.symbolic_integration_target)?,
+        Err(_) => repo.resolve_commit(&staircase.target)?,
     };
-    let target_oid = repo.resolve_commit(&staircase.symbolic_integration_target)?;
+    let target_oid = repo.resolve_commit(&staircase.target)?;
     let mut staircase = staircase.clone();
-    staircase.symbolic_integration_target = target;
+    staircase.target = target;
     if staircase.id.starts_with("implicit@") {
         staircase.id = Uuid::new_v4().to_string();
     }
@@ -179,13 +177,7 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
         oids.push(step.cut.as_str());
     }
     let _ = repo.preload_ancestry(&oids);
-    let mut last_cut = if let Some(first_step) = staircase.steps.first() {
-        let first_cut = repo.resolve_commit(&first_step.cut)?;
-        repo.merge_base(&target_oid, &first_cut)
-            .unwrap_or(target_oid)
-    } else {
-        target_oid
-    };
+    let mut last_cut = target_oid;
     for step in &staircase.steps {
         let current_cut = repo.resolve_commit(&step.cut)?;
         if current_cut == last_cut {

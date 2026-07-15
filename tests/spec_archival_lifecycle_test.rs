@@ -115,7 +115,6 @@ fn test_archive_and_mutation_guard() {
         snapshot_drafts: false,
         detach_dirty_worktrees: false,
         leave_worktrees: false,
-        ..Default::default()
     };
 
     let res = core::archive_staircase(&repo, &selector, &archive_opts).unwrap();
@@ -206,7 +205,6 @@ fn test_unarchive_lifecycle() {
         snapshot_drafts: false,
         detach_dirty_worktrees: false,
         leave_worktrees: false,
-        ..Default::default()
     };
     core::archive_staircase(&repo, &selector, &archive_opts).unwrap();
 
@@ -217,7 +215,6 @@ fn test_unarchive_lifecycle() {
         branches_mode: UnarchiveBranchesMode::Exact,
         adopt_existing_branches: false,
         reattach_worktrees: false,
-        ..Default::default()
     };
 
     let unarch_res = core::unarchive_staircase(&repo, &selector, &unarchive_opts).unwrap();
@@ -273,7 +270,6 @@ fn test_release_canonical_name() {
         snapshot_drafts: false,
         detach_dirty_worktrees: false,
         leave_worktrees: false,
-        ..Default::default()
     };
     core::archive_staircase(&repo, &selector, &archive_opts).unwrap();
 

@@ -21,9 +21,6 @@ pub fn resolve_staircase_internal(
     // Interpretation 1: Managed
     resolve_managed(repo, name, &mut resolved_staircases)?;
 
-    // Interpretation: Implicit Archive Snapshot
-    resolve_implicit_archive(repo, name, &mut resolved_staircases)?;
-
     let onto_final = match onto {
         Some(o) => repo
             .resolve_symbolic_full_name(o)
@@ -85,32 +82,6 @@ fn resolve_managed(
                 if !resolved_staircases.contains_key(&s.id) {
                     resolved_staircases.insert(s.id.clone(), ResolvedStaircase::Managed(s));
                 }
-            }
-        }
-    }
-    Ok(())
-}
-
-fn resolve_implicit_archive(
-    repo: &GitRepo,
-    name: &str,
-    resolved_staircases: &mut BTreeMap<String, ResolvedStaircase>,
-) -> Result<()> {
-    if let Ok(snapshots) = persistence::list_implicit_archive_snapshots(repo) {
-        for snap in snapshots {
-            let archive_id = &snap.archive_id;
-            let display_name = &snap.descriptor.canonical_display_name;
-            let archive_sel = format!("archive@{}", archive_id);
-
-            if name == archive_sel
-                || name == archive_id
-                || name == display_name
-                || archive_id.starts_with(name)
-            {
-                resolved_staircases.insert(
-                    format!("archive:{}", archive_id),
-                    ResolvedStaircase::ImplicitArchive(snap),
-                );
             }
         }
     }
@@ -215,7 +186,7 @@ fn resolve_git_revision(
 }
 
 fn structural_identity(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<String> {
-    let integration = repo.resolve_commit(&staircase.symbolic_integration_target)?;
+    let integration = repo.resolve_commit(&staircase.target)?;
     compute_implicit_id(repo, &integration, &staircase.steps)
 }
 
@@ -290,9 +261,7 @@ fn ambiguity_candidates(
                         .ok()
                 })
                 .flatten(),
-            integration_context: repo
-                .resolve_commit(&metadata.symbolic_integration_target)
-                .ok(),
+            integration_context: repo.resolve_commit(&metadata.target).ok(),
             cuts: metadata.steps.iter().map(|step| step.cut.clone()).collect(),
         });
     }
@@ -352,7 +321,7 @@ pub fn resolve_explicit_staircase(
             .last()
             .map(|s| s.strip_prefix("refs/heads/").unwrap_or(s).to_string())
             .unwrap_or_else(|| "explicit".to_string()),
-        symbolic_integration_target: onto_final,
+        target: onto_final,
         steps: staircase_steps,
         verification_policy: None,
         primary_branch_layout: layout,
@@ -482,9 +451,7 @@ pub fn resolve_by_structural_key(
                     lineage_id: None,
                     structural_key: Some(metadata.id.clone()),
                     record_oid: None,
-                    integration_context: repo
-                        .resolve_commit(&metadata.symbolic_integration_target)
-                        .ok(),
+                    integration_context: repo.resolve_commit(&metadata.target).ok(),
                     cuts: metadata.steps.iter().map(|step| step.cut.clone()).collect(),
                 });
             }

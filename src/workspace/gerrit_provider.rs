@@ -3,7 +3,7 @@ use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::parse_git_url;
-use crate::workspace::provider_base::{self, ProviderAssociation, ReviewStateMachine};
+use crate::workspace::provider_base::{self, ProviderAssociation};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
@@ -530,14 +530,12 @@ pub struct GerritMutationResult {
 }
 
 pub struct GerritStateMachine<T: ProviderTransport> {
-    pub base: ReviewStateMachine<T>,
+    pub transport: T,
 }
 
 impl<T: ProviderTransport> GerritStateMachine<T> {
     pub fn new(transport: T) -> Self {
-        Self {
-            base: ReviewStateMachine::new(transport, "gerrit".into()),
-        }
+        Self { transport }
     }
 
     pub fn plan(
@@ -784,7 +782,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             force_with_lease: None,
             push_options: plan.push_options.clone(),
         };
-        let response = self.base.transport.execute(repo, &request);
+        let response = self.transport.execute(repo, &request);
         let response = match response {
             Ok(response) => response,
             Err(error) => {
@@ -889,7 +887,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                     arguments: Vec::new(),
                     body: None,
                 };
-                if let Ok(observation) = self.base.transport.execute(repo, &request) {
+                if let Ok(observation) = self.transport.execute(repo, &request) {
                     if observation.success {
                         if let Some(remote) = parse_gerrit_api_change(&observation.observations) {
                             remote_changes.push(remote);
@@ -1099,7 +1097,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
         }
         provider_base::land_loop_common(
             repo,
-            &self.base.transport,
+            &self.transport,
             "gerrit",
             "Gerrit",
             mode,
@@ -1533,7 +1531,7 @@ impl GerritInstance {
                         arguments: Vec::new(),
                         body: None,
                     };
-                    let response = machine.base.transport.execute(repo, &request)?;
+                    let response = machine.transport.execute(repo, &request)?;
                     if response.uncertain {
                         return Err(StaircaseError::Other(
                             "Gerrit reconciliation query outcome is uncertain".into(),
@@ -1710,7 +1708,7 @@ impl GerritInstance {
                     arguments: Vec::new(),
                     body: None,
                 };
-                let response = machine.base.transport.execute(repo, &request)?;
+                let response = machine.transport.execute(repo, &request)?;
                 if !response.success || response.uncertain {
                     return Err(StaircaseError::Other(
                         "Gerrit attachment validation failed or is uncertain".into(),

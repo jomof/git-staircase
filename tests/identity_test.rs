@@ -12,7 +12,7 @@ fn test_identity_lineage_and_nominal() {
         landing_policy: None,
         id: "test-uuid".to_string(),
         name: "test-name".to_string(),
-        symbolic_integration_target: target,
+        target: target,
         steps: vec![],
         verification_policy: None,
 
@@ -54,7 +54,7 @@ fn test_identity_revision() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -83,7 +83,7 @@ fn test_identity_revision() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target,
+        target: target,
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -122,7 +122,7 @@ fn test_identity_body() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -158,7 +158,7 @@ fn test_identity_body() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target,
+        target: target,
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -197,7 +197,7 @@ fn test_identity_decomposition() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -237,7 +237,7 @@ fn test_identity_decomposition() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -276,7 +276,7 @@ fn test_identity_decomposition() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -315,7 +315,7 @@ fn test_identity_outcome() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -357,7 +357,7 @@ fn test_identity_outcome() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target,
+        target: target,
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -393,7 +393,7 @@ fn test_revision_identity_prefix() {
         landing_policy: None,
         id: "test-uuid".to_string(),
         name: "test-name".to_string(),
-        symbolic_integration_target: target,
+        target: target,
         steps: vec![],
         verification_policy: None,
         primary_branch_layout: None,
@@ -441,7 +441,7 @@ fn test_identity_review() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -488,7 +488,7 @@ fn test_identity_review() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {

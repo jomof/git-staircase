@@ -189,13 +189,6 @@ impl ToPresentation for ResolvedStaircase {
                 )))),
                 m.to_presentation(),
             ]),
-            ResolvedStaircase::ImplicitArchive(snap) => Presentation::List(vec![
-                Presentation::Human(Box::new(Presentation::Heading(format!(
-                    "Archived Implicit Staircase: {}",
-                    snap.descriptor.canonical_display_name
-                )))),
-                snap.metadata.to_presentation(),
-            ]),
         }
     }
 }
