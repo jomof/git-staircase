@@ -4,9 +4,11 @@ use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
 use crate::process::ProcessExecutor;
 use serde::Serialize;
-use std::collections::BTreeSet;
-use std::path::PathBuf;
-use std::process::Command;
+use std::collections::{BTreeSet, HashMap, HashSet, VecDeque};
+use std::iter::once;
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output};
+use std::sync::OnceLock;
 
 #[derive(Debug, Clone)]
 pub struct GitRepo {
@@ -14,10 +16,7 @@ pub struct GitRepo {
     pub memoizer: Memoizer,
 }
 
-use std::path::Path;
-use std::sync::OnceLock;
-
-pub type GitHookFn = dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<std::process::Output, String>
+pub type GitHookFn = dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<Output, String>
     + Send
     + Sync;
 
@@ -34,7 +33,7 @@ pub struct GitCommand<'a> {
     interactive: bool,
     check_status: bool,
     trim: bool,
-    envs: std::collections::HashMap<String, String>,
+    envs: HashMap<String, String>,
 }
 
 impl<'a> GitCommand<'a> {
@@ -46,7 +45,7 @@ impl<'a> GitCommand<'a> {
             interactive: false,
             check_status: true,
             trim: true,
-            envs: std::collections::HashMap::new(),
+            envs: HashMap::new(),
         }
     }
 
@@ -86,6 +85,21 @@ impl<'a> GitCommand<'a> {
         self.envs.insert(key.into(), value.into());
         self
     }
+
+    fn is_write_command(&self) -> bool {
+        if self.args.is_empty() {
+            return false;
+        }
+        match self.args[0].as_str() {
+            "rev-parse" | "cat-file" | "ls-tree" | "show" | "rev-list" | "for-each-ref" | "diff"
+            | "diff-tree" | "diff-index" | "status" | "log" | "merge-base" | "patch-id"
+            | "hash-object" | "mktree" | "check-ref-format" | "ls-files" | "write-tree" | "help"
+            | "version" => false,
+            "symbolic-ref" => self.args.len() > 2,
+            _ => true,
+        }
+    }
+
     pub fn run(self) -> Result<String> {
         let trim = self.trim;
         let output = self.run_output()?;
@@ -97,7 +111,7 @@ impl<'a> GitCommand<'a> {
         }
     }
 
-    pub fn run_output(self) -> Result<std::process::Output> {
+    pub fn run_output(self) -> Result<Output> {
         let output = if let Some(hook) = GIT_HOOK.get() {
             let workdir = &self.repo.workdir;
             hook(workdir, &self.args, self.stdin.as_deref())
@@ -111,15 +125,15 @@ impl<'a> GitCommand<'a> {
 
             if self.interactive {
                 let status = cmd.status().map_err(StaircaseError::Io)?;
-                std::process::Output {
+                Output {
                     status,
                     stdout: Vec::new(),
                     stderr: Vec::new(),
                 }
             } else {
                 let mut executor = ProcessExecutor::new(cmd);
-                if let Some(stdin) = self.stdin {
-                    executor = executor.stdin(stdin);
+                if let Some(stdin) = self.stdin.as_ref() {
+                    executor = executor.stdin(stdin.as_bytes().to_vec());
                 }
                 executor.run()?
             }
@@ -131,6 +145,10 @@ impl<'a> GitCommand<'a> {
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             });
+        }
+
+        if output.status.success() && self.is_write_command() {
+            self.repo.memoizer.clear_refs();
         }
 
         Ok(output)
@@ -311,7 +329,6 @@ impl GitRepo {
     }
 
     pub fn preload_ancestry_ext(&self, oids: &[&str], exclude_oids: &[&str]) -> Result<()> {
-        use std::collections::{HashMap, HashSet, VecDeque};
         let mut resolved_oids = Vec::new();
         for &oid in oids {
             if oid.is_empty() {
@@ -460,14 +477,12 @@ impl GitRepo {
     pub fn update_branch(&self, branch_name: &str, oid: &str) -> Result<()> {
         let ref_name = format!("refs/heads/{}", branch_name);
         self.command().args(&["update-ref", &ref_name, oid]).run()?;
-        self.memoizer.clear_refs();
         Ok(())
     }
 
     pub fn update_step_ref(&self, id: &str, step_id: &str, cut: &str) -> Result<()> {
         let ref_name = StaircaseRefs::state_step(id, step_id);
         self.command().args(&["update-ref", &ref_name, cut]).run()?;
-        self.memoizer.clear_refs();
         Ok(())
     }
 
@@ -476,7 +491,6 @@ impl GitRepo {
         self.command()
             .args(&["update-ref", "-d", &ref_name])
             .run()?;
-        self.memoizer.clear_refs();
         Ok(())
     }
 
@@ -675,7 +689,7 @@ impl GitRepo {
             .run()?;
         let mut worktrees = Vec::new();
         let mut current: Option<WorktreeInfo> = None;
-        for line in output.lines().chain(std::iter::once("")) {
+        for line in output.lines().chain(once("")) {
             if let Some(path) = line.strip_prefix("worktree ") {
                 if let Some(info) = current.take() {
                     worktrees.push(info);
@@ -711,7 +725,6 @@ impl GitRepo {
             .args(&["update-ref", "--stdin"])
             .stdin(input)
             .run()?;
-        self.memoizer.clear_refs();
         Ok(())
     }
     pub fn rev_list(&self, args: &[&str]) -> Result<Vec<String>> {
@@ -831,7 +844,6 @@ impl GitRepo {
             cmd = cmd.arg(old);
         }
         cmd.run()?;
-        self.memoizer.clear_refs();
         Ok(())
     }
 
