@@ -389,6 +389,13 @@ fn repo_journey_9_missing_repo_executable_degrades_without_failure() {
 }
 
 #[test]
+fn repo_journey_10_list_projects_returns_relative_paths() {
+    let client = repo_client("main", Some("main"), true);
+    let projects = git_staircase::workspace::repo_provider::list_repo_workspace_projects(&client.repo).unwrap();
+    assert_eq!(projects, vec![PathBuf::from("src/app")]);
+}
+
+#[test]
 fn gerrit_journey_1_prepare_and_publish_stack() {
     let local = local_repo(true, 3);
     let (fake, state) = uploaded_gerrit(&local);
