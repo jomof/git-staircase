@@ -27,7 +27,8 @@ fn test_implicit_staircase_operations() {
     assert_eq!(metadata.steps.len(), 2);
 
     // 2. get_status_metadata
-    let status = core::get_status_metadata(&repo, metadata.clone(), !rs.is_managed(), false).unwrap();
+    let status =
+        core::get_status_metadata(&repo, metadata.clone(), !rs.is_managed(), false).unwrap();
     assert!(status.is_clean);
     assert_eq!(status.steps[0].actual_oid, Some(c1));
     assert_eq!(status.steps[1].actual_oid, Some(c2));

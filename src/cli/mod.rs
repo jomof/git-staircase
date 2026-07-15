@@ -69,7 +69,7 @@ pub struct BaseStaircaseSelectorArgs {
     #[arg(long)]
     pub record: Option<String>,
     /// Select by managed staircase name.
-    #[arg(long("name"))]
+    #[arg(long("select-name"))]
     pub explicit_name: Option<String>,
     /// Select by full staircase refname.
     #[arg(long("ref"))]

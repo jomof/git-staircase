@@ -112,6 +112,7 @@ fn test_restack_manual_rebase_of_multiple_steps() {
     );
 
     let status =
-        git_staircase::core::status::get_status_metadata(&repo, latest_metadata, true, false).unwrap();
+        git_staircase::core::status::get_status_metadata(&repo, latest_metadata, true, false)
+            .unwrap();
     assert!(status.is_clean, "Staircase should be clean after restack");
 }
