@@ -306,7 +306,7 @@ fn mirror_directory(
 }
 
 fn is_excluded(name: &str, rel_path: &Path) -> bool {
-    if name == ".git" || name == ".repo" || name == ".venv" || name == "node_modules" {
+    if name == ".git" || name == ".repo" || name == ".venv" || name == "node_modules" || name == ".bazelrc" {
         return true;
     }
     if name == "bazel-bin"
@@ -322,6 +322,9 @@ fn is_excluded(name: &str, rel_path: &Path) -> bool {
 
 fn setup_bazel_config(primary_root: &Path, shadow_root: &Path, id: &str) -> Result<()> {
     let bazelrc_path = shadow_root.join(".bazelrc");
+    if bazelrc_path.exists() || fs::symlink_metadata(&bazelrc_path).is_ok() {
+        let _ = fs::remove_file(&bazelrc_path);
+    }
     let cache_dir = get_worktrees_storage_dir().parent().unwrap_or(shadow_root).join("cache");
     let output_base = cache_dir.join("bazel").join(id);
     let repo_cache = cache_dir.join("bazel-repo-cache");
