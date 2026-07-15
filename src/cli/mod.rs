@@ -23,6 +23,7 @@ pub mod layout;
 pub mod list;
 pub mod log;
 pub mod metadata;
+pub mod monorepo;
 pub mod move_cmd;
 pub mod naming;
 pub mod normalize;

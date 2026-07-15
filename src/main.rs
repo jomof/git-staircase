@@ -177,6 +177,8 @@ enum Commands {
     Archive(cli::archive::ArchiveCmd),
     /// Unarchive a staircase
     Unarchive(cli::unarchive::UnarchiveCmd),
+    /// Monorepo worktree image management
+    Monorepo(cli::monorepo::MonorepoCmd),
 }
 
 impl Commands {
@@ -226,6 +228,7 @@ impl Commands {
             Commands::Fetch(cmd) => cmd.run(repo),
             Commands::Archive(cmd) => cmd.run(repo),
             Commands::Unarchive(cmd) => cmd.run(repo),
+            Commands::Monorepo(cmd) => cmd.run(repo),
         }
     }
 
@@ -234,6 +237,7 @@ impl Commands {
             self,
             Commands::Workspace(_)
                 | Commands::Provider(_)
+                | Commands::Monorepo(_)
                 | Commands::Discover(_)
                 | Commands::List(_)
                 | Commands::Show(_)
@@ -339,7 +343,18 @@ fn render_error(error: &anyhow::Error, format: OutputFormat) -> i32 {
 }
 
 fn main() {
-    let cli_res = Cli::try_parse();
+    let mut args: Vec<String> = std::env::args().collect();
+    if let Some(arg0) = args.first() {
+        let path = std::path::Path::new(arg0);
+        if let Some(file_name) = path.file_name().and_then(|s| s.to_str()) {
+            if file_name == "git-monorepo" {
+                args[0] = "git-staircase".to_string();
+                args.insert(1, "monorepo".to_string());
+            }
+        }
+    }
+
+    let cli_res = Cli::try_parse_from(&args);
     let format = match &cli_res {
         Ok(cli) => cli.format.determine_format(),
         Err(_) => FormatArgs::detect_from_args(),
