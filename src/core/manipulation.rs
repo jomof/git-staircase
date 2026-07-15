@@ -98,7 +98,8 @@ pub fn validate_split(
     let at_oid = repo.resolve_commit(at_commit)?;
     let cut_oid = &staircase.metadata().steps[step_index].cut;
     let prev_cut_oid = if step_index == 0 {
-        repo.resolve_commit(&staircase.metadata().target)?
+        let target = repo.resolve_commit(&staircase.metadata().target)?;
+        repo.merge_base(&target, &at_oid).unwrap_or(target)
     } else {
         staircase.metadata().steps[step_index - 1].cut.clone()
     };

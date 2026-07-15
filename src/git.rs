@@ -14,6 +14,17 @@ pub struct GitRepo {
     pub memoizer: Memoizer,
 }
 
+use std::sync::OnceLock;
+use std::path::Path;
+
+pub type GitHookFn = dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<std::process::Output, String> + Send + Sync;
+
+static GIT_HOOK: OnceLock<Box<GitHookFn>> = OnceLock::new();
+
+pub fn set_git_hook(hook: Box<GitHookFn>) {
+    let _ = GIT_HOOK.set(hook);
+}
+
 pub struct GitCommand<'a> {
     repo: &'a GitRepo,
     args: Vec<String>,
@@ -85,25 +96,31 @@ impl<'a> GitCommand<'a> {
     }
 
     pub fn run_output(self) -> Result<std::process::Output> {
-        let mut cmd = self.repo.git_cmd();
-        for (k, v) in &self.envs {
-            cmd.env(k, v);
-        }
-        cmd.args(&self.args);
-
-        let output = if self.interactive {
-            let status = cmd.status().map_err(StaircaseError::Io)?;
-            std::process::Output {
-                status,
-                stdout: Vec::new(),
-                stderr: Vec::new(),
-            }
+        let output = if let Some(hook) = GIT_HOOK.get() {
+            let workdir = &self.repo.workdir;
+            hook(workdir, &self.args, self.stdin.as_deref())
+                .map_err(|e| StaircaseError::Other(e))?
         } else {
-            let mut executor = ProcessExecutor::new(cmd);
-            if let Some(stdin) = self.stdin {
-                executor = executor.stdin(stdin);
+            let mut cmd = self.repo.git_cmd();
+            for (k, v) in &self.envs {
+                cmd.env(k, v);
             }
-            executor.run()?
+            cmd.args(&self.args);
+
+            if self.interactive {
+                let status = cmd.status().map_err(StaircaseError::Io)?;
+                std::process::Output {
+                    status,
+                    stdout: Vec::new(),
+                    stderr: Vec::new(),
+                }
+            } else {
+                let mut executor = ProcessExecutor::new(cmd);
+                if let Some(stdin) = self.stdin {
+                    executor = executor.stdin(stdin);
+                }
+                executor.run()?
+            }
         };
 
         if self.check_status && !output.status.success() {

@@ -181,7 +181,12 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
         oids.push(step.cut.as_str());
     }
     let _ = repo.preload_ancestry(&oids);
-    let mut last_cut = target_oid;
+    let mut last_cut = if let Some(first_step) = staircase.steps.first() {
+        let first_cut = repo.resolve_commit(&first_step.cut)?;
+        repo.merge_base(&target_oid, &first_cut).unwrap_or(target_oid)
+    } else {
+        target_oid
+    };
     for step in &staircase.steps {
         let current_cut = repo.resolve_commit(&step.cut)?;
         if current_cut == last_cut {
