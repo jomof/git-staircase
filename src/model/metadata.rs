@@ -30,8 +30,8 @@ pub enum LandingPolicy {
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct StaircaseMetadata {
     pub landing_policy: Option<LandingPolicy>,
-    pub id: String,     // UUID
-    pub name: String,   // Nominal name
+    pub id: String,                          // UUID
+    pub name: String,                        // Nominal name
     pub symbolic_integration_target: String, // Integration boundary (e.g., "refs/remotes/origin/main" or "main")
     pub steps: Vec<Step>,
     pub verification_policy: Option<VerificationPolicy>,

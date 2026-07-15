@@ -20,13 +20,22 @@ fn test_metadata_json_contains_symbolic_integration_target() {
 
     // ASSERT
     assert!(success, "show --json command failed: {}", stderr);
-    
+
     // Parse JSON
-    let json: serde_json::Value = serde_json::from_str(&stdout).expect("Failed to parse JSON output");
-    
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Failed to parse JSON output");
+
     let target = json.get("target");
     let symbolic_target = json.get("symbolic_integration_target");
-    
-    assert!(symbolic_target.is_some(), "JSON should contain 'symbolic_integration_target' field, but it was missing. Output: {}", stdout);
-    assert!(target.is_none(), "JSON should NOT contain 'target' field, but it was present. Output: {}", stdout);
+
+    assert!(
+        symbolic_target.is_some(),
+        "JSON should contain 'symbolic_integration_target' field, but it was missing. Output: {}",
+        stdout
+    );
+    assert!(
+        target.is_none(),
+        "JSON should NOT contain 'target' field, but it was present. Output: {}",
+        stdout
+    );
 }

@@ -115,9 +115,12 @@ pub fn get_status_metadata_ext(
                     }
                 }
             }
-        } else if let Ok(discoveries) =
-            super::discovery::discover(repo, Some(&metadata.symbolic_integration_target), None, false)
-        {
+        } else if let Ok(discoveries) = super::discovery::discover(
+            repo,
+            Some(&metadata.symbolic_integration_target),
+            None,
+            false,
+        ) {
             for d in discoveries {
                 if let Discovery::Linear(m) = d {
                     if m.name == metadata.name && m.id != metadata.id {

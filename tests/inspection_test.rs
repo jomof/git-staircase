@@ -144,7 +144,7 @@ fn test_status_output_format_alignment() {
     };
 
     assert!(stdout.contains("feature/auth (implicit)"));
-    assert!(stdout.contains("  target: refs/heads/main"));
+    assert!(stdout.contains("  integration-target: refs/heads/main"));
     assert!(stdout.contains("  state: clean"));
     assert!(stdout.contains("  steps: 2"));
     assert!(stdout.contains("  lineage: none"));
@@ -191,7 +191,7 @@ fn test_status_output_format_alignment_managed() {
         stdout
     );
     assert!(
-        stdout.contains("  target: refs/heads/main\n"),
+        stdout.contains("  integration-target: refs/heads/main\n"),
         "Output should contain target"
     );
     assert!(

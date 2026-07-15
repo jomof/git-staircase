@@ -290,7 +290,9 @@ fn ambiguity_candidates(
                         .ok()
                 })
                 .flatten(),
-            integration_context: repo.resolve_commit(&metadata.symbolic_integration_target).ok(),
+            integration_context: repo
+                .resolve_commit(&metadata.symbolic_integration_target)
+                .ok(),
             cuts: metadata.steps.iter().map(|step| step.cut.clone()).collect(),
         });
     }
@@ -480,7 +482,9 @@ pub fn resolve_by_structural_key(
                     lineage_id: None,
                     structural_key: Some(metadata.id.clone()),
                     record_oid: None,
-                    integration_context: repo.resolve_commit(&metadata.symbolic_integration_target).ok(),
+                    integration_context: repo
+                        .resolve_commit(&metadata.symbolic_integration_target)
+                        .ok(),
                     cuts: metadata.steps.iter().map(|step| step.cut.clone()).collect(),
                 });
             }

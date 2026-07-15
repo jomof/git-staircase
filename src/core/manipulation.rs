@@ -822,7 +822,11 @@ pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions)
         let expected = repo.resolve_ref_opt(&metadata.symbolic_integration_target)?;
         let mut plan = super::operation::MutationPlan::new("land", Some(metadata.id.clone()));
         let _ = policy;
-        plan.update(metadata.symbolic_integration_target.clone(), expected, Some(top_cut.to_string()));
+        plan.update(
+            metadata.symbolic_integration_target.clone(),
+            expected,
+            Some(top_cut.to_string()),
+        );
         plan.publish(repo, false)?;
     } else {
         return Err(StaircaseError::Other(format!(
