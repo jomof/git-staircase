@@ -738,40 +738,48 @@ fn publish_metadata_common(
     Ok(())
 }
 
-pub fn delete(repo: &GitRepo, id: &str, delete_branches: bool) -> Result<()> {
-    let metadata = persistence::read_metadata(repo, id)?;
+pub fn delete(repo: &GitRepo, staircase: &ResolvedStaircase, delete_branches: bool) -> Result<()> {
+    let metadata = staircase.metadata();
     let mut plan = super::operation::MutationPlan::new("delete", Some(metadata.id.clone()));
-    for prefix in [
-        format!("{}{}/", STATE_PREFIX, metadata.id),
-        format!("{}{}/", ARCHIVE_PREFIX, metadata.id),
-    ] {
-        let lines = repo.for_each_ref(&prefix, "%(refname) %(objectname)", None)?;
-        for line in lines {
-            if let Some((reference, oid)) = line.split_once(" ") {
-                plan.update(reference, Some(oid.into()), None);
+
+    if staircase.is_managed() || matches!(staircase, ResolvedStaircase::ImplicitArchive(_)) {
+        for prefix in [
+            format!("{}{}/", STATE_PREFIX, metadata.id),
+            format!("{}{}/", ARCHIVE_PREFIX, metadata.id),
+        ] {
+            let lines = repo.for_each_ref(&prefix, "%(refname) %(objectname)", None)?;
+            for line in lines {
+                if let Some((reference, oid)) = line.split_once(" ") {
+                    plan.update(reference, Some(oid.into()), None);
+                }
             }
         }
+        let public = StaircaseRefs::public(&metadata.name);
+        if let Some(oid) = repo.resolve_ref_opt(&public)? {
+            plan.update(public, Some(oid), None);
+        }
     }
-    let public = StaircaseRefs::public(&metadata.name);
-    if let Some(oid) = repo.resolve_ref_opt(&public)? {
-        plan.update(public, Some(oid), None);
-    }
+
     if delete_branches {
         for step in &metadata.steps {
             if let Some(branch) = &step.branch {
                 let reference = format!("refs/heads/{}", branch);
                 let actual = repo.resolve_ref_opt(&reference)?;
-                if actual.as_deref() != Some(step.cut.as_str()) {
-                    return Err(StaircaseError::RefCollision {
-                        reference,
-                        expected: step.cut.clone(),
-                        actual: actual.unwrap_or_else(|| "<missing>".into()),
-                    });
+                if let Some(oid) = actual {
+                    if oid == step.cut {
+                        plan.update(reference, Some(oid), None);
+                    } else {
+                        return Err(StaircaseError::RefCollision {
+                            reference,
+                            expected: step.cut.clone(),
+                            actual: oid,
+                        });
+                    }
                 }
-                plan.update(reference, actual, None);
             }
         }
     }
+
     plan.publish(repo, false)?;
     Ok(())
 }

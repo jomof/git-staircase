@@ -1,14 +1,14 @@
 mod common;
 use common::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use git_staircase::git::set_git_hook;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn test_memoization_cleared_on_update_ref() {
     let (tmp, repo) = setup_repo();
     let path = tmp.path().to_path_buf();
-    
+
     let a = commit(path.as_path(), "a.txt", "a", "a");
     let b = commit(path.as_path(), "b.txt", "b", "b");
 
@@ -35,12 +35,20 @@ fn test_memoization_cleared_on_update_ref() {
 
     // ACT: Call again, should be cached
     assert!(repo.is_ancestor(&a, &b).unwrap());
-    assert_eq!(call_count.load(Ordering::SeqCst), initial_calls, "Should NOT have called git again");
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        initial_calls,
+        "Should NOT have called git again"
+    );
 
     // ACT: Update a ref
     repo.update_ref("refs/heads/dummy", &a, None).unwrap();
 
     // ASSERT: Ancestry should STILL be cached because A and B are immutable OIDs
     assert!(repo.is_ancestor(&a, &b).unwrap());
-    assert_eq!(call_count.load(Ordering::SeqCst), initial_calls, "Ancestry should still be cached after update_ref");
+    assert_eq!(
+        call_count.load(Ordering::SeqCst),
+        initial_calls,
+        "Ancestry should still be cached after update_ref"
+    );
 }

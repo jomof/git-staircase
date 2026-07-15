@@ -535,7 +535,9 @@ pub struct GerritStateMachine<T: ProviderTransport> {
 
 impl<T: ProviderTransport> GerritStateMachine<T> {
     pub fn new(transport: T) -> Self {
-        Self { base: ReviewStateMachine::new(transport, "gerrit".into()) }
+        Self {
+            base: ReviewStateMachine::new(transport, "gerrit".into()),
+        }
     }
 
     pub fn plan(

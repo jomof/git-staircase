@@ -391,7 +391,9 @@ fn repo_journey_9_missing_repo_executable_degrades_without_failure() {
 #[test]
 fn repo_journey_10_list_projects_returns_relative_paths() {
     let client = repo_client("main", Some("main"), true);
-    let projects = git_staircase::workspace::repo_provider::list_repo_workspace_projects(&client.repo).unwrap();
+    let projects =
+        git_staircase::workspace::repo_provider::list_repo_workspace_projects(&client.repo)
+            .unwrap();
     assert_eq!(projects, vec![PathBuf::from("src/app")]);
 }
 

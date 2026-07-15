@@ -33,9 +33,7 @@ pub fn get_worktrees_storage_dir() -> PathBuf {
             .join("git-monorepo")
             .join("worktrees")
     } else {
-        std::env::temp_dir()
-            .join("git-monorepo")
-            .join("worktrees")
+        std::env::temp_dir().join("git-monorepo").join("worktrees")
     }
 }
 
@@ -150,7 +148,12 @@ pub fn create_monorepo_worktree(
                 // Try creating branch first, if it fails because it exists, just checkout
                 let check_branch = Command::new("git")
                     .current_dir(&primary_repo_dir)
-                    .args(&["show-ref", "--verify", "--quiet", &format!("refs/heads/{}", branch)])
+                    .args(&[
+                        "show-ref",
+                        "--verify",
+                        "--quiet",
+                        &format!("refs/heads/{}", branch),
+                    ])
                     .status();
                 if check_branch.is_ok_and(|s| s.success()) {
                     cmd.arg(&worktree_dest).arg(branch);
@@ -306,7 +309,12 @@ fn mirror_directory(
 }
 
 fn is_excluded(name: &str, rel_path: &Path) -> bool {
-    if name == ".git" || name == ".repo" || name == ".venv" || name == "node_modules" || name == ".bazelrc" {
+    if name == ".git"
+        || name == ".repo"
+        || name == ".venv"
+        || name == "node_modules"
+        || name == ".bazelrc"
+    {
         return true;
     }
     if name == "bazel-bin"
@@ -325,7 +333,10 @@ fn setup_bazel_config(primary_root: &Path, shadow_root: &Path, id: &str) -> Resu
     if bazelrc_path.exists() || fs::symlink_metadata(&bazelrc_path).is_ok() {
         let _ = fs::remove_file(&bazelrc_path);
     }
-    let cache_dir = get_worktrees_storage_dir().parent().unwrap_or(shadow_root).join("cache");
+    let cache_dir = get_worktrees_storage_dir()
+        .parent()
+        .unwrap_or(shadow_root)
+        .join("cache");
     let output_base = cache_dir.join("bazel").join(id);
     let repo_cache = cache_dir.join("bazel-repo-cache");
 
@@ -361,7 +372,12 @@ pub fn remove_monorepo_worktree(id_or_path: &str, _force: bool) -> Result<bool> 
         if primary_repo.exists() {
             let _ = Command::new("git")
                 .current_dir(&primary_repo)
-                .args(&["worktree", "remove", "--force", &active.worktree_path.to_string_lossy()])
+                .args(&[
+                    "worktree",
+                    "remove",
+                    "--force",
+                    &active.worktree_path.to_string_lossy(),
+                ])
                 .output();
             let _ = Command::new("git")
                 .current_dir(&primary_repo)

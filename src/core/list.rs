@@ -49,11 +49,12 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
 
     let mut discovered_items = Vec::new();
 
-    let suppressed_keys = if !filter.include_archived_materializations && !filter.diagnostics && !all {
-        persistence::list_archived_structural_keys(repo).unwrap_or_default()
-    } else {
-        std::collections::HashSet::new()
-    };
+    let suppressed_keys =
+        if !filter.include_archived_materializations && !filter.diagnostics && !all {
+            persistence::list_archived_structural_keys(repo).unwrap_or_default()
+        } else {
+            std::collections::HashSet::new()
+        };
 
     if show_implicit || filter.families || show_all {
         match core::discover(repo, filter.onto.as_deref(), None, filter.families) {
@@ -90,7 +91,9 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
             }
             ResolvedStaircase::Implicit(metadata) => metadata.id.clone(),
             ResolvedStaircase::ImplicitFamily(family) => format!("family:{}", family.id),
-            ResolvedStaircase::ImplicitArchive(snap) => snap.descriptor.originating_structural_key.clone(),
+            ResolvedStaircase::ImplicitArchive(snap) => {
+                snap.descriptor.originating_structural_key.clone()
+            }
         };
         match canonical.get(&key) {
             Some(ResolvedStaircase::Managed(_)) => {}

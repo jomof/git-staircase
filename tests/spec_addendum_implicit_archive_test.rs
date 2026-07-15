@@ -13,7 +13,11 @@ fn test_direct_implicit_archive_without_adoption() {
     commit(&repo.workdir, "2.txt", "2", "Commit 2");
 
     let discovered = core::discover(&repo, Some("main"), None, false).unwrap();
-    assert_eq!(discovered.len(), 1, "Expected 1 discovered implicit staircase");
+    assert_eq!(
+        discovered.len(),
+        1,
+        "Expected 1 discovered implicit staircase"
+    );
 
     let sel = core::resolve_staircase(&repo, "dry-move-2", None)
         .unwrap()
@@ -105,8 +109,8 @@ fn test_explicit_adopt_before_archive() {
         ..Default::default()
     };
 
-    let result = core::archive_staircase(&repo, &sel, &archive_opts)
-        .expect("Explicit adopt archive failed");
+    let result =
+        core::archive_staircase(&repo, &sel, &archive_opts).expect("Explicit adopt archive failed");
 
     assert_eq!(result.source_representation, "implicit");
     assert_eq!(result.archive_kind, "managed-lineage");

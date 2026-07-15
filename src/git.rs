@@ -14,10 +14,12 @@ pub struct GitRepo {
     pub memoizer: Memoizer,
 }
 
-use std::sync::OnceLock;
 use std::path::Path;
+use std::sync::OnceLock;
 
-pub type GitHookFn = dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<std::process::Output, String> + Send + Sync;
+pub type GitHookFn = dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<std::process::Output, String>
+    + Send
+    + Sync;
 
 static GIT_HOOK: OnceLock<Box<GitHookFn>> = OnceLock::new();
 
@@ -240,7 +242,10 @@ impl GitRepo {
                     .run()?
             }
         } else {
-            return Err(StaircaseError::Other(format!("Could not resolve commit: {}", rev)));
+            return Err(StaircaseError::Other(format!(
+                "Could not resolve commit: {}",
+                rev
+            )));
         };
 
         if rev != "HEAD" {

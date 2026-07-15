@@ -1,14 +1,14 @@
 mod common;
 use common::*;
-use std::sync::atomic::{AtomicUsize, Ordering};
-use std::sync::Arc;
 use git_staircase::git::set_git_hook;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 #[test]
 fn test_resolve_commit_overhead() {
     let (tmp, repo) = setup_repo();
     let path = tmp.path().to_path_buf();
-    
+
     let sha = commit(path.as_path(), "a.txt", "a", "a");
 
     let call_count = Arc::new(AtomicUsize::new(0));
@@ -32,5 +32,9 @@ fn test_resolve_commit_overhead() {
 
     // ASSERT: Should have only called git rev-parse ONCE
     let calls = call_count.load(Ordering::SeqCst);
-    assert_eq!(calls, 1, "Should only call rev-parse once for a full SHA, but called {} times", calls);
+    assert_eq!(
+        calls, 1,
+        "Should only call rev-parse once for a full SHA, but called {} times",
+        calls
+    );
 }

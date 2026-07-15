@@ -1,7 +1,7 @@
 use git_staircase::GitRepo;
 use git_staircase::monorepo::{
-    CreateWorktreeOptions, create_monorepo_worktree, find_shadow_worktree_for_path,
-    load_registry, prune_monorepo_worktrees, remove_monorepo_worktree,
+    CreateWorktreeOptions, create_monorepo_worktree, find_shadow_worktree_for_path, load_registry,
+    prune_monorepo_worktrees, remove_monorepo_worktree,
 };
 use std::fs;
 use std::path::PathBuf;
@@ -43,7 +43,8 @@ fn setup_repo_workspace() -> (TempDir, PathBuf, GitRepo) {
     let repo = GitRepo::new(proj_dir.clone());
     repo.run(&["init"]).unwrap();
     repo.run(&["config", "user.name", "Test User"]).unwrap();
-    repo.run(&["config", "user.email", "test@example.com"]).unwrap();
+    repo.run(&["config", "user.email", "test@example.com"])
+        .unwrap();
     fs::write(proj_dir.join("app.txt"), "hello").unwrap();
     repo.run(&["add", "app.txt"]).unwrap();
     repo.run(&["commit", "-m", "initial"]).unwrap();
@@ -52,11 +53,17 @@ fn setup_repo_workspace() -> (TempDir, PathBuf, GitRepo) {
     fs::create_dir_all(&common_dir).unwrap();
     let common_repo = GitRepo::new(common_dir.clone());
     common_repo.run(&["init"]).unwrap();
-    common_repo.run(&["config", "user.name", "Test User"]).unwrap();
-    common_repo.run(&["config", "user.email", "test@example.com"]).unwrap();
+    common_repo
+        .run(&["config", "user.name", "Test User"])
+        .unwrap();
+    common_repo
+        .run(&["config", "user.email", "test@example.com"])
+        .unwrap();
     fs::write(common_dir.join("common.txt"), "common content").unwrap();
     common_repo.run(&["add", "common.txt"]).unwrap();
-    common_repo.run(&["commit", "-m", "initial common"]).unwrap();
+    common_repo
+        .run(&["commit", "-m", "initial common"])
+        .unwrap();
 
     fs::write(client_root.join("WORKSPACE"), "# Bazel workspace").unwrap();
 

@@ -1,11 +1,11 @@
-use anyhow::{anyhow, Context, Result};
-use clap::{error::ErrorKind, Args, Parser, Subcommand};
+use anyhow::{Context, Result, anyhow};
+use clap::{Args, Parser, Subcommand, error::ErrorKind};
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
 use git_staircase::cli::{self, Command, OutputFormat, Presentation};
 use git_staircase::core;
-use git_staircase::workspace::{bootstrap, BootstrapOptions};
+use git_staircase::workspace::{BootstrapOptions, bootstrap};
 
 #[derive(Parser)]
 #[command(name = "git-staircase")]

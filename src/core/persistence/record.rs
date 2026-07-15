@@ -448,16 +448,10 @@ pub fn write_implicit_archive_snapshot(
     manifest: &ArchiveManifest,
 ) -> Result<ImplicitArchiveSnapshot> {
     let kind_oid = repo.write_blob("implicit-snapshot\n")?;
-    let descriptor_oid = super::write_versioned_json(
-        repo,
-        "git-staircase-implicit-snapshot 1",
-        descriptor,
-    )?;
-    let lifecycle_oid = super::write_versioned_json(
-        repo,
-        "git-staircase-implicit-lifecycle 1",
-        lifecycle,
-    )?;
+    let descriptor_oid =
+        super::write_versioned_json(repo, "git-staircase-implicit-snapshot 1", descriptor)?;
+    let lifecycle_oid =
+        super::write_versioned_json(repo, "git-staircase-implicit-lifecycle 1", lifecycle)?;
     let manifest_oid =
         super::write_versioned_json(repo, "git-staircase-archive-manifest 1", manifest)?;
 
@@ -617,8 +611,7 @@ pub fn read_implicit_archive_snapshot(
 
 pub fn list_implicit_archive_snapshots(repo: &GitRepo) -> Result<Vec<ImplicitArchiveSnapshot>> {
     let mut snapshots = Vec::new();
-    if let Ok(lines) =
-        repo.for_each_ref(StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, "%(refname)", None)
+    if let Ok(lines) = repo.for_each_ref(StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, "%(refname)", None)
     {
         for line in lines {
             let refname = line.trim();

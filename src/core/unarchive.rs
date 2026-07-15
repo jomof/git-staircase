@@ -340,7 +340,11 @@ fn delete_implicit_archive_refs(repo: &GitRepo, archive_id: &str) -> Result<()> 
         commands.push(format!("delete {} {}", record_ref, oid));
     }
 
-    let cut_prefix = format!("{}{}/cuts/", StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, archive_id);
+    let cut_prefix = format!(
+        "{}{}/cuts/",
+        StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX,
+        archive_id
+    );
     if let Ok(lines) = repo.for_each_ref(&cut_prefix, "%(refname) %(objectname)", None) {
         for line in lines {
             let parts: Vec<&str> = line.split_whitespace().collect();
@@ -350,7 +354,11 @@ fn delete_implicit_archive_refs(repo: &GitRepo, archive_id: &str) -> Result<()> 
         }
     }
 
-    let owned_prefix = format!("{}{}/owned/", StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX, archive_id);
+    let owned_prefix = format!(
+        "{}{}/owned/",
+        StaircaseRefs::IMPLICIT_ARCHIVE_PREFIX,
+        archive_id
+    );
     if let Ok(lines) = repo.for_each_ref(&owned_prefix, "%(refname) %(objectname)", None) {
         for line in lines {
             let parts: Vec<&str> = line.split_whitespace().collect();

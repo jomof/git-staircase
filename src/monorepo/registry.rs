@@ -28,7 +28,9 @@ pub fn get_registry_path() -> PathBuf {
         return PathBuf::from(override_path);
     }
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
-        PathBuf::from(xdg).join("git-monorepo").join("worktrees.json")
+        PathBuf::from(xdg)
+            .join("git-monorepo")
+            .join("worktrees.json")
     } else if let Ok(home) = std::env::var("HOME") {
         PathBuf::from(home)
             .join(".config")
@@ -65,7 +67,8 @@ pub fn save_registry(registry: &MonorepoWorktreeRegistry) -> Result<()> {
 
 pub fn add_worktree_entry(entry: MonorepoWorktreeEntry) -> Result<()> {
     let mut reg = load_registry()?;
-    reg.worktrees.retain(|w| w.id != entry.id && w.path != entry.path);
+    reg.worktrees
+        .retain(|w| w.id != entry.id && w.path != entry.path);
     reg.worktrees.push(entry);
     save_registry(&reg)
 }
@@ -76,7 +79,9 @@ pub fn remove_worktree_entry(id_or_path: &str) -> Result<Option<MonorepoWorktree
     let index = reg.worktrees.iter().position(|w| {
         w.id == id_or_path
             || w.path.to_string_lossy() == id_or_path
-            || canonical_target.as_ref().is_some_and(|target| &w.path == target)
+            || canonical_target
+                .as_ref()
+                .is_some_and(|target| &w.path == target)
     });
     if let Some(idx) = index {
         let removed = reg.worktrees.remove(idx);
@@ -91,7 +96,10 @@ pub fn find_shadow_worktree_for_path(path: &Path) -> Result<Option<MonorepoWorkt
     let reg = load_registry()?;
     let canonical = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
     for entry in reg.worktrees {
-        let entry_canonical = entry.path.canonicalize().unwrap_or_else(|_| entry.path.clone());
+        let entry_canonical = entry
+            .path
+            .canonicalize()
+            .unwrap_or_else(|_| entry.path.clone());
         if canonical.starts_with(&entry_canonical) {
             return Ok(Some(entry));
         }

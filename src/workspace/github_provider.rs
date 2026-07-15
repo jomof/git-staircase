@@ -461,7 +461,9 @@ pub struct GitHubStateMachine<T: ProviderTransport> {
 
 impl<T: ProviderTransport> GitHubStateMachine<T> {
     pub fn new(transport: T) -> Self {
-        Self { base: ReviewStateMachine::new(transport, "github".into()) }
+        Self {
+            base: ReviewStateMachine::new(transport, "github".into()),
+        }
     }
 
     #[allow(clippy::too_many_arguments)]

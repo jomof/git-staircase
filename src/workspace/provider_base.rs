@@ -74,13 +74,17 @@ pub fn execute_and_journal<T: ProviderTransport>(
         Ok(response) => {
             let mut operation_id = None;
             if response.uncertain {
-                operation_id = Some(OperationJournal::for_repo(repo)?.record(
-                    provider,
-                    operation,
-                    expected_record_oid,
-                    request,
-                    response.observations.clone(),
-                )?.operation_id);
+                operation_id = Some(
+                    OperationJournal::for_repo(repo)?
+                        .record(
+                            provider,
+                            operation,
+                            expected_record_oid,
+                            request,
+                            response.observations.clone(),
+                        )?
+                        .operation_id,
+                );
             }
             Ok((response, operation_id))
         }
@@ -186,7 +190,10 @@ pub struct ReviewStateMachine<T: ProviderTransport> {
 
 impl<T: ProviderTransport> ReviewStateMachine<T> {
     pub fn new(transport: T, provider: String) -> Self {
-        Self { transport, provider }
+        Self {
+            transport,
+            provider,
+        }
     }
 
     pub fn execute_with_journal(
@@ -218,7 +225,12 @@ impl<T: ProviderTransport> ReviewStateMachine<T> {
         apply_responses: impl Fn(&mut S, &P, &TransportResponse) -> Result<ReviewMutationResult<S>>,
     ) -> Result<ReviewMutationResult<S>> {
         let request = create_request(plan)?;
-        let (response, operation_id) = match self.execute_with_journal(repo, "upload", expected_record_oid.clone(), request.clone()) {
+        let (response, operation_id) = match self.execute_with_journal(
+            repo,
+            "upload",
+            expected_record_oid.clone(),
+            request.clone(),
+        ) {
             Ok(res) => res,
             Err(error) => {
                 mark_all_unknown(&mut state);

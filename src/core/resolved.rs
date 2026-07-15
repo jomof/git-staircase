@@ -1,9 +1,7 @@
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
-use crate::model::{
-    ImplicitArchiveSnapshot, StaircaseFamily, StaircaseMetadata, Step,
-};
+use crate::model::{ImplicitArchiveSnapshot, StaircaseFamily, StaircaseMetadata, Step};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::ops::Deref;
@@ -183,7 +181,8 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     let _ = repo.preload_ancestry(&oids);
     let mut last_cut = if let Some(first_step) = staircase.steps.first() {
         let first_cut = repo.resolve_commit(&first_step.cut)?;
-        repo.merge_base(&target_oid, &first_cut).unwrap_or(target_oid)
+        repo.merge_base(&target_oid, &first_cut)
+            .unwrap_or(target_oid)
     } else {
         target_oid
     };

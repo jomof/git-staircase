@@ -206,23 +206,23 @@ pub fn archive_staircase(
         let mut archive_owned_refs = Vec::new();
         for (idx, full_ref) in owned_branches.iter().enumerate() {
             let ref_id = format!("owned-{}", idx + 1);
-            let oid = repo
-                .resolve_ref_opt(full_ref)?
-                .ok_or_else(|| StaircaseError::RefCollision {
-                    reference: full_ref.clone(),
-                    expected: meta
-                        .steps
-                        .iter()
-                        .find(|step| {
-                            step.branch.as_ref().is_some_and(|branch| {
-                                branch == full_ref
-                                    || format!("refs/heads/{}", branch) == *full_ref
+            let oid =
+                repo.resolve_ref_opt(full_ref)?
+                    .ok_or_else(|| StaircaseError::RefCollision {
+                        reference: full_ref.clone(),
+                        expected: meta
+                            .steps
+                            .iter()
+                            .find(|step| {
+                                step.branch.as_ref().is_some_and(|branch| {
+                                    branch == full_ref
+                                        || format!("refs/heads/{}", branch) == *full_ref
+                                })
                             })
-                        })
-                        .map(|step| step.cut.clone())
-                        .unwrap_or_else(|| "<owned-cut>".into()),
-                    actual: "<missing>".into(),
-                })?;
+                            .map(|step| step.cut.clone())
+                            .unwrap_or_else(|| "<owned-cut>".into()),
+                        actual: "<missing>".into(),
+                    })?;
             archive_owned_refs.push(ArchivedOwnedRef {
                 ref_id: ref_id.clone(),
                 original_refname: full_ref.clone(),
