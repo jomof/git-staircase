@@ -26,7 +26,7 @@ fn test_resolve_explicit_staircase() {
     assert_eq!(metadata.steps[0].cut, c1);
     assert_eq!(metadata.steps[1].name, "feat-2");
     assert_eq!(metadata.steps[1].cut, c2);
-    assert_eq!(metadata.target, "refs/heads/main");
+    assert_eq!(metadata.symbolic_integration_target, "refs/heads/main");
 }
 
 #[test]

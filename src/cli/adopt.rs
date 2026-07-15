@@ -68,7 +68,7 @@ impl super::Command for Adopt {
                 landing_policy: self.landing_policy,
                 id: Uuid::new_v4().to_string(),
                 name,
-                target,
+                symbolic_integration_target: target,
                 steps,
                 verification_policy: None,
 
@@ -81,7 +81,7 @@ impl super::Command for Adopt {
 
         // Override metadata with explicit flags if provided
         if let Some(onto) = &self.selector.base.onto {
-            staircase.target = onto.clone();
+            staircase.symbolic_integration_target = onto.clone();
         }
         if let Some(lp) = self.landing_policy {
             staircase.landing_policy = Some(lp);

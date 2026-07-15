@@ -41,7 +41,7 @@ fn test_duplicate_step_names_leak() {
         id: "test-id".to_string(),
         name: "test-staircase".to_string(),
         // Generation-1 structures require a resolvable integration anchor.
-        target: c1.clone(),
+        symbolic_integration_target: c1.clone(),
         steps: vec![
             Step {
                 id: "s1".to_string(),

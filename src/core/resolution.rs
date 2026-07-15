@@ -215,7 +215,7 @@ fn resolve_git_revision(
 }
 
 fn structural_identity(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<String> {
-    let integration = repo.resolve_commit(&staircase.target)?;
+    let integration = repo.resolve_commit(&staircase.symbolic_integration_target)?;
     compute_implicit_id(repo, &integration, &staircase.steps)
 }
 
@@ -290,7 +290,7 @@ fn ambiguity_candidates(
                         .ok()
                 })
                 .flatten(),
-            integration_context: repo.resolve_commit(&metadata.target).ok(),
+            integration_context: repo.resolve_commit(&metadata.symbolic_integration_target).ok(),
             cuts: metadata.steps.iter().map(|step| step.cut.clone()).collect(),
         });
     }
@@ -350,7 +350,7 @@ pub fn resolve_explicit_staircase(
             .last()
             .map(|s| s.strip_prefix("refs/heads/").unwrap_or(s).to_string())
             .unwrap_or_else(|| "explicit".to_string()),
-        target: onto_final,
+        symbolic_integration_target: onto_final,
         steps: staircase_steps,
         verification_policy: None,
         primary_branch_layout: layout,
@@ -480,7 +480,7 @@ pub fn resolve_by_structural_key(
                     lineage_id: None,
                     structural_key: Some(metadata.id.clone()),
                     record_oid: None,
-                    integration_context: repo.resolve_commit(&metadata.target).ok(),
+                    integration_context: repo.resolve_commit(&metadata.symbolic_integration_target).ok(),
                     cuts: metadata.steps.iter().map(|step| step.cut.clone()).collect(),
                 });
             }

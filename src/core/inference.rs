@@ -106,7 +106,7 @@ pub fn extract_path_to(
         landing_policy: None,
         id: uuid::Uuid::new_v4().to_string(),
         name: target_step_name.to_string(),
-        target: family.target.clone(),
+        symbolic_integration_target: family.symbolic_integration_target.clone(),
         steps: path_steps,
         verification_policy: family.verification_policy.clone(),
 

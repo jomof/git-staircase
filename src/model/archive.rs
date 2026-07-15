@@ -106,7 +106,7 @@ fn empty_staircase_metadata() -> StaircaseMetadata {
         id: String::new(),
         verification_policy: None,
         name: String::new(),
-        target: String::new(),
+        symbolic_integration_target: String::new(),
         steps: vec![],
         primary_branch_layout: None,
         branch_layout_base: None,

@@ -50,7 +50,7 @@ fn test_canonical_descriptor_format() {
 
     // ASSERT: Verify round-tripped object is identical (except for name which is recovered from ref)
     assert_eq!(parsed.id, s.id);
-    assert_eq!(parsed.target, s.target);
+    assert_eq!(parsed.symbolic_integration_target, s.symbolic_integration_target);
     assert_eq!(parsed.steps.len(), s.steps.len());
     for (p, original) in parsed.steps.iter().zip(s.steps.iter()) {
         assert_eq!(p.name, original.name);

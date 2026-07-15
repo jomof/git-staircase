@@ -241,7 +241,7 @@ fn test_restack_propagation() {
         landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),
@@ -326,7 +326,7 @@ fn test_restack_conflict_handling() {
         landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "s1".to_string(),
@@ -384,7 +384,7 @@ fn test_restack_inconsistency_on_failure() {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![
             Step {
                 id: "s1-id".to_string(),
@@ -451,7 +451,7 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test-staircase".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![
             Step {
                 id: "s1-id".to_string(),
@@ -494,7 +494,7 @@ fn test_move_commit_refuses_empty_source_before_mutation() {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
-        target: target,
+        symbolic_integration_target: target,
         steps: vec![
             Step {
                 id: "s1-id".to_string(),

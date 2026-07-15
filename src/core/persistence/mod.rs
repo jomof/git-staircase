@@ -35,7 +35,7 @@ pub fn list_archived_structural_keys(repo: &GitRepo) -> Result<std::collections:
                     if let Some(manifest) = rec.archive_manifest {
                         if let Some(key) = manifest.originating_structural_key {
                             keys.insert(key);
-                        } else if let Ok(integration) = repo.resolve_commit(&rec.metadata.target) {
+                        } else if let Ok(integration) = repo.resolve_commit(&rec.metadata.symbolic_integration_target) {
                             if let Ok(key) = crate::core::discovery::compute_implicit_id(
                                 repo,
                                 &integration,

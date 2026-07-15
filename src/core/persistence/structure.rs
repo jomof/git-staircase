@@ -26,7 +26,7 @@ pub fn serialize_structure(
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .map(Ok)
-        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))?;
+        .unwrap_or_else(|| repo.resolve_commit(&metadata.symbolic_integration_target))?;
     let typed_oid = |hex: String| {
         serde_json::json!({
             "algorithm": object_format,
@@ -73,9 +73,9 @@ pub fn serialize_structure(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({"kind": "clean"}));
     let symbolic_targets = metadata
-        .target
+        .symbolic_integration_target
         .starts_with("refs/")
-        .then(|| vec![metadata.target.clone()])
+        .then(|| vec![metadata.symbolic_integration_target.clone()])
         .unwrap_or_default();
     let mut extensions = serde_json::Map::new();
     extensions.insert(
@@ -274,7 +274,7 @@ pub fn parse_structure(
             landing_policy,
             id,
             name: String::new(),
-            target,
+            symbolic_integration_target: target,
             steps,
             verification_policy,
             primary_branch_layout,

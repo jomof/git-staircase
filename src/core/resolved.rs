@@ -131,7 +131,7 @@ fn publish_managed(
 }
 
 pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
-    let target_oid = match repo.resolve_commit(&staircase.target) {
+    let target_oid = match repo.resolve_commit(&staircase.symbolic_integration_target) {
         Ok(oid) => oid,
         Err(_) => return Ok(false),
     };
@@ -159,13 +159,13 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
 }
 
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
-    let target = match repo.resolve_symbolic_full_name(&staircase.target) {
+    let target = match repo.resolve_symbolic_full_name(&staircase.symbolic_integration_target) {
         Ok(t) => t,
-        Err(_) => repo.resolve_commit(&staircase.target)?,
+        Err(_) => repo.resolve_commit(&staircase.symbolic_integration_target)?,
     };
-    let target_oid = repo.resolve_commit(&staircase.target)?;
+    let target_oid = repo.resolve_commit(&staircase.symbolic_integration_target)?;
     let mut staircase = staircase.clone();
-    staircase.target = target;
+    staircase.symbolic_integration_target = target;
     if staircase.id.starts_with("implicit@") {
         staircase.id = Uuid::new_v4().to_string();
     }

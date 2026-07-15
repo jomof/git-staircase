@@ -7,4 +7,3 @@ This means:
 - Output formatting (status, lists) should mirror Git's style.
 - Error messages and warnings should be consistent with Git's terminology.
 - Support `--porcelain` and `--json` flags on commands to enable machine readability/agent toolability.
-- Move toward completing all scenarios in CONFORMANCE.md.

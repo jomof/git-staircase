@@ -659,7 +659,7 @@ fn archive_implicit_staircase_direct(
         representation_kind: "implicit-snapshot".to_string(),
         archive_id: archive_id.clone(),
         originating_structural_key: structural_key.clone(),
-        integration_context: meta.target.clone(),
+        integration_context: meta.symbolic_integration_target.clone(),
         ordered_cuts: cut_oids,
         step_count: meta.steps.len(),
         canonical_display_name: meta.name.clone(),

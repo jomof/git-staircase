@@ -495,7 +495,7 @@ pub fn write_implicit_archive_snapshot(
         id: descriptor.archive_id.clone(),
         verification_policy: None,
         name: descriptor.canonical_display_name.clone(),
-        target: descriptor.integration_context.clone(),
+        symbolic_integration_target: descriptor.integration_context.clone(),
         steps: descriptor
             .ordered_cuts
             .iter()
@@ -575,7 +575,7 @@ pub fn read_implicit_archive_snapshot(
         id: descriptor.archive_id.clone(),
         verification_policy: None,
         name: descriptor.canonical_display_name.clone(),
-        target: descriptor.integration_context.clone(),
+        symbolic_integration_target: descriptor.integration_context.clone(),
         steps: descriptor
             .ordered_cuts
             .iter()

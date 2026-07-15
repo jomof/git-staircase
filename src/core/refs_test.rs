@@ -119,7 +119,7 @@ fn test_owned_branches() {
     let metadata = StaircaseMetadata {
         id: "id1".to_string(),
         name: "name1".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![
             Step {
                 id: "s1".to_string(),
