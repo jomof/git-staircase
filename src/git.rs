@@ -463,14 +463,14 @@ impl GitRepo {
     pub fn update_branch(&self, branch_name: &str, oid: &str) -> Result<()> {
         let ref_name = format!("refs/heads/{}", branch_name);
         self.command().args(&["update-ref", &ref_name, oid]).run()?;
-        self.memoizer.clear();
+        self.memoizer.clear_refs();
         Ok(())
     }
 
     pub fn update_step_ref(&self, id: &str, step_id: &str, cut: &str) -> Result<()> {
         let ref_name = StaircaseRefs::state_step(id, step_id);
         self.command().args(&["update-ref", &ref_name, cut]).run()?;
-        self.memoizer.clear();
+        self.memoizer.clear_refs();
         Ok(())
     }
 
@@ -479,7 +479,7 @@ impl GitRepo {
         self.command()
             .args(&["update-ref", "-d", &ref_name])
             .run()?;
-        self.memoizer.clear();
+        self.memoizer.clear_refs();
         Ok(())
     }
 
@@ -714,7 +714,7 @@ impl GitRepo {
             .args(&["update-ref", "--stdin"])
             .stdin(input)
             .run()?;
-        self.memoizer.clear();
+        self.memoizer.clear_refs();
         Ok(())
     }
     pub fn rev_list(&self, args: &[&str]) -> Result<Vec<String>> {
@@ -834,7 +834,7 @@ impl GitRepo {
             cmd = cmd.arg(old);
         }
         cmd.run()?;
-        self.memoizer.clear();
+        self.memoizer.clear_refs();
         Ok(())
     }
 

@@ -61,6 +61,7 @@ impl MemoValue {
 pub trait MemoizationStore: Send + Sync + Debug {
     fn get(&self, key: &MemoKey) -> Option<MemoValue>;
     fn put(&self, key: MemoKey, value: MemoValue);
+    fn clear_refs(&self);
     fn clear(&self);
 }
 
@@ -90,6 +91,19 @@ impl MemoizationStore for InProcessMemoStore {
     fn put(&self, key: MemoKey, value: MemoValue) {
         if let Ok(mut guard) = self.cache.lock() {
             guard.insert(key, value);
+        }
+    }
+
+    fn clear_refs(&self) {
+        if let Ok(mut guard) = self.cache.lock() {
+            guard.retain(|key, _| {
+                !matches!(
+                    key,
+                    MemoKey::ResolveCommit { .. }
+                        | MemoKey::ResolveRef { .. }
+                        | MemoKey::ResolveSymbolic { .. }
+                )
+            });
         }
     }
 
@@ -277,6 +291,10 @@ impl Memoizer {
         self.store.put(key, MemoValue::Text(full_name.to_string()));
     }
 
+    pub fn clear_refs(&self) {
+        self.store.clear_refs();
+    }
+
     pub fn clear(&self) {
         self.store.clear();
     }
@@ -326,6 +344,10 @@ mod tests {
 
         fn put(&self, key: MemoKey, value: MemoValue) {
             self.inner.put(key, value);
+        }
+
+        fn clear_refs(&self) {
+            self.inner.clear_refs();
         }
 
         fn clear(&self) {
