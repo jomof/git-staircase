@@ -166,8 +166,28 @@ impl Success {
 }
 
 #[derive(Serialize)]
-#[serde(transparent)]
-pub struct Summary<T>(pub T);
+pub struct Summary<T> {
+    #[serde(flatten)]
+    pub value: T,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub qualification: Option<String>,
+}
+
+impl<T> Summary<T> {
+    pub fn new(value: T) -> Self {
+        Self {
+            value,
+            qualification: None,
+        }
+    }
+
+    pub fn qualified(value: T, qualification: String) -> Self {
+        Self {
+            value,
+            qualification: Some(qualification),
+        }
+    }
+}
 
 #[derive(Serialize)]
 #[serde(transparent)]

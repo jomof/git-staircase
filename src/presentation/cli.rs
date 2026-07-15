@@ -12,7 +12,7 @@ impl ToPresentation for Success {
 
 impl ToPresentation for Summary<StaircaseStatus> {
     fn to_presentation(&self) -> Presentation {
-        let s = &self.0;
+        let s = &self.value;
         let m = &s.metadata;
         let steps_count = m.steps.len();
         let steps_word = if steps_count == 1 { "step" } else { "steps" };
@@ -20,7 +20,14 @@ impl ToPresentation for Summary<StaircaseStatus> {
         Presentation::pair(
             Presentation::Plain(format!(
                 "{} [{}] {} {} {}{}",
-                m.name,
+                format!(
+                    "{}{}",
+                    m.name,
+                    self.qualification
+                        .as_ref()
+                        .map(|q| format!(" ({})", q))
+                        .unwrap_or_default()
+                ),
                 m.id,
                 steps_count,
                 steps_word,
@@ -34,13 +41,23 @@ impl ToPresentation for Summary<StaircaseStatus> {
 
 impl ToPresentation for Summary<StaircaseFamily> {
     fn to_presentation(&self) -> Presentation {
-        let f = &self.0;
+        let f = &self.value;
         let path_count = f.steps.values().filter(|s| s.children.is_empty()).count();
         let paths_word = if path_count == 1 { "path" } else { "paths" };
         Presentation::pair(
             Presentation::Plain(format!(
                 "{} [{}] {} {} (implicit)",
-                f.name, f.id, path_count, paths_word
+                format!(
+                    "{}{}",
+                    f.name,
+                    self.qualification
+                        .as_ref()
+                        .map(|q| format!(" ({})", q))
+                        .unwrap_or_default()
+                ),
+                f.id,
+                path_count,
+                paths_word
             )),
             Presentation::Record(vec![
                 f.name.clone(),
