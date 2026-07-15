@@ -213,21 +213,13 @@ impl GitRepo {
             }
         }
 
-        let oid = if !rev.starts_with("refs/") {
-            if let Ok(sha) = self
-                .command()
-                .args(&[
-                    "rev-parse",
-                    "--verify",
-                    &format!("refs/tags/{}^{{commit}}", rev),
-                ])
-                .run()
-            {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
-                }
-                return Ok(sha);
-            }
+        let oid = if let Ok(sha) = self
+            .command()
+            .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
+            .run()
+        {
+            sha
+        } else if !rev.starts_with("refs/") {
             if let Ok(sha) = self
                 .command()
                 .args(&[
@@ -237,18 +229,18 @@ impl GitRepo {
                 ])
                 .run()
             {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
-                }
-                return Ok(sha);
+                sha
+            } else {
+                self.command()
+                    .args(&[
+                        "rev-parse",
+                        "--verify",
+                        &format!("refs/tags/{}^{{commit}}", rev),
+                    ])
+                    .run()?
             }
-            self.command()
-                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-                .run()?
         } else {
-            self.command()
-                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-                .run()?
+            return Err(StaircaseError::Other(format!("Could not resolve commit: {}", rev)));
         };
 
         if rev != "HEAD" {
