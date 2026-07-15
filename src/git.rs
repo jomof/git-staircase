@@ -16,9 +16,8 @@ pub struct GitRepo {
     pub memoizer: Memoizer,
 }
 
-pub type GitHookFn = dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<Output, String>
-    + Send
-    + Sync;
+pub type GitHookFn =
+    dyn Fn(&Path, &[String], Option<&str>) -> std::result::Result<Output, String> + Send + Sync;
 
 static GIT_HOOK: OnceLock<Box<GitHookFn>> = OnceLock::new();
 
@@ -91,10 +90,10 @@ impl<'a> GitCommand<'a> {
             return false;
         }
         match self.args[0].as_str() {
-            "rev-parse" | "cat-file" | "ls-tree" | "show" | "rev-list" | "for-each-ref" | "diff"
-            | "diff-tree" | "diff-index" | "status" | "log" | "merge-base" | "patch-id"
-            | "hash-object" | "mktree" | "check-ref-format" | "ls-files" | "write-tree" | "help"
-            | "version" => false,
+            "rev-parse" | "cat-file" | "ls-tree" | "show" | "rev-list" | "for-each-ref"
+            | "diff" | "diff-tree" | "diff-index" | "status" | "log" | "merge-base"
+            | "patch-id" | "hash-object" | "mktree" | "check-ref-format" | "ls-files"
+            | "write-tree" | "help" | "version" => false,
             "symbolic-ref" => self.args.len() > 2,
             _ => true,
         }

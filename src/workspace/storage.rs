@@ -1,6 +1,7 @@
 use crate::error::{Result, StaircaseError};
 use crate::workspace::model::WorkspaceRecord;
-use std::fs;
+use fd_lock::RwLock;
+use std::fs::{self, OpenOptions};
 use std::path::{Path, PathBuf};
 use std::time::SystemTime;
 
@@ -40,7 +41,20 @@ pub fn save_workspace_record_cas(
 
     let filename = format!("{}.json", record.workspace_id);
     let target_path = dir.join(&filename);
-    let temp_path = dir.join(format!(".tmp_{}.json", record.workspace_id));
+    
+    // Use a lock file to ensure atomic read-check-write.
+    // We don't truncate it to avoid disrupting other processes that might have it open.
+    let lock_path = dir.join(format!("{}.lock", record.workspace_id));
+    let mut lock_file = OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create(true)
+        .truncate(false)
+        .open(&lock_path)
+        .map_err(|e| StaircaseError::Other(format!("Failed to open lock file: {}", e)))?;
+    
+    let mut lock = RwLock::new(&mut lock_file);
+    let _guard = lock.write().map_err(|e| StaircaseError::Other(format!("Failed to acquire lock: {}", e)))?;
 
     let existing = if target_path.exists() {
         let data = fs::read_to_string(&target_path)?;
@@ -50,6 +64,7 @@ pub fn save_workspace_record_cas(
     } else {
         None
     };
+
     match (existing.as_ref(), expected_generation) {
         (Some(current), Some(expected)) if current.generation != expected => {
             return Err(StaircaseError::Other(format!(
@@ -80,8 +95,15 @@ pub fn save_workspace_record_cas(
         StaircaseError::Other(format!("Failed to serialize workspace record: {}", e))
     })?;
 
+    // Use a unique temp file to avoid collisions even with the lock (good practice)
+    let temp_filename = format!(".tmp_{}_{}.json", record.workspace_id, uuid::Uuid::new_v4());
+    let temp_path = dir.join(temp_filename);
+
     fs::write(&temp_path, json_data)?;
-    fs::rename(&temp_path, &target_path)?;
+    if let Err(e) = fs::rename(&temp_path, &target_path) {
+        let _ = fs::remove_file(&temp_path);
+        return Err(e.into());
+    }
 
     Ok(())
 }
@@ -161,6 +183,9 @@ pub fn forget_workspace_record(selector: &str) -> Result<bool> {
                 fs::remove_file(file_path)?;
                 removed = true;
             }
+            // Note: We deliberately do NOT remove the .lock file to avoid a race 
+            // condition where another process creates a new lock file while we 
+            // have the old one unlinked.
         }
     }
 
