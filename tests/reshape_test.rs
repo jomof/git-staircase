@@ -32,7 +32,7 @@ fn test_reorder() {
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
         .expect("Staircase found");
-    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
+    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed(), false).unwrap();
     assert_eq!(status.metadata.steps.len(), 3);
 
     // Expected order: step1, step3, step2
@@ -97,7 +97,7 @@ fn test_drop() {
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
         .expect("Staircase found");
-    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
+    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed(), false).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "step1");
     assert_eq!(status.metadata.steps[1].name, "step3");
@@ -139,7 +139,7 @@ fn test_move() {
     let rs = core::resolve_staircase(&repo, "step", Some("main"))
         .unwrap()
         .expect("Staircase found");
-    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed()).unwrap();
+    let status = core::get_status_metadata(&repo, rs.metadata().clone(), !rs.is_managed(), false).unwrap();
     assert_eq!(status.metadata.steps.len(), 2);
     assert_eq!(status.metadata.steps[0].name, "step1");
     assert_eq!(status.metadata.steps[1].name, "step2");

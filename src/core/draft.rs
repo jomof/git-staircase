@@ -235,6 +235,7 @@ pub fn get_worktree_draft(repo: &GitRepo) -> Result<WorktreeDraft> {
     };
 
     Ok(WorktreeDraft {
+        worktree_identity: Some(repo.workdir.to_string_lossy().to_string()),
         basis,
         head_branch,
         staged_paths,

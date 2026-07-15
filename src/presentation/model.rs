@@ -191,6 +191,17 @@ impl ToPresentation for StaircaseStatus {
                 children: get_worktree_draft_presentation_fields(draft),
             });
         }
+        for draft in &self.all_worktree_drafts {
+            let title = if let Some(ref identity) = draft.worktree_identity {
+                format!("worktree draft ({}):", identity)
+            } else {
+                "worktree draft:".to_string()
+            };
+            children.push(Presentation::Section {
+                title,
+                children: get_worktree_draft_presentation_fields(draft),
+            });
+        }
 
         Presentation::pair(
             Presentation::Section {

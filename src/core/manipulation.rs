@@ -493,6 +493,7 @@ pub fn restack(
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
+        false,
     )?;
 
     if status.is_clean {
@@ -572,6 +573,7 @@ pub fn restack_from(
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
+        false,
     )?;
     let mut groups = Vec::new();
     for index in from_step..status.metadata.steps.len() {
@@ -794,6 +796,7 @@ pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions)
         repo,
         staircase.metadata().clone(),
         !staircase.is_managed(),
+        false,
     )?;
 
     if !status.is_clean {
@@ -858,8 +861,12 @@ pub fn land_through(
                 .into(),
         });
     }
-    let status =
-        crate::core::status::get_status_metadata(repo, metadata.clone(), !managed.is_managed())?;
+    let status = crate::core::status::get_status_metadata(
+        repo,
+        metadata.clone(),
+        !managed.is_managed(),
+        false,
+    )?;
     if !status.is_clean {
         return Err(StaircaseError::UnsupportedTopology {
             operation: "partial-land".into(),

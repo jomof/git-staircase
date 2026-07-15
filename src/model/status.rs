@@ -47,6 +47,8 @@ pub struct StaircaseStatus {
     pub is_ambiguous: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub worktree_draft: Option<WorktreeDraft>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    pub all_worktree_drafts: Vec<WorktreeDraft>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub active_operation: Option<ActiveOperationStatus>,
     #[serde(default, skip_serializing_if = "Option::is_none")]

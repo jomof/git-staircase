@@ -59,6 +59,7 @@ pub struct DraftAttachment {
 
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct WorktreeDraft {
+    pub worktree_identity: Option<String>,
     pub basis: String,
     pub head_branch: Option<String>,
     pub staged_paths: Vec<String>,

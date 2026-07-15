@@ -128,6 +128,7 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
                         !rs.is_managed(),
                         Some(&discovered_items),
                         Some(cached_draft.clone()),
+                        false,
                     )?;
                     if matches!(status.state(), crate::model::StaircaseState::Stale) {
                         final_results.push(rs);

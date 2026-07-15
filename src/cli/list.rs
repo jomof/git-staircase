@@ -73,6 +73,7 @@ impl super::Command for List {
                         !rs.is_managed(),
                         None,
                         Some(cached_draft.clone()),
+                        false,
                     )?;
                     ListEntry::Staircase(Summary::new(status))
                 }
