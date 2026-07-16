@@ -56,9 +56,18 @@ fn test_land_leaves_staircase_active() {
     let new_target_oid = repo.resolve_commit("refs/heads/main").unwrap();
     assert_eq!(new_target_oid, c1, "Target branch should have moved to the top of the staircase");
     
-    // Now check if the staircase still exists
+    // Now check if the staircase still exists AS ACTIVE
     let res = resolve_by_id(&repo, &rs.metadata().id);
     
     // ARRANGE/ACT/ASSERT
-    assert!(res.is_err(), "Staircase should be removed or archived after landing, but it's still found by ID: {:?}", res.unwrap().metadata().id);
+    if let Ok(staircase) = res {
+        if let git_staircase::core::ResolvedStaircase::Managed(metadata) = staircase {
+            let is_archived = metadata.lifecycle.map_or(false, |l| l.state == git_staircase::model::LifecycleState::Archived);
+            assert!(is_archived, "Staircase should be archived after landing, but its state is active.");
+        } else {
+            panic!("Expected Managed staircase.");
+        }
+    } else {
+        // Technically passing if not found at all, but we expect it to be archived
+    }
 }

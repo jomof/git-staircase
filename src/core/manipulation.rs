@@ -818,6 +818,13 @@ pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions)
         let _ = policy;
         plan.update(metadata.target.clone(), expected, Some(top_cut.to_string()));
         plan.publish(repo, false)?;
+        let selector = super::resolved::ResolvedSelector {
+            staircase: staircase.clone(),
+            step_index: None,
+        };
+        let mut opts = crate::core::ArchiveOptions::default();
+        opts.reason = Some("landed".to_string());
+        let _ = crate::core::archive_staircase(repo, &selector, &opts)?;
     } else {
         return Err(StaircaseError::Other(format!(
             "Target {} is not a ref, cannot land",
