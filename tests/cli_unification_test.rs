@@ -25,13 +25,26 @@ fn commit(dir: &Path, file: &str, content: &str, msg: &str) -> String {
 
 fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
     let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", dir));
-    let binary = Path::new(env!("CARGO_BIN_EXE_git-staircase"));
-    let output = Command::new(binary)
+    let bin_str = env!("CARGO_BIN_EXE_git-staircase");
+    let mut binary = std::path::PathBuf::from(bin_str);
+    if !binary.exists() {
+        let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("debug")
+            .join("git-staircase");
+        if fallback.exists() {
+            binary = fallback;
+        }
+    }
+    let output = match Command::new(&binary)
         .current_dir(dir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)
         .args(args)
         .output()
-        .unwrap();
+    {
+        Ok(out) => out,
+        Err(e) => panic!("Failed to run binary '{:?}' in dir '{:?}': {}", binary, dir, e),
+    };
     (
         output.status.success(),
         String::from_utf8_lossy(&output.stdout).to_string(),

@@ -447,7 +447,18 @@ fn gerrit_black_box_create_persists_pending_associations() {
     };
     let managed = git_staircase::core::adopt(&local.repo, &metadata).unwrap();
     let workspace = TempDir::new().unwrap();
-    let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
+    let bin_str = env!("CARGO_BIN_EXE_git-staircase");
+    let mut binary = std::path::PathBuf::from(bin_str);
+    if !binary.exists() {
+        let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("debug")
+            .join("git-staircase");
+        if fallback.exists() {
+            binary = fallback;
+        }
+    }
+    let output = Command::new(&binary)
         .current_dir(&local.repo.workdir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", workspace.path())
         .args(["review", "create", "provider-cli", "--provider", "gerrit"])

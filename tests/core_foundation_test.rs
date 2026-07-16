@@ -8,12 +8,26 @@ use std::process::Command;
 
 fn command_output(path: &std::path::Path, args: &[&str]) -> std::process::Output {
     let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", path));
-    Command::new(env!("CARGO_BIN_EXE_git-staircase"))
+    let bin_str = env!("CARGO_BIN_EXE_git-staircase");
+    let mut binary = std::path::PathBuf::from(bin_str);
+    if !binary.exists() {
+        let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("debug")
+            .join("git-staircase");
+        if fallback.exists() {
+            binary = fallback;
+        }
+    }
+    match Command::new(&binary)
         .current_dir(path)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)
         .args(args)
         .output()
-        .unwrap()
+    {
+        Ok(out) => out,
+        Err(e) => panic!("Failed to run binary '{:?}' in dir '{:?}': {}", binary, path, e),
+    }
 }
 
 fn adopt_one(repo: &git_staircase::GitRepo, name: &str) -> git_staircase::StaircaseMetadata {

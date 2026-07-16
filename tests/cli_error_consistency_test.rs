@@ -7,14 +7,14 @@ fn test_error_output_consistency() {
     let ctx1 = TestContext::new();
     let output1 = Command::new(get_bin_path())
         .args(&["show", "nonexistent"])
-        .current_dir(&ctx1.tmp)
+        .current_dir(ctx1.tmp.path())
         .output()
         .unwrap();
 
     let ctx2 = TestContext::new();
     let output2 = Command::new(get_bin_path())
         .args(&["status", "nonexistent"])
-        .current_dir(&ctx2.tmp)
+        .current_dir(ctx2.tmp.path())
         .output()
         .unwrap();
 
