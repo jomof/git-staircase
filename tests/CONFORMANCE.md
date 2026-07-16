@@ -33,7 +33,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * Add a new step — `[planned] tests/conformance_adoption.rs::new_step_adopts_only_for_metadata_only_cut`
 * `reorder` — `[planned] tests/conformance_adoption.rs::reorder_adopts_only_when_state_or_identity_must_survive`
 * `move` changes between steps — `[planned] tests/conformance_adoption.rs::move_adopts_only_for_stable_or_intermediate_state`
-* Complete `rebase` — `[planned] tests/conformance_adoption.rs::rebase_adopts_only_for_continuity_or_stale_state`
+* Complete `rebase` — `[existing] tests/conformance_adoption.rs::rebase_adopts_only_for_continuity_or_stale_state`
 * Clean `restack` — `[planned] tests/conformance_adoption.rs::restack_adopts_only_to_remember_stale_relationship`
 * `archive` — `[existing] tests/conformance_adoption.rs::archive_always_adopts_implicit_selection`
 * Persistent name, description, labels, and links — `[existing] tests/conformance_adoption.rs::persistent_metadata_always_adopts`

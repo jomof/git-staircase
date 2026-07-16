@@ -263,3 +263,34 @@ fn no_adopt_fails_before_mutation_and_reports_reason() {
         refs
     );
 }
+
+#[test]
+fn rebase_adopts_only_for_continuity_or_stale_state() {
+    // ARRANGE: Create an implicit staircase.
+    let ctx = TestContext::new();
+    ctx.run_git(&["checkout", "-b", "feature"]);
+    ctx.commit("feature.txt", "feature content", "feature commit");
+
+    // Create a new branch to rebase onto.
+    ctx.run_git(&["checkout", "main"]);
+    ctx.run_git(&["checkout", "-b", "other"]);
+    ctx.commit("other.txt", "other content", "other commit");
+
+    // ACT: Perform a clean rebase onto 'other'.
+    let (rebase_ok, stdout_rebase, stderr_rebase) =
+        ctx.run_staircase(&["rebase", "--onto", "other", "refs/heads/feature"]);
+    assert!(
+        rebase_ok,
+        "Rebase command failed:\nSTDOUT: {}\nSTDERR: {}",
+        stdout_rebase, stderr_rebase
+    );
+
+    // ASSERT: Verify it remains implicit.
+    let (success, stdout, _) = ctx.run_staircase(&["status", "feature", "--json"]);
+    assert!(success);
+    assert!(
+        stdout.contains("\"is_implicit\": true"),
+        "Should remain implicit after clean rebase. Output: {}",
+        stdout
+    );
+}

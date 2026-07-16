@@ -702,17 +702,23 @@ pub(crate) fn step_commit_groups(
 }
 
 fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
-    metadata
-        .user_metadata
-        .as_ref()
-        .and_then(|user| {
-            user.extensions
-                .get("git-staircase.internal.integration-anchor")
-        })
-        .and_then(|value| value.as_str())
-        .map(str::to_string)
-        .map(Ok)
-        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))
+    if let Some(user) = &metadata.user_metadata {
+        if let Some(anchor) = user
+            .extensions
+            .get("git-staircase.internal.integration-anchor")
+        {
+            if let Some(anchor_str) = anchor.as_str() {
+                return Ok(anchor_str.to_string());
+            }
+        }
+    }
+
+    let target_oid = repo.resolve_commit(&metadata.target)?;
+    if metadata.id.starts_with("implicit@") && !metadata.steps.is_empty() {
+        return repo.merge_base(&target_oid, &metadata.steps[0].cut);
+    }
+
+    Ok(target_oid)
 }
 
 fn publish_metadata_common(
