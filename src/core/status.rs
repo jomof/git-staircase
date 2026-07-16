@@ -66,7 +66,7 @@ pub fn get_status_metadata_ext(
         });
     }
 
-    let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
+    let target_oid = repo.resolve_commit(&metadata.target)?;
 
     for i in 0..steps.len() {
         let parent_oid = if i == 0 {
@@ -113,12 +113,9 @@ pub fn get_status_metadata_ext(
                     }
                 }
             }
-        } else if let Ok(discoveries) = super::discovery::discover(
-            repo,
-            Some(&metadata.symbolic_integration_target),
-            None,
-            false,
-        ) {
+        } else if let Ok(discoveries) =
+            super::discovery::discover(repo, Some(&metadata.target), None, false)
+        {
             for d in discoveries {
                 if let Discovery::Linear(m) = d {
                     if m.name == metadata.name && m.id != metadata.id {

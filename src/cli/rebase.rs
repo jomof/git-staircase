@@ -16,17 +16,17 @@ pub struct Rebase {
 impl super::Command for Rebase {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
-        let symbolic_integration_target = self
+        let target = self
             .staircase
             .base
             .onto
             .as_deref()
-            .unwrap_or(&rs.metadata().symbolic_integration_target);
-        repo.resolve_commit(symbolic_integration_target)?;
+            .unwrap_or(&rs.metadata().target);
+        repo.resolve_commit(target)?;
         core::rebase_with_dry_run(
             repo,
             &rs,
-            symbolic_integration_target,
+            target,
             core::RebaseOptions {
                 leave_upper_steps_stale: self.leave_upper_steps_stale,
             },
@@ -34,7 +34,7 @@ impl super::Command for Rebase {
         )?;
         Ok(Box::new(Success::new(format!(
             "Rebased staircase onto {}",
-            symbolic_integration_target
+            target
         ))))
     }
 }

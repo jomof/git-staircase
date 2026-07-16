@@ -11,7 +11,7 @@ pub struct Commits {
 impl super::Command for Commits {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
-        let target_oid = repo.resolve_commit(&rs.metadata().symbolic_integration_target)?;
+        let target_oid = repo.resolve_commit(&rs.metadata().target)?;
         let mut current_base = target_oid;
         let mut steps = Vec::new();
 

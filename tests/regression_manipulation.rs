@@ -241,7 +241,7 @@ fn test_restack_propagation() {
         landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),
@@ -326,7 +326,7 @@ fn test_restack_conflict_handling() {
         landing_policy: None,
         id: "test-sc".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "s1".to_string(),
@@ -384,7 +384,7 @@ fn test_restack_inconsistency_on_failure() {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: "s1-id".to_string(),
@@ -451,7 +451,7 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test-staircase".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: "s1-id".to_string(),
@@ -486,7 +486,7 @@ fn test_move_commits_empty_panic() -> anyhow::Result<()> {
 fn test_move_commit_refuses_empty_source_before_mutation() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let c1 = ctx.commit("f1.txt", "1", "c1");
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
@@ -494,7 +494,7 @@ fn test_move_commit_refuses_empty_source_before_mutation() {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: symbolic_integration_target,
+        target: target,
         steps: vec![
             Step {
                 id: "s1-id".to_string(),

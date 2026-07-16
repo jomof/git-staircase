@@ -200,7 +200,7 @@ pub struct CapabilityProbeOutput {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct IntegrationContextCandidate {
     pub anchor_oid: Option<String>,
-    pub symbolic_integration_target: Option<String>,
+    pub symbolic_target: Option<String>,
     pub mode: String,
     pub provenance: String,
 }

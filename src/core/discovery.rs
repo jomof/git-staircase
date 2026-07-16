@@ -127,7 +127,7 @@ pub fn discover(
                     id: compute_implicit_id(repo, &onto_oid, &steps)?,
                     verification_policy: None,
                     name,
-                    symbolic_integration_target: onto_final.to_string(),
+                    target: onto_final.to_string(),
                     steps,
                     primary_branch_layout: layout,
                     branch_layout_base: layout_base,
@@ -234,7 +234,7 @@ fn build_ambiguous_family(
         id: Uuid::new_v4().to_string(),
         verification_policy: None,
         name: format!("Family starting at {}", root_short),
-        symbolic_integration_target: onto_final.to_string(),
+        target: onto_final.to_string(),
         steps,
         roots: vec![root_short],
     }

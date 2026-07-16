@@ -18,7 +18,7 @@ fn test_adopt_canonicalizes_onto() {
         ctx.run_staircase(&["adopt", "my-staircase", "--onto", "main", "feature"]);
     assert!(success, "Adopt failed: {}", stderr);
 
-    // ASSERT: Check generation-1 structure for the full symbolic symbolic_integration_target.
+    // ASSERT: Check generation-1 structure for the full symbolic target.
     let content = ctx.run_git(&["cat-file", "-p", "refs/staircases/my-staircase:structure"]);
     let structure: serde_json::Value = serde_json::from_str(&content).unwrap();
     assert_eq!(

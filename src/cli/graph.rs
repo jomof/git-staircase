@@ -12,14 +12,14 @@ impl super::Command for Graph {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
         let m = rs.metadata();
-        let symbolic_integration_target = &m.symbolic_integration_target;
+        let target = &m.target;
         let tip = &m.steps.last().expect("Staircase has no steps").cut;
 
         let output = repo.run(&[
             "log",
             "--graph",
             "--oneline",
-            &format!("{}..{}", symbolic_integration_target, tip),
+            &format!("{}..{}", target, tip),
         ])?;
         Ok(Box::new(PlainOutput(output)))
     }

@@ -121,7 +121,7 @@ impl ToPresentation for UnifiedReviewPlan {
         let mut h_children = vec![
             Presentation::Field {
                 label: "Target Ref".into(),
-                value: self.symbolic_integration_target.clone(),
+                value: self.target.clone(),
             },
             Presentation::Field {
                 label: "Mapping Policy".into(),
@@ -153,7 +153,7 @@ impl ToPresentation for UnifiedReviewPlan {
         }
 
         let mut p_records = vec![
-            record!["push_ref".into(), self.symbolic_integration_target.clone()],
+            record!["push_ref".into(), self.target.clone()],
             record!["mapping_policy".into(), self.policy.clone()],
         ];
         for item in &self.items {

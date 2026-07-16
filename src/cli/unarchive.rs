@@ -14,7 +14,7 @@ pub struct UnarchiveCmd {
 
     /// Restore canonical staircase name as <name>
     #[arg(long)]
-    pub name: Option<String>,
+    pub rename_to: Option<String>,
 
     /// Rename branches using sequential layout base name
     #[arg(long)]
@@ -87,7 +87,7 @@ impl Command for UnarchiveCmd {
         };
 
         let options = UnarchiveOptions {
-            new_name: self.name.clone(),
+            new_name: self.rename_to.clone(),
             branch_base: self.branch_base.clone(),
             branches_mode,
             adopt_existing_branches: self.adopt_existing_branches,

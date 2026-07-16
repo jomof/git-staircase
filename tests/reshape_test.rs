@@ -179,7 +179,7 @@ fn test_reorder_refuses_missing_owned_branches() {
         landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),
@@ -250,7 +250,7 @@ fn test_restack_without_branches() {
         landing_policy: None,
         id: Uuid::new_v4().to_string(),
         name: "mystaircase".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),

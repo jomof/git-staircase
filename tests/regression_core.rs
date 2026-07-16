@@ -152,7 +152,7 @@ fn test_split_duplicate_name() {
         landing_policy: None,
         id: "test-id".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: "main".to_string(),
+        target: "main".to_string(),
         steps: vec![Step {
             id: "s1-id".to_string(),
             name: "s1".to_string(),

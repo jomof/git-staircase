@@ -20,7 +20,7 @@ fn test_verification_policy_persistence() {
         landing_policy: None,
         id: "test-id-123".to_string(),
         name: "test-staircase".to_string(),
-        symbolic_integration_target: "refs/heads/main".to_string(),
+        target: "refs/heads/main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "step1".to_string(),

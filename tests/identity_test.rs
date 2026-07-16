@@ -7,12 +7,12 @@ use git_staircase::model::{IdentityKind, StaircaseMetadata, Step};
 fn test_identity_lineage_and_nominal() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let staircase = StaircaseMetadata {
         landing_policy: None,
         id: "test-uuid".to_string(),
         name: "test-name".to_string(),
-        symbolic_integration_target: symbolic_integration_target,
+        target: target,
         steps: vec![],
         verification_policy: None,
 
@@ -47,14 +47,14 @@ fn test_identity_lineage_and_nominal() {
 fn test_identity_revision() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let c1 = ctx.commit("f1.txt", "1", "c1");
 
     let s1 = StaircaseMetadata {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -83,7 +83,7 @@ fn test_identity_revision() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target,
+        target: target,
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -114,7 +114,7 @@ fn test_identity_revision() {
 fn test_identity_body() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let c1 = ctx.commit("f1.txt", "1", "c1");
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
@@ -122,7 +122,7 @@ fn test_identity_body() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -158,7 +158,7 @@ fn test_identity_body() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target,
+        target: target,
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -189,7 +189,7 @@ fn test_identity_body() {
 fn test_identity_decomposition() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let c1 = ctx.commit("f1.txt", "1", "c1");
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
@@ -197,7 +197,7 @@ fn test_identity_decomposition() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -229,7 +229,7 @@ fn test_identity_decomposition() {
     .unwrap();
 
     // ARRANGE (Rebase)
-    ctx.run_git(&["checkout", &symbolic_integration_target]);
+    ctx.run_git(&["checkout", &target]);
     let c1_new = ctx.commit("f1.txt", "1", "c1 rebased");
     let c2_new = ctx.commit("f2.txt", "2", "c2 rebased");
 
@@ -237,7 +237,7 @@ fn test_identity_decomposition() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -276,7 +276,7 @@ fn test_identity_decomposition() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -307,7 +307,7 @@ fn test_identity_decomposition() {
 fn test_identity_outcome() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let c1 = ctx.commit("f1.txt", "1", "c1");
     let c2 = ctx.commit("f2.txt", "2", "c2");
 
@@ -315,7 +315,7 @@ fn test_identity_outcome() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -348,7 +348,7 @@ fn test_identity_outcome() {
 
     // ARRANGE (Reorder)
     ctx.run_git(&["checkout", "main"]);
-    ctx.run_git(&["checkout", &symbolic_integration_target]);
+    ctx.run_git(&["checkout", &target]);
     ctx.commit("f2.txt", "2", "c2 reordered");
     ctx.commit("f1.txt", "1", "c1 reordered");
     let top_new = ctx.run_git(&["rev-parse", "HEAD"]);
@@ -357,7 +357,7 @@ fn test_identity_outcome() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target,
+        target: target,
         verification_policy: None,
         steps: vec![Step {
             id: String::new(),
@@ -388,12 +388,12 @@ fn test_identity_outcome() {
 fn test_revision_identity_prefix() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
     let staircase = StaircaseMetadata {
         landing_policy: None,
         id: "test-uuid".to_string(),
         name: "test-name".to_string(),
-        symbolic_integration_target: symbolic_integration_target,
+        target: target,
         steps: vec![],
         verification_policy: None,
         primary_branch_layout: None,
@@ -423,7 +423,7 @@ fn test_revision_identity_prefix() {
 fn test_identity_review() {
     // ARRANGE
     let ctx = TestContext::new();
-    let symbolic_integration_target = ctx.repo.resolve_commit("main").unwrap();
+    let target = ctx.repo.resolve_commit("main").unwrap();
 
     // Commit with Change-Id
     let c1 = ctx.commit(
@@ -441,7 +441,7 @@ fn test_identity_review() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {
@@ -488,7 +488,7 @@ fn test_identity_review() {
         landing_policy: None,
         id: "uuid".to_string(),
         name: "name".to_string(),
-        symbolic_integration_target: symbolic_integration_target.clone(),
+        target: target.clone(),
         verification_policy: None,
         steps: vec![
             Step {

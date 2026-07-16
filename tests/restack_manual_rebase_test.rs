@@ -46,7 +46,7 @@ fn test_restack_manual_rebase_of_multiple_steps() {
     let metadata = git_staircase::model::StaircaseMetadata {
         id: "test-staircase".to_string(),
         name: "test".to_string(),
-        symbolic_integration_target: root_commit.clone(),
+        target: root_commit.clone(),
         steps: vec![
             git_staircase::model::Step {
                 id: "s1".to_string(),

@@ -234,7 +234,7 @@ impl<I: StackedReviewImplementation> crate::workspace::review_provider::ReviewPr
 
         Ok(UnifiedReviewPlan {
             provider_label: self.implementation.provider_label().to_string(),
-            symbolic_integration_target: self.implementation.get_project(&self.route),
+            target: self.implementation.get_project(&self.route),
             policy: plan.mapping_policy().to_string(),
             items,
             warnings: plan.warnings().to_vec(),

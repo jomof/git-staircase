@@ -1,40 +1,78 @@
 use git_staircase::GitRepo;
 use std::fs;
 use std::process::Command;
-use tempfile::tempdir;
+use tempfile::TempDir;
 
 #[test]
-fn test_stale_memoization_after_checkout() {
-    let dir = tempdir().unwrap();
-    let repo_path = dir.path();
+fn test_stale_memoization() {
+    let tmp = TempDir::new().unwrap();
+    let dir = tmp.path();
 
-    let run_git = |args: &[&str]| {
-        let status = Command::new("git")
-            .args(args)
-            .current_dir(repo_path)
-            .status()
-            .unwrap();
-        assert!(status.success());
-    };
+    // Initialize repo
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["init", "-b", "main"])
+        .output()
+        .unwrap();
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["config", "user.email", "test@example.com"])
+        .output()
+        .unwrap();
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["config", "user.name", "Test"])
+        .output()
+        .unwrap();
 
-    run_git(&["init"]);
-    run_git(&["config", "user.email", "you@example.com"]);
-    run_git(&["config", "user.name", "Your Name"]);
-    fs::write(repo_path.join("file.txt"), "hello").unwrap();
-    run_git(&["add", "file.txt"]);
-    run_git(&["commit", "-m", "initial"]);
-    run_git(&["branch", "other"]);
+    fs::write(dir.join("file.txt"), "v1").unwrap();
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["add", "."])
+        .output()
+        .unwrap();
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["commit", "-m", "v1"])
+        .output()
+        .unwrap();
+    let oid1 = Command::new("git")
+        .current_dir(dir)
+        .args(&["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let oid1 = String::from_utf8_lossy(&oid1.stdout).trim().to_string();
 
-    let repo = GitRepo::new(repo_path.to_path_buf());
+    let repo = GitRepo::new(dir.to_path_buf());
 
-    // ARRANGE: Resolve HEAD symbolic name (cached)
-    let head1 = repo.resolve_symbolic_full_name("HEAD").unwrap();
+    // Resolve main - should be oid1
+    let resolved1 = repo.resolve_commit("main").unwrap();
+    assert_eq!(resolved1, oid1);
 
-    // ACT: Switch branch using run_interactive (which doesn't clear memoizer)
-    repo.run_interactive(&["checkout", "other"]).unwrap();
+    // Update main externally
+    fs::write(dir.join("file.txt"), "v2").unwrap();
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["add", "."])
+        .output()
+        .unwrap();
+    Command::new("git")
+        .current_dir(dir)
+        .args(&["commit", "-m", "v2"])
+        .output()
+        .unwrap();
+    let oid2 = Command::new("git")
+        .current_dir(dir)
+        .args(&["rev-parse", "HEAD"])
+        .output()
+        .unwrap();
+    let oid2 = String::from_utf8_lossy(&oid2.stdout).trim().to_string();
 
-    // ASSERT: Resolve HEAD again (should return new branch but returns cached old branch)
-    let head2 = repo.resolve_symbolic_full_name("HEAD").unwrap();
+    assert_ne!(oid1, oid2);
 
-    assert_ne!(head1, head2, "HEAD should have changed after checkout");
+    // Resolve main again
+    let resolved2 = repo.resolve_commit("main").unwrap();
+
+    // ASSERT: resolve_commit("main") returns the NEW OID
+    assert_eq!(resolved2, oid2, "Memoized OID is stale!");
 }
