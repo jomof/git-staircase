@@ -235,8 +235,10 @@ pub fn create_github_upload_plan(
     route: &GitHubRoute,
     commit_oids: &[String],
     mapping_policy: Option<&str>,
+    staircase_name: Option<&str>,
 ) -> Result<GitHubUploadPlan> {
     let policy = mapping_policy.unwrap_or("aggregate").to_string();
+    let name_prefix = staircase_name.map(|n| format!("{}/", n)).unwrap_or_default();
     if !matches!(policy.as_str(), "aggregate" | "stacked" | "cumulative") {
         return Err(StaircaseError::Other(format!(
             "unsupported GitHub review mapping '{}'; expected aggregate, stacked, or cumulative",
@@ -260,7 +262,7 @@ pub fn create_github_upload_plan(
         let mut prev_branch = route.destination_branch.clone();
         for (idx, oid) in commit_oids.iter().enumerate() {
             let subject = repo.run(&["log", "-1", "--format=%s", oid])?;
-            let head_branch = format!("staircase/step-{}", idx + 1);
+            let head_branch = format!("staircase/{}step-{}", name_prefix, idx + 1);
             let push_refspec = format!("{}:refs/heads/{}", oid, head_branch);
             publications.push(GitHubPlannedPublication {
                 step_oid: oid.clone(),
@@ -275,7 +277,7 @@ pub fn create_github_upload_plan(
     } else if policy == "cumulative" {
         for (idx, oid) in commit_oids.iter().enumerate() {
             let subject = repo.run(&["log", "-1", "--format=%s", oid])?;
-            let head_branch = format!("staircase/cumulative-{}", idx + 1);
+            let head_branch = format!("staircase/{}cumulative-{}", name_prefix, idx + 1);
             publications.push(GitHubPlannedPublication {
                 step_oid: oid.clone(),
                 subject,
@@ -1333,7 +1335,7 @@ impl GitHubInstance {
         oids: &[String],
         _record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewShow> {
-        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        let plan = create_github_upload_plan(repo, &self.route, oids, None, _record.map(|r| r.metadata.name.as_str()))?;
         let mut details = HashMap::new();
         details.insert("Mapping Policy".to_string(), plan.mapping_policy.clone());
 
@@ -1390,7 +1392,7 @@ impl GitHubInstance {
                 details,
             });
         }
-        let plan = create_github_upload_plan(_repo, &self.route, oids, None)?;
+        let plan = create_github_upload_plan(_repo, &self.route, oids, None, record.map(|r| r.metadata.name.as_str()))?;
         let mut details = HashMap::new();
         details.insert("Mapping Policy".to_string(), plan.mapping_policy.clone());
         details.insert(
@@ -1413,7 +1415,8 @@ impl GitHubInstance {
         mapping: Option<&str>,
         _record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewPlan> {
-        let plan = create_github_upload_plan(repo, &self.route, oids, mapping)?;
+        let staircase_name = _record.map(|r| r.metadata.name.as_str());
+        let plan = create_github_upload_plan(repo, &self.route, oids, mapping, staircase_name)?;
         let items = plan
             .publications
             .iter()
@@ -1558,7 +1561,7 @@ impl GitHubInstance {
                 });
             }
         }
-        let _plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        let _plan = create_github_upload_plan(repo, &self.route, oids, None, record.map(|r| r.metadata.name.as_str()))?;
         Ok(UnifiedReviewReconcile {
             provider_label: "GitHub".to_string(),
             status: "Reconciled with GitHub repository".to_string(),
@@ -1804,7 +1807,7 @@ impl GitHubInstance {
         oids: &[String],
         _record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderVerification> {
-        let plan = create_github_upload_plan(repo, &self.route, oids, None)?;
+        let plan = create_github_upload_plan(repo, &self.route, oids, None, _record.map(|r| r.metadata.name.as_str()))?;
         Ok(UnifiedProviderVerification {
             provider_label: "GitHub".into(),
             status: if plan.warnings.is_empty() {
@@ -1980,7 +1983,7 @@ impl crate::workspace::stacked_provider::StackedReviewImplementation
         oids: &[String],
         mapping: Option<&str>,
     ) -> Result<Self::Plan> {
-        create_github_upload_plan(repo, route, oids, mapping)
+        create_github_upload_plan(repo, route, oids, mapping, None)
     }
 
     fn get_host(&self, route: &GitHubRoute) -> String {

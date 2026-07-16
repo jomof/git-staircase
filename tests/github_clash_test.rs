@@ -41,10 +41,10 @@ fn test_github_stacked_plan_branches_are_static() {
     };
     
     // Create plan for staircase A
-    let plan_a = create_github_upload_plan(&repo, &route, &vec![sha1.clone()], Some("stacked")).unwrap();
+    let plan_a = create_github_upload_plan(&repo, &route, &vec![sha1.clone()], Some("stacked"), Some("staircase-a")).unwrap();
     
     // Create plan for staircase B
-    let plan_b = create_github_upload_plan(&repo, &route, &vec![sha1.clone()], Some("stacked")).unwrap();
+    let plan_b = create_github_upload_plan(&repo, &route, &vec![sha1.clone()], Some("stacked"), Some("staircase-b")).unwrap();
     
     // Currently they use the SAME branch name, which causes a clash
     // We WANT them to be different if they were different staircases,

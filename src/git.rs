@@ -121,7 +121,15 @@ impl<'a> GitCommand<'a> {
 
         if self.check_status && !output.status.success() {
             return Err(StaircaseError::GitCommandFailed {
-                command: format!("git {}", self.args.join(" ")),
+                command: format!("git {}", self.args.iter().map(|s| {
+                    if s.is_empty() {
+                        "''".to_string()
+                    } else if s.chars().any(|c| !c.is_ascii_alphanumeric() && !"-_.=+,/:@".contains(c)) {
+                        format!("'{}'", s.replace('\'', "'\\''"))
+                    } else {
+                        s.clone()
+                    }
+                }).collect::<Vec<_>>().join(" ")),
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             });
