@@ -3,14 +3,15 @@ use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::parse_git_url;
-use crate::workspace::provider_base::{self, ProviderAssociation, ReviewStateMachine};
+use crate::workspace::provider_base::{
+    self, ProviderAssociation, ReviewStateMachine, UnifiedMutationResult,
+};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
     SynchronizationState, TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
     UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
-    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
-    prepare_review_state,
+    UnifiedReviewShow, UnifiedReviewStatus, prepare_review_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -453,6 +454,30 @@ pub struct GitHubMutationResult {
     pub pull_requests_created: usize,
     pub unknown: usize,
     pub journal_operation_id: Option<String>,
+}
+
+impl GitHubMutationResult {
+    pub fn into_unified(self) -> UnifiedMutationResult<GitHubProviderState> {
+        UnifiedMutationResult {
+            state: self.state,
+            status: self.status,
+            changed: self.branches_published + self.pull_requests_created,
+            unknown: self.unknown,
+            journal_operation_id: self.journal_operation_id,
+            details: {
+                let mut details = HashMap::new();
+                details.insert(
+                    "branches_published".into(),
+                    self.branches_published.to_string(),
+                );
+                details.insert(
+                    "pull_requests_created".into(),
+                    self.pull_requests_created.to_string(),
+                );
+                details
+            },
+        }
+    }
 }
 
 pub struct GitHubStateMachine<T: ProviderTransport> {
@@ -1441,138 +1466,6 @@ impl GitHubInstance {
         })
     }
 
-    fn upload(
-        &self,
-        repo: &GitRepo,
-        oids: &[String],
-        _destination: Option<&str>,
-        record: Option<&StaircaseRecord>,
-    ) -> Result<UnifiedReviewUpload> {
-        if let Some(record) = record {
-            if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
-                let state: GitHubProviderState = serde_json::from_value(value.clone())?;
-                let machine = GitHubStateMachine::new(ProductionTransport);
-                let metadata = &record.metadata;
-                let subjects = metadata
-                    .steps
-                    .iter()
-                    .map(|step| step.id.clone())
-                    .collect::<Vec<_>>();
-                let plan = machine.plan(
-                    &state.route,
-                    &metadata.id,
-                    oids,
-                    &subjects,
-                    Some(&state.mapping_policy),
-                    Some(&state),
-                    Some((&record.record_oid, &record.structure_oid)),
-                )?;
-                let result = machine.publish(repo, &plan, state, true)?;
-                let next = machine.persist(repo, &record, &result.state)?;
-                return Ok(UnifiedReviewUpload {
-                    provider_label: "GitHub".into(),
-                    summary: result.status,
-                    details: vec![
-                        format!("branches published: {}", result.branches_published),
-                        format!("pull requests created: {}", result.pull_requests_created),
-                        format!("unknown: {}", result.unknown),
-                        format!(
-                            "record revision: {} -> {}",
-                            record.record_oid, next.record_oid
-                        ),
-                    ],
-                });
-            }
-        }
-        let machine = GitHubStateMachine::new(ProductionTransport);
-        let subject_ids: Vec<String> = (0..oids.len())
-            .map(|index| format!("commit-{}", index + 1))
-            .collect();
-        let operation_plan = machine.plan(
-            &self.route,
-            "implicit",
-            oids,
-            &subject_ids,
-            None,
-            None,
-            None,
-        )?;
-        let state = machine.create_state(&operation_plan)?;
-        let result = machine.publish(repo, &operation_plan, state, true)?;
-        Ok(UnifiedReviewUpload {
-            provider_label: "GitHub".to_string(),
-            summary: result.status,
-            details: vec![
-                format!("branches published: {}", result.branches_published),
-                format!("pull requests created: {}", result.pull_requests_created),
-            ],
-        })
-    }
-
-    fn reconcile(
-        &self,
-        repo: &GitRepo,
-        oids: &[String],
-        record: Option<&StaircaseRecord>,
-    ) -> Result<UnifiedReviewReconcile> {
-        if let Some(record) = record {
-            if let Some(value) = record.user_metadata.extensions.get("git-staircase.github") {
-                let state: GitHubProviderState = serde_json::from_value(value.clone())?;
-                let machine = GitHubStateMachine::new(ProductionTransport);
-                let mut observations = Vec::new();
-                for association in &state.associations {
-                    let Some(identity) = &association.pull_request else {
-                        continue;
-                    };
-                    let request = TransportRequest::Api {
-                        tool: "gh".into(),
-                        method: "GET".into(),
-                        endpoint: format!(
-                            "repos/{}/pulls/{}",
-                            identity.base_repository, identity.number
-                        ),
-                        arguments: Vec::new(),
-                        body: None,
-                    };
-                    let response = machine.transport.execute(repo, &request)?;
-                    if response.uncertain {
-                        return Err(StaircaseError::Other(
-                            "GitHub reconciliation query outcome is uncertain".into(),
-                        ));
-                    }
-                    if response.success {
-                        if let Some(observation) =
-                            parse_github_api_pull(&state.route.installation, &response.observations)
-                        {
-                            observations.push(observation);
-                        }
-                    }
-                }
-                let state = machine.reconcile(state, &observations);
-                let pending = state.reconciliation_required;
-                let next = machine.persist(repo, &record, &state)?;
-                return Ok(UnifiedReviewReconcile {
-                    provider_label: "GitHub".into(),
-                    status: format!(
-                        "{}; record {} -> {}",
-                        if pending {
-                            "reconciliation-required"
-                        } else {
-                            "reconciled"
-                        },
-                        record.record_oid,
-                        next.record_oid
-                    ),
-                });
-            }
-        }
-        let _plan = create_github_upload_plan(repo, &self.route, oids, None)?;
-        Ok(UnifiedReviewReconcile {
-            provider_label: "GitHub".to_string(),
-            status: "Reconciled with GitHub repository".to_string(),
-        })
-    }
-
     fn get_stable_identifiers(
         &self,
         _repo: &GitRepo,
@@ -2021,30 +1914,100 @@ impl crate::workspace::stacked_provider::StackedReviewImplementation
         details
     }
 
-    fn upload(
+    fn execute_upload(
         &self,
         repo: &GitRepo,
-        route: &GitHubRoute,
+        _route: &GitHubRoute,
         oids: &[String],
-        destination: Option<&str>,
-        record: Option<&StaircaseRecord>,
-    ) -> Result<crate::workspace::review_provider::UnifiedReviewUpload> {
-        let instance = GitHubInstance {
-            route: route.clone(),
-        };
-        instance.upload(repo, oids, destination, record)
+        _destination: Option<&str>,
+        record: &StaircaseRecord,
+        state: GitHubProviderState,
+    ) -> Result<UnifiedMutationResult<GitHubProviderState>> {
+        let machine = GitHubStateMachine::new(ProductionTransport);
+        let metadata = &record.metadata;
+        let subjects = metadata
+            .steps
+            .iter()
+            .map(|step| step.id.clone())
+            .collect::<Vec<_>>();
+        let plan = machine.plan(
+            &state.route,
+            &metadata.id,
+            oids,
+            &subjects,
+            Some(&state.mapping_policy),
+            Some(&state),
+            Some((&record.record_oid, &record.structure_oid)),
+        )?;
+        let result = machine.publish(repo, &plan, state, true)?;
+        Ok(result.into_unified())
     }
-    fn reconcile(
+
+    fn render_mutation_details(
+        &self,
+        result: &UnifiedMutationResult<GitHubProviderState>,
+    ) -> Vec<String> {
+        let mut details = Vec::new();
+        if let Some(val) = result.details.get("branches_published") {
+            details.push(format!("branches published: {}", val));
+        }
+        if let Some(val) = result.details.get("pull_requests_created") {
+            details.push(format!("pull requests created: {}", val));
+        }
+        details.push(format!("unknown: {}", result.unknown));
+        details
+    }
+    fn execute_reconcile(
         &self,
         repo: &GitRepo,
-        route: &GitHubRoute,
-        oids: &[String],
-        record: Option<&StaircaseRecord>,
-    ) -> Result<crate::workspace::review_provider::UnifiedReviewReconcile> {
-        let instance = GitHubInstance {
-            route: route.clone(),
+        _route: &GitHubRoute,
+        _oids: &[String],
+        _record: &StaircaseRecord,
+        state: GitHubProviderState,
+    ) -> Result<UnifiedMutationResult<GitHubProviderState>> {
+        let machine = GitHubStateMachine::new(ProductionTransport);
+        let mut observations = Vec::new();
+        for association in &state.associations {
+            let Some(identity) = &association.pull_request else {
+                continue;
+            };
+            let request = TransportRequest::Api {
+                tool: "gh".into(),
+                method: "GET".into(),
+                endpoint: format!(
+                    "repos/{}/pulls/{}",
+                    identity.base_repository, identity.number
+                ),
+                arguments: Vec::new(),
+                body: None,
+            };
+            let response = machine.transport.execute(repo, &request)?;
+            if response.uncertain {
+                return Err(StaircaseError::Other(
+                    "GitHub reconciliation query outcome is uncertain".into(),
+                ));
+            }
+            if response.success {
+                if let Some(observation) =
+                    parse_github_api_pull(&state.route.installation, &response.observations)
+                {
+                    observations.push(observation);
+                }
+            }
+        }
+        let status = if state.reconciliation_required {
+            "reconciliation-required"
+        } else {
+            "reconciled"
         };
-        instance.reconcile(repo, oids, record)
+        Ok(UnifiedMutationResult {
+            state,
+            status: status.into(),
+            changed: 0,
+            unknown: 0,
+            journal_operation_id: None,
+            details: HashMap::new(),
+        })
     }
     fn create(
         &self,

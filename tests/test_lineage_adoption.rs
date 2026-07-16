@@ -55,7 +55,14 @@ fn test_lineage_id_adoption() {
     // ACT: Explicitly adopt to get a stable UUID
     let (success, _, stderr) = run_staircase(
         repo_path,
-        &["adopt", "feature", "feature/core", "feature/ui", "--onto", "main"],
+        &[
+            "adopt",
+            "feature",
+            "feature/core",
+            "feature/ui",
+            "--onto",
+            "main",
+        ],
     );
     assert!(success, "adopt failed: {}", stderr);
 

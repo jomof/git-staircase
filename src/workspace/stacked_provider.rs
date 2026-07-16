@@ -1,7 +1,7 @@
 use crate::error::Result;
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
-use crate::workspace::provider_base;
+use crate::workspace::provider_base::{self, UnifiedMutationResult};
 use crate::workspace::review_provider::{
     SynchronizationState, UnifiedProviderLanding, UnifiedProviderVerification,
     UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan, UnifiedReviewReconcile,
@@ -64,21 +64,6 @@ pub trait StackedReviewImplementation: Send + Sync {
     ) -> String;
     fn render_state_details(&self, state: &Self::State) -> HashMap<String, String>;
 
-    fn upload(
-        &self,
-        repo: &GitRepo,
-        route: &Self::Route,
-        oids: &[String],
-        destination: Option<&str>,
-        record: Option<&StaircaseRecord>,
-    ) -> Result<UnifiedReviewUpload>;
-    fn reconcile(
-        &self,
-        repo: &GitRepo,
-        route: &Self::Route,
-        oids: &[String],
-        record: Option<&StaircaseRecord>,
-    ) -> Result<UnifiedReviewReconcile>;
     fn create(
         &self,
         repo: &GitRepo,
@@ -114,6 +99,27 @@ pub trait StackedReviewImplementation: Send + Sync {
         method: Option<&str>,
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderLanding>;
+
+    fn execute_upload(
+        &self,
+        repo: &GitRepo,
+        route: &Self::Route,
+        oids: &[String],
+        destination: Option<&str>,
+        record: &StaircaseRecord,
+        state: Self::State,
+    ) -> Result<UnifiedMutationResult<Self::State>>;
+
+    fn execute_reconcile(
+        &self,
+        repo: &GitRepo,
+        route: &Self::Route,
+        oids: &[String],
+        record: &StaircaseRecord,
+        state: Self::State,
+    ) -> Result<UnifiedMutationResult<Self::State>>;
+
+    fn render_mutation_details(&self, result: &UnifiedMutationResult<Self::State>) -> Vec<String>;
 }
 
 pub struct StackedReviewInstance<I: StackedReviewImplementation> {
@@ -248,8 +254,47 @@ impl<I: StackedReviewImplementation> crate::workspace::review_provider::ReviewPr
         destination: Option<&str>,
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewUpload> {
-        self.implementation
-            .upload(repo, &self.route, oids, destination, record)
+        if let Some(record) = record {
+            if let Some(value) = record
+                .user_metadata
+                .extensions
+                .get(self.implementation.extension_name())
+            {
+                let state: I::State = serde_json::from_value(value.clone())?;
+                let result = self.implementation.execute_upload(
+                    repo,
+                    &self.route,
+                    oids,
+                    destination,
+                    record,
+                    state,
+                )?;
+                let next = provider_base::persist_provider_state(
+                    repo,
+                    record,
+                    self.implementation.extension_name(),
+                    &result.state,
+                )?;
+                return Ok(UnifiedReviewUpload {
+                    provider_label: self.implementation.provider_label().into(),
+                    summary: result.status.clone(),
+                    details: {
+                        let mut details = self.implementation.render_mutation_details(&result);
+                        details.push(format!(
+                            "record revision: {} -> {}",
+                            record.record_oid, next.record_oid
+                        ));
+                        details
+                    },
+                });
+            }
+        }
+
+        Ok(UnifiedReviewUpload {
+            provider_label: self.implementation.provider_label().into(),
+            summary: "no active review state found for upload".into(),
+            details: Vec::new(),
+        })
     }
 
     fn reconcile(
@@ -258,8 +303,43 @@ impl<I: StackedReviewImplementation> crate::workspace::review_provider::ReviewPr
         oids: &[String],
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewReconcile> {
-        self.implementation
-            .reconcile(repo, &self.route, oids, record)
+        if let Some(record) = record {
+            if let Some(value) = record
+                .user_metadata
+                .extensions
+                .get(self.implementation.extension_name())
+            {
+                let state: I::State = serde_json::from_value(value.clone())?;
+                let result = self.implementation.execute_reconcile(
+                    repo,
+                    &self.route,
+                    oids,
+                    record,
+                    state,
+                )?;
+                let next = provider_base::persist_provider_state(
+                    repo,
+                    record,
+                    self.implementation.extension_name(),
+                    &result.state,
+                )?;
+                return Ok(UnifiedReviewReconcile {
+                    provider_label: self.implementation.provider_label().into(),
+                    status: format!(
+                        "{}; record {} -> {}",
+                        result.status, record.record_oid, next.record_oid
+                    ),
+                });
+            }
+        }
+
+        Ok(UnifiedReviewReconcile {
+            provider_label: self.implementation.provider_label().into(),
+            status: format!(
+                "Reconciled with {} repository",
+                self.implementation.provider_label()
+            ),
+        })
     }
 
     fn get_stable_identifiers(
