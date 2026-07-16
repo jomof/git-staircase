@@ -4,7 +4,7 @@ use crate::core::operation::{
 };
 use crate::core::persistence;
 use crate::core::refs::StaircaseRefs;
-use crate::core::resolved::{ResolvedStaircase, adopt};
+use crate::core::resolved::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{LifecycleState, StaircaseLifecycle, StaircaseMetadata, StaircaseUserMetadata};
@@ -76,12 +76,8 @@ pub(crate) fn replay(
         return Ok(());
     }
 
-    let managed = if staircase.is_managed() {
-        staircase.clone()
-    } else {
-        ResolvedStaircase::Managed(adopt(repo, staircase.metadata())?)
-    };
     let mut desired = desired;
+    let managed = ResolvedStaircase::Managed(crate::core::manipulation::adopt_implicit_for_mutation(repo, staircase)?);
     desired.id = managed.metadata().id.clone();
     desired.name = managed.metadata().name.clone();
     for (old, new) in managed

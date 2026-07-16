@@ -52,20 +52,25 @@ pub fn save_workspace_record_cas(
     };
     match (existing.as_ref(), expected_generation) {
         (Some(current), Some(expected)) if current.generation != expected => {
-            return Err(StaircaseError::Other(format!(
-                "concurrent-workspace-update: expected generation {}, found {}",
-                expected, current.generation
-            )));
+            return Err(StaircaseError::ConcurrentRecordUpdate {
+                reference: format!("workspace:{}", record.workspace_id),
+                expected: expected.to_string(),
+                actual: current.generation.to_string(),
+            });
         }
-        (Some(_), None) if record.generation == 0 => {
-            return Err(StaircaseError::Other(
-                "concurrent-workspace-update: record already exists".into(),
-            ));
+        (Some(current), None) if record.generation == 0 => {
+            return Err(StaircaseError::ConcurrentRecordUpdate {
+                reference: format!("workspace:{}", record.workspace_id),
+                expected: "<none>".into(),
+                actual: current.generation.to_string(),
+            });
         }
-        (None, Some(_)) => {
-            return Err(StaircaseError::Other(
-                "concurrent-workspace-update: record disappeared".into(),
-            ));
+        (None, Some(expected)) => {
+            return Err(StaircaseError::ConcurrentRecordUpdate {
+                reference: format!("workspace:{}", record.workspace_id),
+                expected: expected.to_string(),
+                actual: "<missing>".into(),
+            });
         }
         _ => {}
     }

@@ -707,17 +707,33 @@ fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Strin
         .unwrap_or_else(|| repo.resolve_commit(&metadata.target))
 }
 
+pub(crate) fn adopt_implicit_for_mutation(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+) -> Result<StaircaseMetadata> {
+    if staircase.is_managed() {
+        return Ok(staircase.metadata().clone());
+    }
+    let mut to_adopt = staircase.metadata().clone();
+    if to_adopt.id.is_empty() || to_adopt.id.starts_with("implicit@") {
+        to_adopt.id = uuid::Uuid::new_v4().to_string();
+    }
+    for step in &mut to_adopt.steps {
+        if step.id.is_empty() {
+            step.id = uuid::Uuid::new_v4().to_string();
+        }
+    }
+    super::persistence::write_metadata(repo, &to_adopt)?;
+    Ok(to_adopt)
+}
+
 fn publish_metadata_common(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
     mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
-    let managed = if staircase.is_managed() {
-        staircase.clone()
-    } else {
-        ResolvedStaircase::Managed(super::resolved::adopt(repo, staircase.metadata())?)
-    };
+    let managed = ResolvedStaircase::Managed(adopt_implicit_for_mutation(repo, staircase)?);
     metadata.id = managed.metadata().id.clone();
     for step in &mut metadata.steps {
         if step.id.is_empty() {

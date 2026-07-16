@@ -165,7 +165,9 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     let target_oid = repo.resolve_commit(&staircase.target)?;
     let mut staircase = staircase.clone();
     staircase.target = target;
-    if staircase.id.starts_with("implicit@") {
+    if staircase.id.is_empty() {
+        staircase.id = Uuid::new_v4().to_string();
+    } else if staircase.id.starts_with("implicit@") {
         let current_id = compute_implicit_id(repo, &staircase.target, &staircase.steps)?;
         if current_id != staircase.id {
             return Err(StaircaseError::Other(format!(

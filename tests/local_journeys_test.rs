@@ -585,7 +585,7 @@ fn split_renumber_is_transactional_and_preserves_upper_step_id() {
     let top_cut = context.commit("three.txt", "three\n", "three");
     let metadata = StaircaseMetadata {
         landing_policy: None,
-        id: "implicit@test".into(),
+        id: String::new(),
         name: "managed".into(),
         target: "refs/heads/main".into(),
         steps: vec![
