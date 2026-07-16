@@ -274,16 +274,11 @@ impl ToPresentation for IdResult {
                 self.name
             )));
         }
-        let value = if self.kind == IdentityKind::Revision {
-            format!("revision: {}", self.id)
-        } else {
-            self.id.clone()
-        };
-        h_items.push(Presentation::Plain(value.clone()));
+        h_items.push(Presentation::Plain(self.id.clone()));
 
         Presentation::pair(
             Presentation::List(h_items),
-            Presentation::Plain(if self.kind == IdentityKind::Revision { format!("revision: {}", self.id) } else { self.id.clone() }),
+            Presentation::Plain(self.id.clone()),
         )
     }
 }

@@ -145,7 +145,7 @@ pub fn validate_split_plan(
         metadata.branch_layout_base = None;
     }
     metadata.steps.insert(step_index, step);
-    super::resolved::validate_renumbering(repo, staircase.metadata(), &mut metadata, true)
+    super::resolved::validate_renumbering(repo, staircase.metadata(), &mut metadata)
 }
 
 pub fn join(
@@ -204,7 +204,7 @@ pub fn join(
     };
     let mut desired = managed.metadata().clone();
     desired.steps.remove(low);
-    super::resolved::validate_renumbering(repo, managed.metadata(), &mut desired, true)?;
+    super::resolved::validate_renumbering(repo, managed.metadata(), &mut desired)?;
     let selector = super::resolved::ResolvedSelector {
         staircase: managed,
         step_index: None,
@@ -290,12 +290,7 @@ fn reorder_internal(
     }
 
     metadata.steps = new_steps;
-    super::resolved::validate_renumbering(
-        repo,
-        staircase.metadata(),
-        &mut metadata,
-        options.no_restack,
-    )?;
+    super::resolved::validate_renumbering(repo, staircase.metadata(), &mut metadata)?;
     if options.no_restack {
         if dry_run {
             Ok(())
@@ -358,12 +353,7 @@ pub fn drop_with_dry_run(
 
     let mut desired = metadata.clone();
     desired.steps.remove(step_index);
-    super::resolved::validate_renumbering(
-        repo,
-        &metadata,
-        &mut desired,
-        !options.restack || options.leave_descendants_stale,
-    )?;
+    super::resolved::validate_renumbering(repo, &metadata, &mut desired)?;
     if !options.restack || options.leave_descendants_stale {
         return if dry_run {
             Ok(())
@@ -883,7 +873,7 @@ pub fn land_through(
         .collect::<Vec<_>>();
     let mut desired = metadata.clone();
     desired.steps.drain(..=through_step);
-    super::resolved::validate_renumbering(repo, metadata, &mut desired, true)?;
+    super::resolved::validate_renumbering(repo, metadata, &mut desired)?;
     if dry_run {
         return Ok(());
     }

@@ -15,25 +15,12 @@ pub struct RevParse {
     #[command(flatten)]
     pub selector: StaircaseSelectorArgs,
     #[arg(long, group = "projection")]
-    #[arg(long, group = "projection", id = "ref-projection", long("ref-rev"))]
     pub r#ref: bool,
     #[arg(long, group = "projection")]
     pub lineage: bool,
     #[arg(long, group = "projection")]
-    #[arg(
-        long,
-        group = "projection",
-        id = "record-projection",
-        long("record-rev")
-    )]
     pub record: bool,
     #[arg(long, group = "projection")]
-    #[arg(
-        long,
-        group = "projection",
-        id = "structure-projection",
-        long("structure-rev")
-    )]
     pub structure: bool,
     #[arg(long, group = "projection")]
     pub top: bool,
@@ -56,22 +43,8 @@ pub struct RevParseResult {
 
 impl ToPresentation for RevParseResult {
     fn to_presentation(&self) -> Presentation {
-        let label = match self.kind.as_str() {
-            "record" => "record revision: ",
-            "structure" => "structure revision: ",
-            "metadata" => "metadata revision: ",
-            "lifecycle" => "lifecycle revision: ",
-            "top" => "top: ",
-            "step" => "step: ",
-            "lineage" => "lineage: ",
-            "ref" => "ref: ",
-            _ => "",
-        };
         Presentation::List(vec![
-            Presentation::Human(Box::new(Presentation::Plain(format!(
-                "{}{}",
-                label, self.value
-            )))),
+            Presentation::Human(Box::new(Presentation::Plain(self.value.clone()))),
             Presentation::Porcelain(Box::new(Presentation::Record(vec![
                 "identity".into(),
                 "1".into(),
