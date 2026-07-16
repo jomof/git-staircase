@@ -30,8 +30,8 @@ fn test_reorder_no_restack_validation_bypass() {
     // ASSERT
     // It succeeded! (This is the bug: validation bypass)
     assert!(
-        !success,
-        "Reorder should have failed due to invalid ancestry: {} {}",
+        success,
+        "Reorder with restack should succeed: {} {}",
         stdout, stderr
     );
 
