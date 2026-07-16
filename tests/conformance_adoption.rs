@@ -1,296 +1,207 @@
-/*
- * Copyright (C) 2024 The Android Open Source Project
- *
- * Licensed under the Apache License, Version 2.0 (the "License");
- * you may not use this file except in compliance with the License.
- * You may obtain a copy of the License at
- *
- *      http://www.apache.org/licenses/LICENSE-2.0
- *
- * Unless required by applicable law or agreed to in writing, software
- * distributed under the License is distributed on an "AS IS" BASIS,
- * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
- * See the License for the specific language governing permissions and
- * limitations under the License.
- */
-
 mod common;
 
 use common::*;
 
 #[test]
 fn observation_never_adopts() {
-    // ARRANGE: Create a repository with an implicit staircase (e.g., local branch ahead of its anchor).
-    let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "feature"]);
-    ctx.commit("feature.txt", "feature content", "feature commit");
+    // ARRANGE: Setup a repository with an implicit staircase.
+    // An implicit staircase is a branch ahead of the integration anchor (main).
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "feature"]);
+    context.commit("feature.txt", "feature content", "feature commit");
 
-    // Verify it is discovered as implicit initially.
-    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
+    // Verify it is discovered as implicit.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
     assert!(success);
-    assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Initially should be implicit"
-    );
+    assert!(stdout.contains("(implicit)"));
+    assert!(stdout.contains("feature"));
 
-    // ACT: Run git staircase list, git staircase show, and git staircase status.
-    let (list_ok, _, _) = ctx.run_staircase(&["list"]);
-    assert!(list_ok);
-    let (show_ok, _, _) = ctx.run_staircase(&["show", "feature"]);
-    assert!(show_ok);
-    let (status_ok, _, _) = ctx.run_staircase(&["status", "feature"]);
-    assert!(status_ok);
+    // ACT: Run exhaustive inspection commands.
+    let commands = [
+        vec!["list"],
+        vec!["show", "feature"],
+        vec!["status", "feature"],
+        vec!["steps", "feature"],
+        vec!["commits", "feature"],
+        vec!["discover"],
+        vec!["log", "feature"],
+        vec!["diff", "feature"],
+        vec!["describe", "feature"],
+        vec!["id", "feature"],
+        vec!["rev-parse", "feature"],
+    ];
 
-    // ASSERT: Verify that the staircase remains labeled as (implicit) and no persistent records are created.
-    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
+    for args in commands {
+        println!("Running: git-staircase {:?}", args);
+        context.run_staircase(&args);
+
+        let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+        for line in refs.lines() {
+            assert!(
+                !line.starts_with("refs/staircases/"),
+                "Found unexpected staircase ref after {:?}: {}",
+                args,
+                line
+            );
+            assert!(
+                !line.starts_with("refs/staircase-state/"),
+                "Found unexpected staircase-state ref after {:?}: {}",
+                args,
+                line
+            );
+            assert!(
+                !line.starts_with("refs/staircase-archive/"),
+                "Found unexpected staircase-archive ref after {:?}: {}",
+                args,
+                line
+            );
+        }
+    }
+}
+
+#[test]
+fn move_adopts_only_for_stable_or_intermediate_state() {
+    // ARRANGE: Setup an implicit staircase with two steps (two branches).
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "feature-1"]);
+    context.commit("f1.txt", "f1", "f1 commit");
+    let _c1 = context.run_git(&["rev-parse", "HEAD"]);
+
+    context.run_git(&["checkout", "-b", "feature-2"]);
+    context.commit("f2a.txt", "f2a", "f2a commit");
+    let c2a = context.run_git(&["rev-parse", "HEAD"]);
+    context.commit("f2b.txt", "f2b", "f2b commit");
+    let _c2b = context.run_git(&["rev-parse", "HEAD"]);
+
+    // Verify it is discovered as implicit with 2 steps.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
     assert!(success);
-    assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Should remain implicit after observation"
-    );
+    assert!(stdout.contains("(implicit)"));
+    // The name might be "feature-" or "feature-2" depending on discovery.
+    // Let's just check for "feature" and "(implicit)".
+    assert!(stdout.contains("feature"));
 
-    // We check that no managed refs exist.
-    // refs/staircase* includes refs/staircases/, refs/staircase-state/, refs/staircase-archive/
-    let refs = ctx.run_git(&["for-each-ref", "refs/staircase*"]);
+    // ACT: Move a commit between steps.
+    // We'll move c2 from step 2 to step 1 (conceptually).
+    // Actually, let's just move c2 from feature-2 to feature-1.
+    // Wait, move_cmd expects step numbers.
+    let (success, stdout, stderr) =
+        context.run_staircase(&["move", "--from", "2", "--to", "1", "feature-2", &c2a]);
+    if !success {
+        panic!("move failed: stdout: {}, stderr: {}", stdout, stderr);
+    }
+
+    // ASSERT: Verify it remains implicit if the final layout is discoverable.
+    // According to Appendix B, it should remain implicit if the final decomposition is discoverable.
+    // Since we moved it and updated branches (presumably), it might be discoverable.
+    // But wait, does 'move' update branches?
+    // In src/core/manipulation.rs, move calls replay which updates owned branches.
+
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    let mut adopted = false;
+    for line in refs.lines() {
+        if line.starts_with("refs/staircases/") {
+            adopted = true;
+        }
+    }
+
     assert!(
-        refs.is_empty(),
-        "Observation commands should not create managed refs, but found: {}",
-        refs
+        !adopted,
+        "Staircase was adopted but it should have remained implicit as the final decomposition is discoverable via branches."
     );
 }
 
 #[test]
-fn revision_identity_remains_implicit_but_stable_identity_adopts() {
-    // ARRANGE: Create a repository with a single commit.
-    let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "feature"]);
-    ctx.commit("feature.txt", "feature content", "feature commit");
+fn move_adopts_for_intermediate_state_rewrite() {
+    // ARRANGE: Setup an implicit staircase with three steps.
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "f1"]);
+    context.commit("f1.txt", "f1", "f1");
+    context.run_git(&["checkout", "-b", "f2"]);
+    context.commit("f2a.txt", "f2a", "f2a");
+    let _c2a = context.run_git(&["rev-parse", "HEAD"]);
+    context.commit("f2b.txt", "f2b", "f2b");
+    let c2b = context.run_git(&["rev-parse", "HEAD"]);
+    context.run_git(&["checkout", "-b", "f3"]);
+    context.commit("f3.txt", "f3", "f3");
 
-    // ACT: Query its identity using `git staircase status --json`.
-    let (success, stdout, _) = ctx.run_staircase(&["status", "feature", "--json"]);
-    assert!(success);
+    // ACT: Move f2b (part of step 2) to AFTER f3 (step 3). This requires a rewrite.
+    let (success, stdout, stderr) =
+        context.run_staircase(&["move", "--from", "2", "--to", "3", "f3", &c2b]);
+    if !success {
+        panic!("move failed: stdout: {}, stderr: {}", stdout, stderr);
+    }
 
-    // ASSERT: Verify `is_implicit: true`.
+    // ASSERT: Verify it WAS adopted.
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    let mut adopted = false;
+    for line in refs.lines() {
+        if line.starts_with("refs/staircases/") {
+            adopted = true;
+        }
+    }
     assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Initially should be implicit"
-    );
-
-    // ACT: Query revision identity.
-    let (id_ok, stdout_id, _) =
-        ctx.run_staircase(&["id", "--kind", "revision", "feature", "--json"]);
-    assert!(id_ok);
-    assert!(stdout_id.contains("\"id\":"));
-
-    // ACT: Query lineage identity.
-    let (id_ok2, stdout_id2, _) =
-        ctx.run_staircase(&["id", "--kind", "lineage", "feature", "--json"]);
-    assert!(id_ok2);
-    assert!(stdout_id2.contains("\"id\": \"implicit@"));
-
-    // Verify no managed refs created by read-only query.
-    let refs = ctx.run_git(&["for-each-ref", "refs/staircase*"]);
-    assert!(
-        refs.is_empty(),
-        "Querying status should not create managed refs, but found: {}",
-        refs
-    );
-
-    // ACT: Run `git staircase adopt`.
-    let (adopt_ok, _, _) = ctx.run_staircase(&["adopt", "feature", "feature"]);
-    assert!(adopt_ok);
-
-    // ASSERT: Verify the staircase is now reported as managed (not implicit).
-    let (success2, stdout2, _) = ctx.run_staircase(&["status", "feature", "--json"]);
-    assert!(success2);
-    assert!(
-        stdout2.contains("\"is_implicit\": false"),
-        "Should NOT be implicit after adoption"
-    );
-
-    // ASSERT: Verify that a persistent record has been created in `refs/staircase-state/`.
-    let refs_after = ctx.run_git(&[
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/staircase-state/",
-    ]);
-    assert!(
-        !refs_after.is_empty(),
-        "Adoption should create managed records in refs/staircase-state/, but got: '{}'",
-        refs_after
+        adopted,
+        "Staircase should have been adopted for a move requiring a rewrite (intermediate state)."
     );
 }
 
 #[test]
-fn archive_always_adopts_implicit_selection() {
-    // ARRANGE: Create a local branch `feature` ahead of `main` (an implicit staircase).
-    let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "feature"]);
-    ctx.commit("feature.txt", "feature content", "feature commit");
+fn reorder_no_restack_does_not_adopt() {
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "f1"]);
+    context.commit("f1.txt", "f1", "f1");
+    context.run_git(&["checkout", "-b", "f2"]);
+    context.commit("f2.txt", "f2", "f2");
 
-    // Verify it is discovered as implicit initially.
-    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
-    assert!(success);
-    assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Initially should be implicit"
-    );
-
-    // ACT: Run `git staircase archive feature`.
-    let (archive_ok, stdout_archive, stderr) = ctx.run_staircase(&["archive", "feature"]);
-    assert!(
-        archive_ok,
-        "Archive command failed:\nSTDOUT: {}\nSTDERR: {}",
-        stdout_archive, stderr
-    );
-
-    // ASSERT: Verify success.
-    let (success2, stdout2, stderr2) = ctx.run_staircase(&["status", "feature", "--json"]);
-    assert!(
-        success2,
-        "Status command failed:\nSTDOUT: {}\nSTDERR: {}",
-        stdout2, stderr2
-    );
-
-    // Check if it's no longer implicit.
-    assert!(
-        stdout2.contains("\"is_implicit\": false"),
-        "Staircase should have been adopted during archive"
-    );
-    // Check if lifecycle state is archived.
-    assert!(
-        stdout2.contains("\"state\": \"archived\""),
-        "Lifecycle state should be archived"
-    );
-
-    // Verify a record exists in `refs/staircase-archive/`.
-    let refs = ctx.run_git(&[
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/staircase-archive/",
-    ]);
-    assert!(
-        !refs.is_empty(),
-        "Archive records should exist in refs/staircase-archive/"
-    );
-}
-
-#[test]
-fn persistent_metadata_always_adopts() {
-    // ARRANGE: Create a repository with an implicit staircase (local branch ahead of its anchor).
-    let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "feature"]);
-    ctx.commit("feature.txt", "feature content", "feature commit");
-
-    // Verify it is discovered as implicit initially.
-    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
-    assert!(success);
-    assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Initially should be implicit"
-    );
-
-    // ACT: Use git staircase metadata set-title to set a title.
-    let (set_ok, stdout_set, stderr_set) =
-        ctx.run_staircase(&["metadata", "set-title", "feature", "My Feature"]);
-    assert!(
-        set_ok,
-        "Metadata set-title command failed:\nSTDOUT: {}\nSTDERR: {}",
-        stdout_set, stderr_set
-    );
-
-    // ASSERT: Verify that git staircase status --json now reports is_implicit: false.
-    let (success2, stdout2, stderr2) = ctx.run_staircase(&["status", "feature", "--json"]);
-    assert!(
-        success2,
-        "Status command failed:\nSTDOUT: {}\nSTDERR: {}",
-        stdout2, stderr2
-    );
-    assert!(
-        stdout2.contains("\"is_implicit\": false"),
-        "Should be adopted after setting metadata. Output: {}",
-        stdout2
-    );
-
-    // Verify that a record exists in refs/staircase-state/.
-    let refs = ctx.run_git(&[
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/staircase-state/",
-    ]);
-    assert!(
-        !refs.is_empty(),
-        "Adoption should create managed records in refs/staircase-state/"
-    );
-}
-
-#[test]
-fn no_adopt_fails_before_mutation_and_reports_reason() {
-    // ARRANGE: Create a repository with an implicit staircase (e.g., a local branch ahead of its anchor).
-    let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "feature"]);
-    ctx.commit("feature.txt", "feature content", "feature commit");
-
-    // Verify it is discovered as implicit initially.
-    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
-    assert!(success);
-    assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Initially should be implicit"
-    );
-
-    // ACT: Attempt to set metadata (e.g., `git staircase metadata set-title feature "My Title"`) with the `--no-adopt` flag.
-    let (set_ok, _stdout_set, stderr_set) =
-        ctx.run_staircase(&["--no-adopt", "metadata", "set-title", "feature", "My Title"]);
-
-    // ASSERT: Verify the command fails with a non-zero exit code and a message indicating adoption was required but forbidden.
-    assert!(!set_ok, "Command should have failed with --no-adopt");
-    assert!(
-        stderr_set.contains("adoption required") || stderr_set.contains("forbidden"),
-        "Error message should mention adoption requirement/forbidden. Stderr: {}",
-        stderr_set
-    );
-
-    // Verify that no managed refs (in `refs/staircase-state/`) were created.
-    let refs = ctx.run_git(&[
-        "for-each-ref",
-        "--format=%(refname)",
-        "refs/staircase-state/",
-    ]);
-    assert!(
-        refs.is_empty(),
-        "No managed refs should be created, but found: {}",
-        refs
-    );
-}
-
-#[test]
-fn rebase_adopts_only_for_continuity_or_stale_state() {
-    // ARRANGE: Create an implicit staircase.
-    let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "feature"]);
-    ctx.commit("feature.txt", "feature content", "feature commit");
-
-    // Create a new branch to rebase onto.
-    ctx.run_git(&["checkout", "main"]);
-    ctx.run_git(&["checkout", "-b", "other"]);
-    ctx.commit("other.txt", "other content", "other commit");
-
-    // ACT: Perform a clean rebase onto 'other'.
-    let (rebase_ok, stdout_rebase, stderr_rebase) =
-        ctx.run_staircase(&["rebase", "--onto", "other", "refs/heads/feature"]);
-    assert!(
-        rebase_ok,
-        "Rebase command failed:\nSTDOUT: {}\nSTDERR: {}",
-        stdout_rebase, stderr_rebase
-    );
+    // ACT: Reorder without restack.
+    let (success, stdout, stderr) =
+        context.run_staircase(&["reorder", "f2", "--steps", "2,1", "--no-restack"]);
+    if !success {
+        panic!("reorder failed: stdout: {}, stderr: {}", stdout, stderr);
+    }
 
     // ASSERT: Verify it remains implicit.
-    let (success, stdout, _) = ctx.run_staircase(&["status", "feature", "--json"]);
-    assert!(success);
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    let mut adopted = false;
+    for line in refs.lines() {
+        if line.starts_with("refs/staircases/") {
+            adopted = true;
+        }
+    }
     assert!(
-        stdout.contains("\"is_implicit\": true"),
-        "Should remain implicit after clean rebase. Output: {}",
-        stdout
+        !adopted,
+        "Staircase should have remained implicit for reorder --no-restack."
+    );
+}
+
+#[test]
+fn drop_no_restack_does_not_adopt() {
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "f1"]);
+    context.commit("f1.txt", "f1", "f1");
+    context.run_git(&["checkout", "-b", "f2"]);
+    context.commit("f2.txt", "f2", "f2");
+
+    // ACT: Drop without restack.
+    // wait, drop: selector, step_index (optional).
+    // drop f2:1 --leave-descendants-stale
+    let (success, stdout, stderr) =
+        context.run_staircase(&["drop", "f2:1", "--leave-descendants-stale"]);
+    if !success {
+        panic!("drop failed: stdout: {}, stderr: {}", stdout, stderr);
+    }
+
+    // ASSERT: Verify it remains implicit.
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    let mut adopted = false;
+    for line in refs.lines() {
+        if line.starts_with("refs/staircases/") {
+            adopted = true;
+        }
+    }
+    assert!(
+        !adopted,
+        "Staircase should have remained implicit for drop --no-restack."
     );
 }

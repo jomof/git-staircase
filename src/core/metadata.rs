@@ -13,9 +13,6 @@ pub fn get_user_metadata(
     repo: &GitRepo,
     selector: &ResolvedSelector,
 ) -> Result<StaircaseUserMetadata> {
-    if !selector.staircase.is_managed() {
-        return Ok(StaircaseUserMetadata::default());
-    }
     let meta = selector.staircase.metadata();
     let record_ref = StaircaseRefs::record(
         &meta.id,
@@ -33,12 +30,6 @@ pub fn get_user_metadata_snapshot(
     repo: &GitRepo,
     selector: &ResolvedSelector,
 ) -> Result<(StaircaseUserMetadata, String)> {
-    if !selector.staircase.is_managed() {
-        return Ok((
-            StaircaseUserMetadata::default(),
-            "0000000000000000000000000000000000000000".to_string(),
-        ));
-    }
     let record = read_selected_record(repo, selector)?;
     Ok((record.user_metadata, record.record_oid))
 }
@@ -48,13 +39,6 @@ pub fn update_user_metadata(
     selector: &ResolvedSelector,
     new_user_meta: StaircaseUserMetadata,
 ) -> Result<StaircaseRecord> {
-    if !selector.staircase.is_managed() {
-        let mut metadata = selector.staircase.metadata().clone();
-        metadata.user_metadata = Some(new_user_meta);
-        let adopted = crate::core::resolved::adopt(repo, &metadata)?;
-        let record_ref = StaircaseRefs::state_record(&adopted.id);
-        return persistence::read_record(repo, &record_ref);
-    }
     let record = read_selected_record(repo, selector)?;
     update_user_metadata_expected(repo, selector, new_user_meta, &record.record_oid)
 }
@@ -66,17 +50,6 @@ pub fn update_user_metadata_expected(
     expected_record_oid: &str,
 ) -> Result<StaircaseRecord> {
     let meta = selector.staircase.metadata();
-
-    if expected_record_oid == "0000000000000000000000000000000000000000"
-        || expected_record_oid.is_empty()
-    {
-        let mut metadata = meta.clone();
-        metadata.user_metadata = Some(new_user_meta);
-        let adopted = crate::core::resolved::adopt(repo, &metadata)?;
-        let record_ref = StaircaseRefs::state_record(&adopted.id);
-        return persistence::read_record(repo, &record_ref);
-    }
-
     let mut record = persistence::read_record(repo, expected_record_oid)?;
     if record.metadata.id != meta.id {
         return Err(crate::StaircaseError::ConcurrentRecordUpdate {

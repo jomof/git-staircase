@@ -12,7 +12,6 @@ use std::thread;
 pub struct GitRepo {
     pub workdir: PathBuf,
     pub memoizer: Memoizer,
-    pub no_adopt: bool,
 }
 
 pub struct GitCommand<'a> {
@@ -163,16 +162,11 @@ impl GitRepo {
         GitRepo {
             workdir,
             memoizer: Memoizer::new(),
-            no_adopt: false,
         }
     }
 
     pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
-        GitRepo {
-            workdir,
-            memoizer,
-            no_adopt: false,
-        }
+        GitRepo { workdir, memoizer }
     }
 
     pub fn git_cmd(&self) -> Command {
@@ -209,8 +203,7 @@ impl GitRepo {
     }
 
     pub fn resolve_commit(&self, rev: &str) -> Result<String> {
-        let is_oid = is_full_oid(rev);
-        if is_oid {
+        if rev != "HEAD" {
             if let Some(oid) = self.memoizer.get_resolve_commit(rev) {
                 return Ok(oid);
             }
@@ -226,7 +219,7 @@ impl GitRepo {
                 ])
                 .run()
             {
-                if is_oid {
+                if rev != "HEAD" {
                     self.memoizer.set_resolve_commit(rev, &sha);
                 }
                 return Ok(sha);
@@ -240,7 +233,7 @@ impl GitRepo {
                 ])
                 .run()
             {
-                if is_oid {
+                if rev != "HEAD" {
                     self.memoizer.set_resolve_commit(rev, &sha);
                 }
                 return Ok(sha);
@@ -254,15 +247,14 @@ impl GitRepo {
                 .run()?
         };
 
-        if is_oid {
+        if rev != "HEAD" {
             self.memoizer.set_resolve_commit(rev, &oid);
         }
         Ok(oid)
     }
 
     pub fn resolve_symbolic_full_name(&self, name: &str) -> Result<String> {
-        let is_full_ref = name.starts_with("refs/");
-        if is_full_ref {
+        if name != "HEAD" {
             if let Some(res) = self.memoizer.get_symbolic_name(name) {
                 return Ok(res);
             }
@@ -277,7 +269,7 @@ impl GitRepo {
                 name
             )));
         }
-        if is_full_ref {
+        if name != "HEAD" {
             self.memoizer.set_symbolic_name(name, &full_name);
         }
         Ok(full_name)
@@ -291,8 +283,7 @@ impl GitRepo {
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
-        let is_oid = is_full_oid(rev);
-        if is_oid {
+        if rev != "HEAD" {
             if let Some(res) = self.memoizer.get_resolve_ref(rev) {
                 return Ok(res);
             }
@@ -308,7 +299,7 @@ impl GitRepo {
         } else {
             None
         };
-        if is_oid {
+        if rev != "HEAD" {
             self.memoizer.set_resolve_ref(rev, res.as_deref());
         }
         Ok(res)
@@ -817,9 +808,4 @@ impl GitRepo {
     pub fn read_tree_file(&self, rev: &str, path: &str) -> Result<String> {
         self.cat_file(&format!("{}:{}", rev, path))
     }
-}
-
-fn is_full_oid(s: &str) -> bool {
-    let len = s.len();
-    (len == 40 || len == 64) && s.chars().all(|c| c.is_ascii_hexdigit())
 }

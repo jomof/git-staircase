@@ -1,5 +1,3 @@
-mod common;
-use common::get_test_binary_path;
 use std::fs;
 use std::path::Path;
 use std::process::Command;
@@ -27,19 +25,13 @@ fn commit(dir: &Path, file: &str, content: &str, msg: &str) -> String {
 
 fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
     let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", dir));
-    let binary = get_test_binary_path();
-    let output = match Command::new(&binary)
+    let binary = Path::new(env!("CARGO_BIN_EXE_git-staircase"));
+    let output = Command::new(binary)
         .current_dir(dir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)
         .args(args)
         .output()
-    {
-        Ok(out) => out,
-        Err(e) => panic!(
-            "Failed to run binary '{:?}' in dir '{:?}': {}",
-            binary, dir, e
-        ),
-    };
+        .unwrap();
     (
         output.status.success(),
         String::from_utf8_lossy(&output.stdout).to_string(),

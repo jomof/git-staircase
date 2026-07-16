@@ -1,5 +1,3 @@
-mod common;
-use common::get_test_binary_path;
 use git_staircase::GitRepo;
 use git_staircase::model::{StaircaseMetadata, Step};
 use git_staircase::workspace::gerrit_provider::{
@@ -449,8 +447,7 @@ fn gerrit_black_box_create_persists_pending_associations() {
     };
     let managed = git_staircase::core::adopt(&local.repo, &metadata).unwrap();
     let workspace = TempDir::new().unwrap();
-    let binary = get_test_binary_path();
-    let output = Command::new(&binary)
+    let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(&local.repo.workdir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", workspace.path())
         .args(["review", "create", "provider-cli", "--provider", "gerrit"])

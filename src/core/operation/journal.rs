@@ -140,18 +140,12 @@ pub fn active_operation(repo: &GitRepo) -> Result<Option<OperationJournal>> {
         }
     }
     paths.sort();
-    for path in paths {
-        let Ok(content) = fs::read_to_string(&path) else {
-            continue;
-        };
-        let Ok(journal) = serde_json::from_str::<OperationJournal>(&content) else {
-            continue;
-        };
-        if validate_journal(&journal).is_ok() {
-            return Ok(Some(journal));
-        }
-    }
-    Ok(None)
+    let Some(path) = paths.first() else {
+        return Ok(None);
+    };
+    let journal: OperationJournal = serde_json::from_str(&fs::read_to_string(path)?)?;
+    validate_journal(&journal)?;
+    Ok(Some(journal))
 }
 
 pub fn ensure_no_active(repo: &GitRepo) -> Result<()> {
@@ -243,33 +237,7 @@ fn remove_recovery_refs(repo: &GitRepo, journal: &OperationJournal) -> Result<()
 }
 
 pub fn abort_active(repo: &GitRepo) -> Result<OperationResult> {
-    let mut journal = match active_operation(repo)? {
-        Some(journal) => journal,
-        None => {
-            let dir = journals_dir(repo)?;
-            let mut cleaned = false;
-            for entry in fs::read_dir(dir)? {
-                let entry = entry?;
-                let path = entry.path();
-                if path.extension().and_then(|v| v.to_str()) == Some("json") {
-                    fs::remove_file(path)?;
-                    cleaned = true;
-                }
-            }
-            if cleaned {
-                return Ok(OperationResult {
-                    schema: "git-staircase/operation-result".into(),
-                    version: 1,
-                    operation_id: "none".into(),
-                    kind: "none".into(),
-                    transition: "aborted".into(),
-                    restored_refs: 0,
-                    draft_restored: false,
-                });
-            }
-            return Err(StaircaseError::NoActiveOperation);
-        }
-    };
+    let mut journal = active_operation(repo)?.ok_or(StaircaseError::NoActiveOperation)?;
     let _locks = super::lock::OperationLocks::acquire(
         repo,
         &journal.operation_id,

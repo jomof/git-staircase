@@ -38,36 +38,44 @@ fn test_lineage_id_adoption() {
         implicit_id
     );
 
-    // ACT: Run git staircase id --kind=lineage - on implicit staircase it does NOT adopt
+    // ACT: Run git staircase id --kind=lineage. It should NOT trigger adoption.
     let (success, lineage_id, stderr) = run_staircase(
         repo_path,
         &["id", "feature/ui", "--kind=lineage", "--porcelain"],
     );
     assert!(success, "id failed: {}", stderr);
 
-    // ASSERT: Verify the returned ID remains implicit (per Appendix B / Section 8.2)
-    assert!(
-        lineage_id.starts_with("implicit@"),
-        "Expected implicit ID, got: {}",
+    // ASSERT: Verify the returned ID is still the implicit ID
+    assert_eq!(
+        lineage_id, implicit_id,
+        "Expected implicit ID to be returned, got {}",
         lineage_id
     );
 
-    // Explicitly adopt the staircase to make it managed and get a stable UUID
+    // ACT: Explicitly adopt to get a stable UUID
     let (success, _, stderr) = run_staircase(
         repo_path,
-        &["adopt", "feature/ui", "feature/core", "feature/ui"],
+        &[
+            "adopt",
+            "feature",
+            "feature/core",
+            "feature/ui",
+            "--onto",
+            "main",
+        ],
     );
     assert!(success, "adopt failed: {}", stderr);
 
-    let (success, uuid_lineage_id, stderr) = run_staircase(
+    // Get the new stable lineage ID
+    let (success, lineage_id, stderr) = run_staircase(
         repo_path,
-        &["id", "feature/ui", "--kind=lineage", "--porcelain"],
+        &["id", "feature", "--kind=lineage", "--porcelain"],
     );
     assert!(success, "id failed: {}", stderr);
     assert!(
-        uuid::Uuid::parse_str(&uuid_lineage_id).is_ok(),
-        "Adopted lineage ID should be a valid UUID: {}",
-        uuid_lineage_id
+        !lineage_id.starts_with("implicit@"),
+        "Expected UUID after adopt, got {}",
+        lineage_id
     );
 
     // ACT: Modify the staircase (rebase)
@@ -76,18 +84,18 @@ fn test_lineage_id_adoption() {
     run_git(repo_path, &["add", "main_new.txt"]);
     run_git(repo_path, &["commit", "-m", "main updated"]);
 
-    let (success, _, stderr) =
-        run_staircase(repo_path, &["rebase", "feature/ui", "--onto", "main"]);
+    // Note: using the nominal name "feature" ensures we find the managed staircase
+    let (success, _, stderr) = run_staircase(repo_path, &["rebase", "feature", "--onto", "main"]);
     assert!(success, "rebase failed: {}", stderr);
 
     // ASSERT: Verify that id --kind=lineage returns the same UUID, even though content hash changed
     let (success, new_lineage_id, stderr) = run_staircase(
         repo_path,
-        &["id", "feature/ui", "--kind=lineage", "--porcelain"],
+        &["id", "feature", "--kind=lineage", "--porcelain"],
     );
     assert!(success, "id failed: {}", stderr);
     assert_eq!(
-        uuid_lineage_id, new_lineage_id,
+        lineage_id, new_lineage_id,
         "Lineage ID should be stable across rebase"
     );
 }

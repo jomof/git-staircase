@@ -98,14 +98,6 @@ pub fn check_sequential_layout(steps: &[Step]) -> Option<String> {
     Some(base.clone())
 }
 
-pub fn generate_change_id() -> String {
-    use sha2::{Digest, Sha256};
-    let mut hasher = Sha256::new();
-    hasher.update(uuid::Uuid::new_v4().as_bytes());
-    let hex = format!("{:x}", hasher.finalize());
-    format!("I{}", &hex[0..40])
-}
-
 #[cfg(test)]
 mod tests {
     use super::{check_sequential_layout, common_prefix};

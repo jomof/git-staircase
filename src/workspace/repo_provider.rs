@@ -746,7 +746,6 @@ fn parse_repo_manifest_for_project(
 
 #[derive(Debug, Clone, Default)]
 struct RepoRemote {
-    #[allow(dead_code)]
     name: String,
     fetch: Option<String>,
     review: Option<String>,
@@ -797,151 +796,137 @@ fn parse_manifest_xml_file_inner(
         Err(_) => return Ok(()),
     };
 
-    let doc = match roxmltree::Document::parse(&content) {
-        Ok(d) => d,
-        Err(_) => return Ok(()), // Ignore malformed XML as per original behavior
-    };
-
-    for node in doc.descendants().filter(|n| n.is_element()) {
-        match node.tag_name().name() {
-            "remote" => {
-                if let Some(name) = node.attribute("name") {
-                    remotes.insert(
-                        name.to_string(),
-                        RepoRemote {
-                            name: name.to_string(),
-                            fetch: node.attribute("fetch").map(|s| s.to_string()),
-                            review: node.attribute("review").map(|s| s.to_string()),
-                        },
+    for tag in xml_start_tags(&content) {
+        if tag.starts_with("<remote ") {
+            if let Some(r) = parse_remote_tag(&tag) {
+                remotes.insert(r.name.clone(), r);
+            }
+        } else if tag.starts_with("<default ") {
+            parse_default_tag(&tag, default_config);
+        } else if tag.starts_with("<project ") {
+            if let Some(p) = parse_project_tag(&tag) {
+                projects.push(p);
+            }
+        } else if tag.starts_with("<remove-project ") {
+            let name = parse_attr(&tag, "name");
+            let path = parse_attr(&tag, "path");
+            projects.retain(|project| {
+                !((name.as_ref() == Some(&project.name))
+                    && path
+                        .as_ref()
+                        .is_none_or(|candidate| candidate == &project.path))
+            });
+        } else if tag.starts_with("<extend-project ") {
+            if let Some(name) = parse_attr(&tag, "name") {
+                let path_selector = parse_attr(&tag, "path");
+                for project in projects.iter_mut().filter(|project| {
+                    project.name == name
+                        && path_selector
+                            .as_ref()
+                            .is_none_or(|candidate| candidate == &project.path)
+                }) {
+                    if let Some(path) = parse_attr(&tag, "dest-path") {
+                        project.path = path;
+                    }
+                    if let Some(revision) = parse_attr(&tag, "revision") {
+                        project.revision = Some(revision);
+                    }
+                    if let Some(remote) = parse_attr(&tag, "remote") {
+                        project.remote = Some(remote);
+                    }
+                    if let Some(destination) = parse_attr(&tag, "dest-branch") {
+                        project.dest_branch = Some(destination);
+                    }
+                    if let Some(upstream) = parse_attr(&tag, "upstream") {
+                        project.upstream = Some(upstream);
+                    }
+                }
+            }
+        } else if tag.starts_with("<submanifest ") {
+            if let Some(name) = parse_attr(&tag, "name") {
+                let prefix = parse_attr(&tag, "path").unwrap_or_else(|| name.clone());
+                let manifest_name =
+                    parse_attr(&tag, "manifest-name").unwrap_or_else(|| "default.xml".into());
+                if safe_manifest_relative_path(&name)
+                    && safe_manifest_relative_path(&prefix)
+                    && safe_manifest_relative_path(&manifest_name)
+                {
+                    let candidates = [
+                        dot_repo
+                            .join("submanifests")
+                            .join(&name)
+                            .join("manifest.xml"),
+                        dot_repo
+                            .join("submanifests")
+                            .join(&name)
+                            .join("manifests")
+                            .join(&manifest_name),
+                        dot_repo.join("manifests").join(&manifest_name),
+                    ];
+                    if let Some(path) = candidates.into_iter().find(|path| path.exists()) {
+                        let mut sub_default = default_config.clone();
+                        let mut sub_projects = Vec::new();
+                        let _ = parse_manifest_xml_file_inner(
+                            &path,
+                            dot_repo,
+                            remotes,
+                            &mut sub_default,
+                            &mut sub_projects,
+                            depth + 1,
+                        );
+                        for mut project in sub_projects {
+                            project.path =
+                                Path::new(&prefix).join(project.path).display().to_string();
+                            if project.revision.is_none() {
+                                project.revision = sub_default.revision.clone();
+                            }
+                            if project.remote.is_none() {
+                                project.remote = sub_default.remote.clone();
+                            }
+                            if project.dest_branch.is_none() {
+                                project.dest_branch = sub_default.dest_branch.clone();
+                            }
+                            projects.push(project);
+                        }
+                    }
+                }
+            }
+        } else if tag.starts_with("<include ") {
+            if let Some(inc_name) = parse_attr(&tag, "name") {
+                if safe_manifest_relative_path(&inc_name) {
+                    let inc_path = dot_repo.join("manifests").join(&inc_name);
+                    let _ = parse_manifest_xml_file_inner(
+                        &inc_path,
+                        dot_repo,
+                        remotes,
+                        default_config,
+                        projects,
+                        depth + 1,
                     );
                 }
             }
-            "default" => {
-                if let Some(rev) = node.attribute("revision") {
-                    default_config.revision = Some(rev.to_string());
-                }
-                if let Some(rem) = node.attribute("remote") {
-                    default_config.remote = Some(rem.to_string());
-                }
-                if let Some(db) = node.attribute("dest-branch") {
-                    default_config.dest_branch = Some(db.to_string());
-                }
-            }
-            "project" => {
-                if let Some(name) = node.attribute("name") {
-                    let path = node.attribute("path").unwrap_or(name);
-                    projects.push(RepoProject {
-                        name: name.to_string(),
-                        path: path.to_string(),
-                        revision: node.attribute("revision").map(|s| s.to_string()),
-                        remote: node.attribute("remote").map(|s| s.to_string()),
-                        dest_branch: node.attribute("dest-branch").map(|s| s.to_string()),
-                        upstream: node.attribute("upstream").map(|s| s.to_string()),
-                    });
-                }
-            }
-            "remove-project" => {
-                let name = node.attribute("name");
-                let path = node.attribute("path");
-                projects.retain(|project| {
-                    !((name == Some(&project.name))
-                        && path.is_none_or(|candidate| candidate == &project.path))
-                });
-            }
-            "extend-project" => {
-                if let Some(name) = node.attribute("name") {
-                    let path_selector = node.attribute("path");
-                    for project in projects.iter_mut().filter(|project| {
-                        project.name == name
-                            && path_selector.is_none_or(|candidate| candidate == &project.path)
-                    }) {
-                        if let Some(path) = node.attribute("dest-path") {
-                            project.path = path.to_string();
-                        }
-                        if let Some(revision) = node.attribute("revision") {
-                            project.revision = Some(revision.to_string());
-                        }
-                        if let Some(remote) = node.attribute("remote") {
-                            project.remote = Some(remote.to_string());
-                        }
-                        if let Some(destination) = node.attribute("dest-branch") {
-                            project.dest_branch = Some(destination.to_string());
-                        }
-                        if let Some(upstream) = node.attribute("upstream") {
-                            project.upstream = Some(upstream.to_string());
-                        }
-                    }
-                }
-            }
-            "submanifest" => {
-                if let Some(name) = node.attribute("name") {
-                    let prefix = node.attribute("path").unwrap_or(name);
-                    let manifest_name = node.attribute("manifest-name").unwrap_or("default.xml");
-                    if safe_manifest_relative_path(name)
-                        && safe_manifest_relative_path(prefix)
-                        && safe_manifest_relative_path(manifest_name)
-                    {
-                        let candidates = [
-                            dot_repo
-                                .join("submanifests")
-                                .join(name)
-                                .join("manifest.xml"),
-                            dot_repo
-                                .join("submanifests")
-                                .join(name)
-                                .join("manifests")
-                                .join(manifest_name),
-                            dot_repo.join("manifests").join(manifest_name),
-                        ];
-                        if let Some(path) = candidates.into_iter().find(|path| path.exists()) {
-                            let mut sub_default = default_config.clone();
-                            let mut sub_projects = Vec::new();
-                            let _ = parse_manifest_xml_file_inner(
-                                &path,
-                                dot_repo,
-                                remotes,
-                                &mut sub_default,
-                                &mut sub_projects,
-                                depth + 1,
-                            );
-                            for mut project in sub_projects {
-                                project.path =
-                                    Path::new(prefix).join(project.path).display().to_string();
-                                if project.revision.is_none() {
-                                    project.revision = sub_default.revision.clone();
-                                }
-                                if project.remote.is_none() {
-                                    project.remote = sub_default.remote.clone();
-                                }
-                                if project.dest_branch.is_none() {
-                                    project.dest_branch = sub_default.dest_branch.clone();
-                                }
-                                projects.push(project);
-                            }
-                        }
-                    }
-                }
-            }
-            "include" => {
-                if let Some(inc_name) = node.attribute("name") {
-                    if safe_manifest_relative_path(inc_name) {
-                        let inc_path = dot_repo.join("manifests").join(inc_name);
-                        let _ = parse_manifest_xml_file_inner(
-                            &inc_path,
-                            dot_repo,
-                            remotes,
-                            default_config,
-                            projects,
-                            depth + 1,
-                        );
-                    }
-                }
-            }
-            _ => {}
         }
     }
 
     Ok(())
+}
+
+fn xml_start_tags(content: &str) -> Vec<String> {
+    let mut tags = Vec::new();
+    let mut offset = 0;
+    while let Some(start_rel) = content[offset..].find('<') {
+        let start = offset + start_rel;
+        let Some(end_rel) = content[start..].find('>') else {
+            break;
+        };
+        let end = start + end_rel + 1;
+        let tag = content[start..end].trim();
+        if !tag.starts_with("</") && !tag.starts_with("<?") && !tag.starts_with("<!") {
+            tags.push(tag.to_string());
+        }
+        offset = end;
+    }
+    tags
 }
 
 fn safe_manifest_relative_path(path: &str) -> bool {
@@ -950,6 +935,65 @@ fn safe_manifest_relative_path(path: &str) -> bool {
         && path
             .components()
             .all(|component| matches!(component, std::path::Component::Normal(_)))
+}
+
+fn parse_attr(tag: &str, attr: &str) -> Option<String> {
+    let pattern = format!("{}=\"", attr);
+    if let Some(pos) = tag.find(&pattern) {
+        let start = pos + pattern.len();
+        if let Some(end) = tag[start..].find('"') {
+            return Some(tag[start..start + end].to_string());
+        }
+    }
+    let pattern_single = format!("{}='", attr);
+    if let Some(pos) = tag.find(&pattern_single) {
+        let start = pos + pattern_single.len();
+        if let Some(end) = tag[start..].find('\'') {
+            return Some(tag[start..start + end].to_string());
+        }
+    }
+    None
+}
+
+fn parse_remote_tag(tag: &str) -> Option<RepoRemote> {
+    let name = parse_attr(tag, "name")?;
+    let fetch = parse_attr(tag, "fetch");
+    let review = parse_attr(tag, "review");
+    Some(RepoRemote {
+        name,
+        fetch,
+        review,
+    })
+}
+
+fn parse_default_tag(tag: &str, default_config: &mut RepoDefault) {
+    if let Some(rev) = parse_attr(tag, "revision") {
+        default_config.revision = Some(rev);
+    }
+    if let Some(rem) = parse_attr(tag, "remote") {
+        default_config.remote = Some(rem);
+    }
+    if let Some(db) = parse_attr(tag, "dest-branch") {
+        default_config.dest_branch = Some(db);
+    }
+}
+
+fn parse_project_tag(tag: &str) -> Option<RepoProject> {
+    let name = parse_attr(tag, "name")?;
+    let path = parse_attr(tag, "path").unwrap_or_else(|| name.clone());
+    let revision = parse_attr(tag, "revision");
+    let remote = parse_attr(tag, "remote");
+    let dest_branch = parse_attr(tag, "dest-branch");
+    let upstream = parse_attr(tag, "upstream");
+
+    Some(RepoProject {
+        name,
+        path,
+        revision,
+        remote,
+        dest_branch,
+        upstream,
+    })
 }
 
 fn git_worktree_root_for(path: &Path) -> Option<PathBuf> {
@@ -1004,9 +1048,9 @@ fn resolve_manifest_locator(repo: &GitRepo, locator: &str) -> Option<String> {
         vec![locator.to_string()]
     } else {
         vec![
-            format!("refs/remotes/{}/{}", "m", locator),
-            format!("refs/heads/{}", locator),
             locator.to_string(),
+            format!("refs/heads/{}", locator),
+            format!("refs/remotes/{}/{}", "m", locator),
         ]
     };
     candidates

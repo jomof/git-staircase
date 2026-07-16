@@ -13,7 +13,7 @@ pub fn compute_identity(
     staircase: &ResolvedStaircase,
     kind: IdentityKind,
 ) -> Result<String> {
-    let metadata = staircase.metadata();
+    let metadata = staircase.metadata().clone();
     match kind {
         IdentityKind::Lineage => Ok(metadata.id.clone()),
         IdentityKind::Nominal => Ok(metadata.name.clone()),

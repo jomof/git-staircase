@@ -8,19 +8,12 @@ use std::process::Command;
 
 fn command_output(path: &std::path::Path, args: &[&str]) -> std::process::Output {
     let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", path));
-    let binary = get_test_binary_path();
-    match Command::new(&binary)
+    Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(path)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)
         .args(args)
         .output()
-    {
-        Ok(out) => out,
-        Err(e) => panic!(
-            "Failed to run binary '{:?}' in dir '{:?}': {}",
-            binary, path, e
-        ),
-    }
+        .unwrap()
 }
 
 fn adopt_one(repo: &git_staircase::GitRepo, name: &str) -> git_staircase::StaircaseMetadata {

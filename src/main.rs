@@ -43,9 +43,6 @@ struct Cli {
 
     #[arg(long, global = true)]
     workspace_mode: Option<String>,
-
-    #[arg(long, global = true)]
-    no_adopt: bool,
 }
 
 impl Cli {
@@ -172,155 +169,36 @@ enum Commands {
     /// Unarchive a staircase
     Unarchive(cli::unarchive::UnarchiveCmd),
 }
+macro_rules! impl_command_dispatch {
+    ($($variant:ident),*) => {
+        impl cli::Command for Commands {
+            fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
+                match self {
+                    $(Commands::$variant(cmd) => cmd.run(repo),)*
+                }
+            }
 
-impl Command for Commands {
-    fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
-        match self {
-            Commands::Workspace(cmd) => cmd.run(repo),
-            Commands::Provider(cmd) => cmd.run(repo),
-            Commands::Land(cmd) => cmd.run(repo),
-            Commands::Append(cmd) => cmd.run(repo),
-            Commands::Reorder(cmd) => cmd.run(repo),
-            Commands::Move(cmd) => cmd.run(repo),
-            Commands::Drop(cmd) => cmd.run(repo),
-            Commands::Discover(cmd) => cmd.run(repo),
-            Commands::Discovery(cmd) => cmd.run(repo),
-            Commands::Adopt(cmd) => cmd.run(repo),
-            Commands::List(cmd) => cmd.run(repo),
-            Commands::Show(cmd) => cmd.run(repo),
-            Commands::Status(cmd) => cmd.run(repo),
-            Commands::Split(cmd) => cmd.run(repo),
-            Commands::Join(cmd) => cmd.run(repo),
-            Commands::Rebase(cmd) => cmd.run(repo),
-            Commands::Restack(cmd) => cmd.run(repo),
-            Commands::Verify(cmd) => cmd.run(repo),
-            Commands::Id(cmd) => cmd.run(repo),
-            Commands::Delete(cmd) => cmd.run(repo),
-            Commands::Log(cmd) => cmd.run(repo),
-            Commands::Diff(cmd) => cmd.run(repo),
-            Commands::Graph(cmd) => cmd.run(repo),
-            Commands::Steps(cmd) => cmd.run(repo),
-            Commands::Review(cmd) => cmd.run(repo),
-            Commands::Commits(cmd) => cmd.run(repo),
-            Commands::Draft(cmd) => cmd.run(repo),
-            Commands::Describe(cmd) => cmd.run(repo),
-            Commands::Metadata(cmd) => cmd.run(repo),
-            Commands::Policy(cmd) => cmd.run(repo),
-            Commands::Layout(cmd) => cmd.run(repo),
-            Commands::Normalize(cmd) => cmd.run(repo),
-            Commands::Continue(cmd) => cmd.run(repo),
-            Commands::Abort(cmd) => cmd.run(repo),
-            Commands::Operation(cmd) => cmd.run(repo),
-            Commands::Name(cmd) => cmd.run(repo),
-            Commands::Rename(cmd) => cmd.run(repo),
-            Commands::Unname(cmd) => cmd.run(repo),
-            Commands::Tag(cmd) => cmd.run(repo),
-            Commands::RevParse(cmd) => cmd.run(repo),
-            Commands::Push(cmd) => cmd.run(repo),
-            Commands::Fetch(cmd) => cmd.run(repo),
-            Commands::Archive(cmd) => cmd.run(repo),
-            Commands::Unarchive(cmd) => cmd.run(repo),
-        }
-    }
+            fn requires_clear_operation(&self) -> bool {
+                match self {
+                    $(Commands::$variant(cmd) => cmd.requires_clear_operation(),)*
+                }
+            }
 
-    fn requires_clear_operation(&self) -> bool {
-        match self {
-            Commands::Workspace(cmd) => cmd.requires_clear_operation(),
-            Commands::Provider(cmd) => cmd.requires_clear_operation(),
-            Commands::Land(cmd) => cmd.requires_clear_operation(),
-            Commands::Append(cmd) => cmd.requires_clear_operation(),
-            Commands::Reorder(cmd) => cmd.requires_clear_operation(),
-            Commands::Move(cmd) => cmd.requires_clear_operation(),
-            Commands::Drop(cmd) => cmd.requires_clear_operation(),
-            Commands::Discover(cmd) => cmd.requires_clear_operation(),
-            Commands::Discovery(cmd) => cmd.requires_clear_operation(),
-            Commands::Adopt(cmd) => cmd.requires_clear_operation(),
-            Commands::List(cmd) => cmd.requires_clear_operation(),
-            Commands::Show(cmd) => cmd.requires_clear_operation(),
-            Commands::Status(cmd) => cmd.requires_clear_operation(),
-            Commands::Split(cmd) => cmd.requires_clear_operation(),
-            Commands::Join(cmd) => cmd.requires_clear_operation(),
-            Commands::Rebase(cmd) => cmd.requires_clear_operation(),
-            Commands::Restack(cmd) => cmd.requires_clear_operation(),
-            Commands::Verify(cmd) => cmd.requires_clear_operation(),
-            Commands::Id(cmd) => cmd.requires_clear_operation(),
-            Commands::Delete(cmd) => cmd.requires_clear_operation(),
-            Commands::Log(cmd) => cmd.requires_clear_operation(),
-            Commands::Diff(cmd) => cmd.requires_clear_operation(),
-            Commands::Graph(cmd) => cmd.requires_clear_operation(),
-            Commands::Steps(cmd) => cmd.requires_clear_operation(),
-            Commands::Review(cmd) => cmd.requires_clear_operation(),
-            Commands::Commits(cmd) => cmd.requires_clear_operation(),
-            Commands::Draft(cmd) => cmd.requires_clear_operation(),
-            Commands::Describe(cmd) => cmd.requires_clear_operation(),
-            Commands::Metadata(cmd) => cmd.requires_clear_operation(),
-            Commands::Policy(cmd) => cmd.requires_clear_operation(),
-            Commands::Layout(cmd) => cmd.requires_clear_operation(),
-            Commands::Normalize(cmd) => cmd.requires_clear_operation(),
-            Commands::Continue(cmd) => cmd.requires_clear_operation(),
-            Commands::Abort(cmd) => cmd.requires_clear_operation(),
-            Commands::Operation(cmd) => cmd.requires_clear_operation(),
-            Commands::Name(cmd) => cmd.requires_clear_operation(),
-            Commands::Rename(cmd) => cmd.requires_clear_operation(),
-            Commands::Unname(cmd) => cmd.requires_clear_operation(),
-            Commands::Tag(cmd) => cmd.requires_clear_operation(),
-            Commands::RevParse(cmd) => cmd.requires_clear_operation(),
-            Commands::Push(cmd) => cmd.requires_clear_operation(),
-            Commands::Fetch(cmd) => cmd.requires_clear_operation(),
-            Commands::Archive(cmd) => cmd.requires_clear_operation(),
-            Commands::Unarchive(cmd) => cmd.requires_clear_operation(),
+            fn requires_bootstrap(&self) -> bool {
+                match self {
+                    $(Commands::$variant(cmd) => cmd.requires_bootstrap(),)*
+                }
+            }
         }
-    }
-
-    fn requires_bootstrap(&self) -> bool {
-        match self {
-            Commands::Workspace(cmd) => cmd.requires_bootstrap(),
-            Commands::Provider(cmd) => cmd.requires_bootstrap(),
-            Commands::Land(cmd) => cmd.requires_bootstrap(),
-            Commands::Append(cmd) => cmd.requires_bootstrap(),
-            Commands::Reorder(cmd) => cmd.requires_bootstrap(),
-            Commands::Move(cmd) => cmd.requires_bootstrap(),
-            Commands::Drop(cmd) => cmd.requires_bootstrap(),
-            Commands::Discover(cmd) => cmd.requires_bootstrap(),
-            Commands::Discovery(cmd) => cmd.requires_bootstrap(),
-            Commands::Adopt(cmd) => cmd.requires_bootstrap(),
-            Commands::List(cmd) => cmd.requires_bootstrap(),
-            Commands::Show(cmd) => cmd.requires_bootstrap(),
-            Commands::Status(cmd) => cmd.requires_bootstrap(),
-            Commands::Split(cmd) => cmd.requires_bootstrap(),
-            Commands::Join(cmd) => cmd.requires_bootstrap(),
-            Commands::Rebase(cmd) => cmd.requires_bootstrap(),
-            Commands::Restack(cmd) => cmd.requires_bootstrap(),
-            Commands::Verify(cmd) => cmd.requires_bootstrap(),
-            Commands::Id(cmd) => cmd.requires_bootstrap(),
-            Commands::Delete(cmd) => cmd.requires_bootstrap(),
-            Commands::Log(cmd) => cmd.requires_bootstrap(),
-            Commands::Diff(cmd) => cmd.requires_bootstrap(),
-            Commands::Graph(cmd) => cmd.requires_bootstrap(),
-            Commands::Steps(cmd) => cmd.requires_bootstrap(),
-            Commands::Review(cmd) => cmd.requires_bootstrap(),
-            Commands::Commits(cmd) => cmd.requires_bootstrap(),
-            Commands::Draft(cmd) => cmd.requires_bootstrap(),
-            Commands::Describe(cmd) => cmd.requires_bootstrap(),
-            Commands::Metadata(cmd) => cmd.requires_bootstrap(),
-            Commands::Policy(cmd) => cmd.requires_bootstrap(),
-            Commands::Layout(cmd) => cmd.requires_bootstrap(),
-            Commands::Normalize(cmd) => cmd.requires_bootstrap(),
-            Commands::Continue(cmd) => cmd.requires_bootstrap(),
-            Commands::Abort(cmd) => cmd.requires_bootstrap(),
-            Commands::Operation(cmd) => cmd.requires_bootstrap(),
-            Commands::Name(cmd) => cmd.requires_bootstrap(),
-            Commands::Rename(cmd) => cmd.requires_bootstrap(),
-            Commands::Unname(cmd) => cmd.requires_bootstrap(),
-            Commands::Tag(cmd) => cmd.requires_bootstrap(),
-            Commands::RevParse(cmd) => cmd.requires_bootstrap(),
-            Commands::Push(cmd) => cmd.requires_bootstrap(),
-            Commands::Fetch(cmd) => cmd.requires_bootstrap(),
-            Commands::Archive(cmd) => cmd.requires_bootstrap(),
-            Commands::Unarchive(cmd) => cmd.requires_bootstrap(),
-        }
-    }
+    };
 }
+
+impl_command_dispatch!(
+    Workspace, Provider, Land, Append, Reorder, Move, Drop, Discover, Discovery, Adopt, List, Show,
+    Status, Split, Join, Rebase, Restack, Verify, Id, Delete, Log, Diff, Graph, Steps, Review,
+    Commits, Draft, Describe, Metadata, Policy, Layout, Normalize, Continue, Abort, Operation,
+    Name, Rename, Unname, Tag, RevParse, Push, Fetch, Archive, Unarchive
+);
 
 fn find_repo_root() -> Result<PathBuf> {
     let output = std::process::Command::new("git")
@@ -339,8 +217,7 @@ fn find_repo_root() -> Result<PathBuf> {
 
 fn run(cli: Cli) -> Result<()> {
     let repo_root = find_repo_root()?;
-    let mut repo = GitRepo::new(repo_root);
-    repo.no_adopt = cli.no_adopt;
+    let repo = GitRepo::new(repo_root);
     if cli.command.requires_clear_operation() {
         core::ensure_no_active(&repo)?;
         if let Some((operation, owner)) = core::external_git_operation(&repo)? {

@@ -116,12 +116,7 @@ impl Command for LayoutCmd {
             }
             LayoutSubcommand::Normalize(args) => {
                 let selector = args.selector.resolve(repo)?;
-                Ok(Box::new(core::normalize(
-                    repo,
-                    &selector,
-                    args.dry_run,
-                    false,
-                )?))
+                Ok(Box::new(core::normalize(repo, &selector, args.dry_run)?))
             }
             LayoutSubcommand::Rename(args) => {
                 let selector = args.selector.resolve(repo)?;

@@ -221,11 +221,9 @@ where
 
 pub trait Command {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>>;
-
     fn requires_clear_operation(&self) -> bool {
         true
     }
-
     fn requires_bootstrap(&self) -> bool {
         true
     }

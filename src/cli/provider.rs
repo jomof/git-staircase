@@ -199,6 +199,10 @@ impl super::Command for ProviderCmd {
     fn requires_clear_operation(&self) -> bool {
         false
     }
+
+    fn requires_bootstrap(&self) -> bool {
+        false
+    }
 }
 
 fn unavailable(provider: &str, diagnostic: &str) -> ProviderDoctorReport {

@@ -1,4 +1,4 @@
-use super::{Command, PresentationOutput};
+use super::PresentationOutput;
 use crate::cli::StaircaseSelectorArgs;
 use crate::core::persistence::read_record;
 use crate::model::StaircaseRecord;
@@ -97,7 +97,7 @@ pub struct ReviewOpenCmd {
     pub selector: StaircaseSelectorArgs,
 }
 
-impl Command for ReviewCmd {
+impl super::Command for ReviewCmd {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let boot_res = bootstrap(repo, &BootstrapOptions::default())?;
 
@@ -137,9 +137,6 @@ impl Command for ReviewCmd {
         Err(anyhow!(
             "No review provider route (Gerrit or GitHub) could be resolved. Please configure remote host or workspace review route."
         ))
-    }
-    fn requires_clear_operation(&self) -> bool {
-        true
     }
 }
 

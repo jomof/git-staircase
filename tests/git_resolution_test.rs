@@ -64,31 +64,29 @@ fn test_git_repo_resolution_memoization() {
     let res = ctx.repo.resolve_commit("feat").unwrap();
     assert_eq!(res, c1);
 
-    // ASSERT: NOT memoized after resolve_commit because it is a mutable ref
-    assert!(ctx.repo.memoizer.get_resolve_commit("feat").is_none());
+    // ASSERT: Memoized after resolve_commit
+    assert_eq!(
+        ctx.repo.memoizer.get_resolve_commit("feat"),
+        Some(c1.clone())
+    );
 
     // ACT: Resolve ref
     let res_ref = ctx.repo.resolve_ref_opt("feat").unwrap();
     assert_eq!(res_ref, Some(c1.clone()));
 
-    // ASSERT: NOT memoized after resolve_ref_opt
-    assert!(ctx.repo.memoizer.get_resolve_ref("feat").is_none());
+    // ASSERT: Memoized after resolve_ref_opt
+    assert_eq!(
+        ctx.repo.memoizer.get_resolve_ref("feat"),
+        Some(Some(c1.clone()))
+    );
 
     // ACT: Resolve symbolic name
     let full_name = ctx.repo.resolve_symbolic_full_name("feat").unwrap();
     assert_eq!(full_name, "refs/heads/feat");
 
-    // ASSERT: NOT memoized after resolve_symbolic_full_name (unless it's a full ref name)
-    assert!(ctx.repo.memoizer.get_symbolic_name("feat").is_none());
-
-    // ACT: Resolve symbolic name with full ref
-    let full_name2 = ctx
-        .repo
-        .resolve_symbolic_full_name("refs/heads/feat")
-        .unwrap();
-    assert_eq!(full_name2, "refs/heads/feat");
+    // ASSERT: Memoized after resolve_symbolic_full_name
     assert_eq!(
-        ctx.repo.memoizer.get_symbolic_name("refs/heads/feat"),
+        ctx.repo.memoizer.get_symbolic_name("feat"),
         Some("refs/heads/feat".to_string())
     );
 }

@@ -323,7 +323,6 @@ fn reorder_internal(
             target,
             "reorder",
             dry_run,
-            false,
         )
     }
 }
@@ -380,7 +379,6 @@ pub fn drop_with_dry_run(
         target,
         "drop",
         dry_run,
-        false,
     )
 }
 
@@ -480,7 +478,7 @@ pub fn move_commits_with_dry_run(
     }
     let target = recorded_target(repo, &metadata)?;
     super::rewrite::replay(
-        repo, staircase, metadata, groups, 0, target, "move", dry_run, false,
+        repo, staircase, metadata, groups, 0, target, "move", dry_run,
     )
 }
 
@@ -553,7 +551,6 @@ pub fn restack(
         current_base,
         "restack",
         false,
-        false,
     )
 }
 
@@ -611,7 +608,6 @@ pub fn restack_from(
         base,
         "restack",
         dry_run,
-        false,
     )
 }
 
@@ -653,7 +649,6 @@ pub fn rebase_with_dry_run(
         repo.resolve_commit(onto)?,
         "rebase",
         dry_run,
-        false,
     )
 }
 
@@ -679,10 +674,7 @@ fn ensure_rewrite_supported(
     Ok(())
 }
 
-pub(crate) fn step_commit_groups(
-    repo: &GitRepo,
-    metadata: &StaircaseMetadata,
-) -> Result<Vec<Vec<String>>> {
+fn step_commit_groups(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Vec<Vec<String>>> {
     let mut predecessor = recorded_target(repo, metadata)?;
     let mut groups = Vec::new();
     for step in &metadata.steps {
@@ -702,23 +694,17 @@ pub(crate) fn step_commit_groups(
 }
 
 fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<String> {
-    if let Some(user) = &metadata.user_metadata {
-        if let Some(anchor) = user
-            .extensions
-            .get("git-staircase.internal.integration-anchor")
-        {
-            if let Some(anchor_str) = anchor.as_str() {
-                return Ok(anchor_str.to_string());
-            }
-        }
-    }
-
-    let target_oid = repo.resolve_commit(&metadata.target)?;
-    if metadata.id.starts_with("implicit@") && !metadata.steps.is_empty() {
-        return repo.merge_base(&target_oid, &metadata.steps[0].cut);
-    }
-
-    Ok(target_oid)
+    metadata
+        .user_metadata
+        .as_ref()
+        .and_then(|user| {
+            user.extensions
+                .get("git-staircase.internal.integration-anchor")
+        })
+        .and_then(|value| value.as_str())
+        .map(str::to_string)
+        .map(Ok)
+        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))
 }
 
 fn publish_metadata_common(
@@ -727,11 +713,15 @@ fn publish_metadata_common(
     mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
-    let managed = if staircase.is_managed() {
-        staircase.clone()
-    } else {
-        ResolvedStaircase::Managed(super::resolved::adopt(repo, staircase.metadata())?)
-    };
+    if !staircase.is_managed() {
+        let selector = super::resolved::ResolvedSelector {
+            staircase: staircase.clone(),
+            step_index: None,
+        };
+        super::local::publish_metadata(repo, &selector, metadata, kind, false)?;
+        return Ok(());
+    }
+    let managed = staircase.clone();
     metadata.id = managed.metadata().id.clone();
     for step in &mut metadata.steps {
         if step.id.is_empty() {

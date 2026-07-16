@@ -378,8 +378,10 @@ fn test_split_implicit_staircase() {
 
 #[test]
 fn test_id_lineage_remains_implicit() {
+    // ARRANGE
     let ctx = TestContext::new();
-    ctx.run_git(&["checkout", "-b", "b1"]);
+
+    ctx.run_git(&["checkout", "-b", "feature/auth-core"]);
     let _c1 = ctx.commit("file1.txt", "1", "commit 1");
 
     let discoveries = core::discover(&ctx.repo, Some("main"), None, false).unwrap();
@@ -392,11 +394,13 @@ fn test_id_lineage_remains_implicit() {
         .unwrap()
         .expect("Should find implicit staircase");
 
+    // ACT
     use git_staircase::IdentityKind;
     let id = core::compute_identity(&ctx.repo, &rs, IdentityKind::Lineage).unwrap();
 
     // ASSERT
     assert!(!id.is_empty());
+    assert!(id.starts_with("implicit@"));
 
     let rs_after = core::resolve_staircase(&ctx.repo, &id, None)
         .unwrap()

@@ -40,14 +40,10 @@ fn write_journal(context: &TestContext, journal: &OperationJournal) {
     .unwrap();
 }
 
-fn get_binary_path() -> std::path::PathBuf {
-    get_test_binary_path()
-}
-
 #[test]
 fn canonical_local_command_surface_is_exposed() {
     let context = TestContext::new();
-    let output = Command::new(get_binary_path())
+    let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(context.path())
         .arg("--help")
         .output()
@@ -501,17 +497,16 @@ fn metadata_editor_rejects_concurrent_full_record_change() {
     let context = TestContext::new();
     adopt_feature(&context, "managed");
     let editor = context.path().join("concurrent-editor.sh");
-    let bin_path = get_binary_path();
     fs::write(
         &editor,
         format!(
             "#!/bin/sh\n'{}' archive managed --snapshot-drafts >/dev/null\n",
-            bin_path.display()
+            env!("CARGO_BIN_EXE_git-staircase")
         ),
     )
     .unwrap();
     fs::set_permissions(&editor, fs::Permissions::from_mode(0o755)).unwrap();
-    let output = Command::new(&bin_path)
+    let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(context.path())
         .env("GIT_EDITOR", &editor)
         .args(["metadata", "edit", "managed", "--json"])

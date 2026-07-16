@@ -1,5 +1,4 @@
 use git_staircase::GitRepo;
-use git_staircase::core::ResolvedStaircase;
 use git_staircase::core::manipulation::{RebaseOptions, restack};
 use git_staircase::git::TreeEntry;
 use tempfile::tempdir;
@@ -69,8 +68,9 @@ fn test_restack_manual_rebase_of_multiple_steps() {
         lifecycle: None,
     };
 
-    // 3. Mock the staircase as resolved (Implicit)
-    let staircase = ResolvedStaircase::Implicit(metadata);
+    git_staircase::core::persistence::write_metadata(&repo, &metadata).unwrap();
+    let staircase =
+        git_staircase::core::resolution::resolve_by_name(&repo, &metadata.name).unwrap();
 
     // 4. Update the branches to point to different commits (simulating local manual rebase)
     let a1 = repo

@@ -10,18 +10,11 @@ pub struct Normalize {
     pub selector: StaircaseSelectorArgs,
     #[arg(long)]
     pub dry_run: bool,
-    #[arg(long)]
-    pub ensure_change_ids: bool,
 }
 
 impl Command for Normalize {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let selector = self.selector.resolve(repo)?;
-        Ok(Box::new(core::normalize(
-            repo,
-            &selector,
-            self.dry_run,
-            self.ensure_change_ids,
-        )?))
+        Ok(Box::new(core::normalize(repo, &selector, self.dry_run)?))
     }
 }

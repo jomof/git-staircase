@@ -25,20 +25,7 @@ pub struct Adopt {
 impl super::Command for Adopt {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         if self.branches.is_empty() {
-            // Attempt to resolve as a discovered staircase
-            if let Some(resolved) =
-                crate::core::resolve_staircase(repo, &self.name, self.onto.as_deref())?
-            {
-                if let crate::core::ResolvedStaircase::Implicit(metadata) = resolved.staircase {
-                    let result = crate::core::adopt(repo, &metadata)?;
-                    return Ok(Box::new(result));
-                } else if resolved.staircase.is_managed() {
-                    return Err(anyhow!("Staircase '{}' is already managed", self.name));
-                }
-            }
-            return Err(anyhow!(
-                "At least one branch must be specified to adopt, or specify a discovered staircase name"
-            ));
+            return Err(anyhow!("At least one branch must be specified to adopt"));
         }
         let mut steps = Vec::new();
         for b in &self.branches {
