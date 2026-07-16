@@ -938,18 +938,17 @@ fn safe_manifest_relative_path(path: &str) -> bool {
 }
 
 fn parse_attr(tag: &str, attr: &str) -> Option<String> {
-    let pattern = format!("{}=\"", attr);
-    if let Some(pos) = tag.find(&pattern) {
-        let start = pos + pattern.len();
-        if let Some(end) = tag[start..].find('"') {
-            return Some(tag[start..start + end].to_string());
-        }
-    }
-    let pattern_single = format!("{}='", attr);
-    if let Some(pos) = tag.find(&pattern_single) {
-        let start = pos + pattern_single.len();
-        if let Some(end) = tag[start..].find('\'') {
-            return Some(tag[start..start + end].to_string());
+    for (quote, pattern) in [('"', format!("{}=\"", attr)), ('\'', format!("{}='", attr))] {
+        let mut search_start = 0;
+        while let Some(pos) = tag[search_start..].find(&pattern) {
+            let actual_pos = search_start + pos;
+            let start = actual_pos + pattern.len();
+            if actual_pos > 0 && tag.as_bytes()[actual_pos - 1].is_ascii_whitespace() {
+                if let Some(end) = tag[start..].find(quote) {
+                    return Some(tag[start..start + end].to_string());
+                }
+            }
+            search_start = start;
         }
     }
     None
