@@ -210,10 +210,12 @@ impl Commands {
 }
 
 fn find_repo_root() -> Result<PathBuf> {
-    let output = std::process::Command::new("git")
-        .arg("rev-parse")
-        .arg("--show-toplevel")
-        .output()
+    let repo = GitRepo::new(std::env::current_dir().context("Failed to get current dir")?);
+    let output = repo
+        .command()
+        .args(&["rev-parse", "--show-toplevel"])
+        .check_status(false)
+        .run_output()
         .context("Failed to run git rev-parse")?;
     if !output.status.success() {
         return Err(anyhow!(

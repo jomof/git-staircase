@@ -1008,13 +1008,12 @@ fn git_common_dir_for(path: &Path) -> Option<PathBuf> {
 }
 
 fn git_path_query(path: &Path, args: &[&str]) -> Option<PathBuf> {
-    let output = std::process::Command::new("git")
-        .arg("-C")
-        .arg(path)
+    let repo = GitRepo::new(path.to_path_buf());
+    let output = repo
+        .command()
         .args(args)
-        .env("GIT_TERMINAL_PROMPT", "0")
-        .env("GIT_OPTIONAL_LOCKS", "0")
-        .output()
+        .check_status(false)
+        .run_output()
         .ok()?;
     if !output.status.success() {
         return None;

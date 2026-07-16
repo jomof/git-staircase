@@ -735,12 +735,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let storage_tmp = TempDir::new().unwrap();
         let path = tmp.path().to_path_buf();
-        std::process::Command::new("git")
-            .current_dir(&path)
-            .args(&["init", "-b", "main"])
-            .output()
-            .unwrap();
         let repo = GitRepo::new(path);
+        repo.run(&["init", "-b", "main"]).unwrap();
         unsafe {
             std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_tmp.path());
         }

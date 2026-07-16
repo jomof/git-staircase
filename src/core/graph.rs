@@ -70,18 +70,19 @@ mod tests {
     use crate::git::GitRepo;
     use std::fs;
     use std::path::Path;
-    use std::process::Command;
+
     use tempfile::TempDir;
 
     fn run_git(dir: &Path, args: &[&str]) -> String {
-        let output = Command::new("git")
-            .current_dir(dir)
+        let repo = GitRepo::new(dir.to_path_buf());
+        let output = repo
+            .command()
             .args(args)
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test")
             .env("GIT_COMMITTER_EMAIL", "test@example.com")
-            .output()
+            .run_output()
             .unwrap();
         String::from_utf8_lossy(&output.stdout).trim().to_string()
     }

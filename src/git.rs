@@ -809,3 +809,41 @@ impl GitRepo {
         self.cat_file(&format!("{}:{}", rev, path))
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_git_cmd_envs() {
+        let repo = GitRepo::new(PathBuf::from("."));
+        let cmd = repo.git_cmd();
+
+        // Assert that standard environment variables are passed down to avoid hangs
+        let envs: std::collections::HashMap<_, _> = cmd.get_envs().collect();
+        assert_eq!(
+            envs.get(std::ffi::OsStr::new("GIT_TERMINAL_PROMPT"))
+                .copied()
+                .flatten(),
+            Some(std::ffi::OsStr::new("0"))
+        );
+        assert_eq!(
+            envs.get(std::ffi::OsStr::new("GIT_OPTIONAL_LOCKS"))
+                .copied()
+                .flatten(),
+            Some(std::ffi::OsStr::new("0"))
+        );
+        assert_eq!(
+            envs.get(std::ffi::OsStr::new("GIT_CONFIG_GLOBAL"))
+                .copied()
+                .flatten(),
+            Some(std::ffi::OsStr::new("/dev/null"))
+        );
+        assert_eq!(
+            envs.get(std::ffi::OsStr::new("GIT_CONFIG_SYSTEM"))
+                .copied()
+                .flatten(),
+            Some(std::ffi::OsStr::new("/dev/null"))
+        );
+    }
+}
