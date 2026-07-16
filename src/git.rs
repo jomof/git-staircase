@@ -411,12 +411,16 @@ impl GitRepo {
                 }
             }
 
+            for anc in &reachable {
+                self.memoizer
+                    .Ancestry(anc.clone(), start_oid.clone())
+                    .put(true);
+            }
             for other_oid in &all_target_oids {
-                let is_anc = reachable.contains(other_oid);
-                if is_anc || exclude_oids.is_empty() {
+                if !reachable.contains(other_oid) && exclude_oids.is_empty() {
                     self.memoizer
                         .Ancestry(other_oid.clone(), start_oid.clone())
-                        .put(is_anc);
+                        .put(false);
                 }
             }
         }
