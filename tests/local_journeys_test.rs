@@ -402,8 +402,12 @@ fn active_operation_blocks_mutation_and_abort_restores_leased_ref() {
     let context = TestContext::new();
     let old = context.run_git(&["rev-parse", "HEAD"]);
     let new = context.commit("next.txt", "next\n", "next");
-    context.run_git(&["update-ref", "refs/heads/recovery-target", &new]);
-    let reference = "refs/heads/recovery-target".to_string();
+    context.run_git(&[
+        "update-ref",
+        "refs/heads/recovery-symbolic_integration_target",
+        &new,
+    ]);
+    let reference = "refs/heads/recovery-symbolic_integration_target".to_string();
     let journal = OperationJournal {
         schema: "git-staircase/operation-journal".into(),
         version: 1,
@@ -433,7 +437,10 @@ fn active_operation_blocks_mutation_and_abort_restores_leased_ref() {
     let aborted = context.run_staircase(&["abort", "--json"]);
     assert!(aborted.0, "{}", aborted.2);
     assert_eq!(
-        context.run_git(&["rev-parse", "refs/heads/recovery-target"]),
+        context.run_git(&[
+            "rev-parse",
+            "refs/heads/recovery-symbolic_integration_target"
+        ]),
         old
     );
     assert!(core::active_operation(&context.repo).unwrap().is_none());
@@ -587,7 +594,7 @@ fn split_renumber_is_transactional_and_preserves_upper_step_id() {
         landing_policy: None,
         id: "implicit@test".into(),
         name: "managed".into(),
-        target: "refs/heads/main".into(),
+        symbolic_integration_target: "refs/heads/main".into(),
         steps: vec![
             Step {
                 id: String::new(),

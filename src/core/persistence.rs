@@ -301,10 +301,10 @@ fn publish_record(
     })
 }
 
-pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
+pub fn read_record(repo: &GitRepo, symbolic_integration_target: &str) -> Result<StaircaseRecord> {
     let target_oid = repo
-        .resolve_ref_opt(target)?
-        .unwrap_or_else(|| target.to_string());
+        .resolve_ref_opt(symbolic_integration_target)?
+        .unwrap_or_else(|| symbolic_integration_target.to_string());
     let obj_type = repo.get_object_type(&target_oid)?;
     if obj_type != "tree" {
         return Err(StaircaseError::Other(format!(
@@ -448,7 +448,7 @@ fn serialize_structure(
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .map(Ok)
-        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))?;
+        .unwrap_or_else(|| repo.resolve_commit(&metadata.symbolic_integration_target))?;
     let typed_oid = |hex: String| {
         serde_json::json!({
             "algorithm": object_format,
@@ -495,9 +495,9 @@ fn serialize_structure(
         .cloned()
         .unwrap_or_else(|| serde_json::json!({"kind": "clean"}));
     let symbolic_targets = metadata
-        .target
+        .symbolic_integration_target
         .starts_with("refs/")
-        .then(|| vec![metadata.target.clone()])
+        .then(|| vec![metadata.symbolic_integration_target.clone()])
         .unwrap_or_default();
     let mut extensions = serde_json::Map::new();
     extensions.insert(
@@ -602,7 +602,7 @@ fn parse_structure(
     let context = value
         .get("integration_context")
         .ok_or_else(|| StaircaseError::Other("structure missing integration_context".into()))?;
-    let target = context
+    let symbolic_integration_target = context
         .get("symbolic_targets")
         .and_then(|value| value.as_array())
         .and_then(|values| values.first())
@@ -734,7 +734,7 @@ fn parse_structure(
             landing_policy,
             id,
             name: String::new(),
-            target,
+            symbolic_integration_target,
             steps,
             verification_policy,
             primary_branch_layout,

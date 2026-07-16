@@ -1426,7 +1426,7 @@ impl GitHubInstance {
 
         Ok(UnifiedReviewPlan {
             provider_label: "GitHub".to_string(),
-            target: self.route.base_repository.full_name(),
+            symbolic_integration_target: self.route.base_repository.full_name(),
             policy: plan.mapping_policy,
             items,
             warnings: plan.warnings,

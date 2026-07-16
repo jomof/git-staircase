@@ -39,7 +39,7 @@ impl ToPresentation for StaircaseMetadata {
             },
             Presentation::Field {
                 label: "Target".to_string(),
-                value: self.target.clone(),
+                value: self.symbolic_integration_target.clone(),
             },
         ];
 
@@ -114,8 +114,8 @@ impl ToPresentation for StaircaseStatus {
     fn to_presentation(&self) -> Presentation {
         let mut children = vec![
             Presentation::Field {
-                label: "target".to_string(),
-                value: self.metadata.target.clone(),
+                label: "symbolic_integration_target".to_string(),
+                value: self.metadata.symbolic_integration_target.clone(),
             },
             Presentation::Field {
                 label: "state".to_string(),
@@ -225,7 +225,7 @@ impl ToPresentation for StaircaseFamily {
             },
             Presentation::Field {
                 label: "Target".to_string(),
-                value: self.target.clone(),
+                value: self.symbolic_integration_target.clone(),
             },
             Presentation::Field {
                 label: "Roots".to_string(),

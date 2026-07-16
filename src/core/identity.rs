@@ -22,8 +22,11 @@ pub fn compute_identity(
         IdentityKind::Nominal => Ok(metadata.name.clone()),
         IdentityKind::Revision => {
             let format = repo.get_object_format()?;
-            let target_oid = repo.resolve_commit(&metadata.target)?;
-            let mut data = format!("format:{}\ntarget:{}\n", format, target_oid);
+            let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
+            let mut data = format!(
+                "format:{}\nsymbolic_integration_target:{}\n",
+                format, target_oid
+            );
             for (i, step) in metadata.steps.iter().enumerate() {
                 data.push_str(&format!("step{}:{}\n", i, step.cut));
             }
@@ -31,17 +34,20 @@ pub fn compute_identity(
             Ok(format!("{}:{}", format, hash))
         }
         IdentityKind::Body => {
-            let target_oid = repo.resolve_commit(&metadata.target)?;
+            let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
             let top_oid = metadata
                 .steps
                 .last()
                 .map(|s| s.cut.as_str())
                 .unwrap_or(&target_oid);
-            let data = format!("target:{}\ntop:{}\n", target_oid, top_oid);
+            let data = format!(
+                "symbolic_integration_target:{}\ntop:{}\n",
+                target_oid, top_oid
+            );
             repo.hash_data(&data)
         }
         IdentityKind::Decomposition => {
-            let target_oid = repo.resolve_commit(&metadata.target)?;
+            let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
             let mut patches = Vec::new();
             let mut last_cut = target_oid;
             for step in &metadata.steps {
@@ -52,7 +58,7 @@ pub fn compute_identity(
             repo.hash_data(&patches.join("\n---\n"))
         }
         IdentityKind::Outcome => {
-            let target_oid = repo.resolve_commit(&metadata.target)?;
+            let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
             let target_tree = repo.get_tree_id(&target_oid)?;
             let top_oid = metadata
                 .steps
@@ -64,7 +70,7 @@ pub fn compute_identity(
             repo.hash_data(&data)
         }
         IdentityKind::PatchSeries => {
-            let target_oid = repo.resolve_commit(&metadata.target)?;
+            let target_oid = repo.resolve_commit(&metadata.symbolic_integration_target)?;
             let mut patch_ids = Vec::new();
             let mut last_cut = target_oid;
             for step in &metadata.steps {

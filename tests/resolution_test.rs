@@ -73,7 +73,7 @@ fn test_selector_args_resolve_id() {
         landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "feat-1".to_string(),
@@ -119,7 +119,7 @@ fn test_selector_args_resolve_explicit_name() {
         landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "feat-1".to_string(),
@@ -166,7 +166,7 @@ fn test_selector_args_ambiguity() {
         landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "conflict".to_string(),
@@ -216,7 +216,7 @@ fn test_core_list_managed() {
         landing_policy: None,
         id: "my-id".to_string(),
         name: "my-sc".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![Step {
             id: String::new(),
             name: "feat-1".to_string(),

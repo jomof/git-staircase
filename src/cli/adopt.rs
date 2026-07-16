@@ -56,7 +56,7 @@ impl super::Command for Adopt {
             None
         };
 
-        let target = match &self.onto {
+        let symbolic_integration_target = match &self.onto {
             Some(o) => o.clone(),
             None => core::infer_onto(repo)?,
         };
@@ -64,7 +64,7 @@ impl super::Command for Adopt {
             landing_policy: self.landing_policy,
             id: Uuid::new_v4().to_string(),
             name: self.name.clone(),
-            target,
+            symbolic_integration_target,
             steps,
             verification_policy,
 

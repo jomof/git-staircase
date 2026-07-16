@@ -98,7 +98,7 @@ pub fn validate_split(
     let at_oid = repo.resolve_commit(at_commit)?;
     let cut_oid = &staircase.metadata().steps[step_index].cut;
     let prev_cut_oid = if step_index == 0 {
-        repo.resolve_commit(&staircase.metadata().target)?
+        repo.resolve_commit(&staircase.metadata().symbolic_integration_target)?
     } else {
         staircase.metadata().steps[step_index - 1].cut.clone()
     };
@@ -309,7 +309,7 @@ fn reorder_internal(
             .enumerate()
             .take_while(|(new_index, old_index)| *new_index == **old_index)
             .count();
-        let target = if start_step == 0 {
+        let symbolic_integration_target = if start_step == 0 {
             recorded_target(repo, &metadata)?
         } else {
             metadata.steps[start_step - 1].cut.clone()
@@ -320,7 +320,7 @@ fn reorder_internal(
             metadata,
             reordered[start_step..].to_vec(),
             start_step,
-            target,
+            symbolic_integration_target,
             "reorder",
             dry_run,
         )
@@ -365,7 +365,7 @@ pub fn drop_with_dry_run(
     let mut groups = step_commit_groups(repo, &metadata)?;
     groups.remove(step_index);
     let start_step = step_index.min(desired.steps.len());
-    let target = if start_step == 0 {
+    let symbolic_integration_target = if start_step == 0 {
         recorded_target(repo, &metadata)?
     } else {
         desired.steps[start_step - 1].cut.clone()
@@ -376,7 +376,7 @@ pub fn drop_with_dry_run(
         desired,
         groups[start_step..].to_vec(),
         start_step,
-        target,
+        symbolic_integration_target,
         "drop",
         dry_run,
     )
@@ -467,7 +467,7 @@ pub fn move_commits_with_dry_run(
         for (step, commits) in metadata.steps.iter_mut().zip(&groups) {
             step.cut = commits
                 .last()
-                .expect("empty source and target groups were rejected")
+                .expect("empty source and symbolic_integration_target groups were rejected")
                 .clone();
         }
         return if dry_run {
@@ -476,9 +476,16 @@ pub fn move_commits_with_dry_run(
             publish_metadata_common(repo, staircase, metadata, "move")
         };
     }
-    let target = recorded_target(repo, &metadata)?;
+    let symbolic_integration_target = recorded_target(repo, &metadata)?;
     super::rewrite::replay(
-        repo, staircase, metadata, groups, 0, target, "move", dry_run,
+        repo,
+        staircase,
+        metadata,
+        groups,
+        0,
+        symbolic_integration_target,
+        "move",
+        dry_run,
     )
 }
 
@@ -503,7 +510,7 @@ pub fn restack(
     let mut groups = Vec::new();
     let mut actual_predecessor = recorded_target(repo, &metadata)?;
     let mut recorded_predecessor = actual_predecessor.clone();
-    let mut current_base = repo.resolve_commit(&metadata.target)?;
+    let mut current_base = repo.resolve_commit(&metadata.symbolic_integration_target)?;
     let mut start_step = 0;
     for index in 0..metadata.steps.len() {
         let step = metadata.steps[index].clone();
@@ -595,7 +602,7 @@ pub fn restack_from(
         groups.push(repo.commits_between(&predecessor, &actual)?);
     }
     let base = if from_step == 0 {
-        repo.resolve_commit(&status.metadata.target)?
+        repo.resolve_commit(&status.metadata.symbolic_integration_target)?
     } else {
         status.metadata.steps[from_step - 1].cut.clone()
     };
@@ -632,7 +639,7 @@ pub fn rebase_with_dry_run(
     ensure_rewrite_supported(repo, original, "rebase")?;
     let groups = step_commit_groups(repo, original)?;
     let mut metadata = original.clone();
-    metadata.target = repo
+    metadata.symbolic_integration_target = repo
         .resolve_symbolic_full_name(onto)
         .unwrap_or_else(|_| onto.to_string());
     let groups = if options.leave_upper_steps_stale {
@@ -704,7 +711,7 @@ fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Strin
         .and_then(|value| value.as_str())
         .map(str::to_string)
         .map(Ok)
-        .unwrap_or_else(|| repo.resolve_commit(&metadata.target))
+        .unwrap_or_else(|| repo.resolve_commit(&metadata.symbolic_integration_target))
 }
 
 fn publish_metadata_common(
@@ -806,16 +813,20 @@ pub fn land(repo: &GitRepo, staircase: &ResolvedStaircase, options: LandOptions)
         .ok_or_else(|| StaircaseError::InvalidStructure("Empty staircase".to_string()))?
         .cut;
 
-    if metadata.target.starts_with("refs/") {
-        let expected = repo.resolve_ref_opt(&metadata.target)?;
+    if metadata.symbolic_integration_target.starts_with("refs/") {
+        let expected = repo.resolve_ref_opt(&metadata.symbolic_integration_target)?;
         let mut plan = super::operation::MutationPlan::new("land", Some(metadata.id.clone()));
         let _ = policy;
-        plan.update(metadata.target.clone(), expected, Some(top_cut.to_string()));
+        plan.update(
+            metadata.symbolic_integration_target.clone(),
+            expected,
+            Some(top_cut.to_string()),
+        );
         plan.publish(repo, false)?;
     } else {
         return Err(StaircaseError::Other(format!(
             "Target {} is not a ref, cannot land",
-            metadata.target
+            metadata.symbolic_integration_target
         )));
     }
 
@@ -858,11 +869,11 @@ pub fn land_through(
         });
     }
     let target_ref = repo
-        .resolve_symbolic_full_name(&metadata.target)
-        .unwrap_or_else(|_| metadata.target.clone());
+        .resolve_symbolic_full_name(&metadata.symbolic_integration_target)
+        .unwrap_or_else(|_| metadata.symbolic_integration_target.clone());
     if !target_ref.starts_with("refs/") {
         return Err(StaircaseError::InvalidStructure(
-            "partial landing requires a symbolic target ref".into(),
+            "partial landing requires a symbolic symbolic_integration_target ref".into(),
         ));
     }
     let old_target = repo.resolve_ref_opt(&target_ref)?;

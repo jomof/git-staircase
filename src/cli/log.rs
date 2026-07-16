@@ -12,10 +12,14 @@ impl super::Command for Log {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let rs = self.staircase.resolve(repo)?;
         let m = rs.metadata();
-        let target = &m.target;
+        let symbolic_integration_target = &m.symbolic_integration_target;
         let tip = &m.steps.last().expect("Staircase has no steps").cut;
 
-        let output = repo.run(&["log", "--oneline", &format!("{}..{}", target, tip)])?;
+        let output = repo.run(&[
+            "log",
+            "--oneline",
+            &format!("{}..{}", symbolic_integration_target, tip),
+        ])?;
 
         let mut commits = Vec::new();
         for line in output.lines() {

@@ -48,7 +48,7 @@ fn test_staircase_metadata_presentation() {
     let metadata = StaircaseMetadata {
         id: "staircase1".to_string(),
         name: "My Staircase".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![Step {
             id: "s1".to_string(),
             name: "S1".to_string(),

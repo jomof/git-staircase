@@ -77,7 +77,7 @@ pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>
     for staircase in resolved_staircases {
         let key = match &staircase {
             ResolvedStaircase::Managed(metadata) => {
-                let integration = repo.resolve_commit(&metadata.target)?;
+                let integration = repo.resolve_commit(&metadata.symbolic_integration_target)?;
                 core::discovery::compute_implicit_id(repo, &integration, &metadata.steps)?
             }
             ResolvedStaircase::Implicit(metadata) => metadata.id.clone(),

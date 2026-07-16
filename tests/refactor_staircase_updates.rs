@@ -31,7 +31,7 @@ fn test_managed_staircase_updates() {
         landing_policy: None,
         id: "test-managed".to_string(),
         name: "Managed".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),
@@ -137,7 +137,7 @@ fn test_implicit_staircase_updates() {
         landing_policy: None,
         id: "test-implicit".to_string(),
         name: "Implicit".to_string(),
-        target: "main".to_string(),
+        symbolic_integration_target: "main".to_string(),
         steps: vec![
             Step {
                 id: String::new(),

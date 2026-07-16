@@ -41,7 +41,7 @@ pub struct UnifiedReviewStatus {
 #[derive(Serialize, Clone, Debug)]
 pub struct UnifiedReviewPlan {
     pub provider_label: String,
-    pub target: String,
+    pub symbolic_integration_target: String,
     pub policy: String,
     pub items: Vec<UnifiedReviewItem>,
     pub warnings: Vec<String>,

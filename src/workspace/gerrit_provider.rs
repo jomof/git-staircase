@@ -1423,7 +1423,7 @@ impl GerritInstance {
 
         Ok(UnifiedReviewPlan {
             provider_label: "Gerrit".to_string(),
-            target: plan.push_ref,
+            symbolic_integration_target: plan.push_ref,
             policy: plan.mapping_policy,
             items,
             warnings: plan.warnings,
