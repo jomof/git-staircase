@@ -44,7 +44,7 @@ impl super::Command for Show {
         if self.ids {
             let cmd = super::id::Id {
                 staircase: self.staircase.clone(),
-                kind: crate::IdentityKind::Lineage,
+                kind: crate::IdentityKind::Revision,
             };
             return cmd.run(repo);
         }

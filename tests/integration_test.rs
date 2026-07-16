@@ -377,7 +377,7 @@ fn test_split_implicit_staircase() {
 }
 
 #[test]
-fn test_id_lineage_no_auto_adopt() {
+fn test_id_lineage_auto_adopt() {
     // ARRANGE
     let ctx = TestContext::new();
 
@@ -400,11 +400,9 @@ fn test_id_lineage_no_auto_adopt() {
 
     // ASSERT
     assert!(!id.is_empty());
-    assert!(id.starts_with("implicit@"));
-
-    // Verify it is NOT managed after identity computation
-    let res = core::resolve_by_id(&ctx.repo, &id);
-    assert!(res.is_err(), "Lineage ID {} should not be found as managed", id);
+    let rs_after = core::resolve_by_id(&ctx.repo, &id).expect("Should find staircase");
+    assert!(rs_after.is_managed());
+    assert_eq!(rs_after.metadata().id, id);
 }
 
 #[test]
