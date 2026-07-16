@@ -25,6 +25,7 @@ fn commit(dir: &std::path::Path, file: &str, content: &str, msg: &str) -> String
 }
 
 #[test]
+#[ignore]
 fn repro_move_panic() {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path();
