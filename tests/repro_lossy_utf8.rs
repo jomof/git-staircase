@@ -37,15 +37,14 @@ fn test_cat_file_binary_data() {
     let oid = String::from_utf8(output.stdout).unwrap().trim().to_string();
 
     // ACT
-    let read_data_res = repo.cat_file(&oid);
+    let read_data_res = repo.cat_file_bytes(&oid);
 
     // ASSERT
     assert!(read_data_res.is_ok());
     let read_data = read_data_res.unwrap();
 
     assert_eq!(
-        read_data.as_bytes(),
-        &binary_data,
+        read_data, binary_data,
         "Read data should match original binary data exactly"
     );
 }

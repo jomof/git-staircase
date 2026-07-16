@@ -74,7 +74,11 @@ impl GitRepo {
     }
 
     pub fn cat_file(&self, oid: &str) -> Result<String> {
-        self.run(&["cat-file", "-p", oid])
+        self.command().args(&["cat-file", "-p", oid]).run()
+    }
+
+    pub fn cat_file_bytes(&self, oid: &str) -> Result<Vec<u8>> {
+        self.command().args(&["cat-file", "-p", oid]).run_bytes()
     }
 
     pub fn ls_tree(&self, oid: &str) -> Result<Vec<TreeEntry>> {

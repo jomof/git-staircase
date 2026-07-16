@@ -91,6 +91,11 @@ impl<'a> GitCommand<'a> {
         }
     }
 
+    pub fn run_bytes(self) -> Result<Vec<u8>> {
+        let output = self.run_output()?;
+        Ok(output.stdout)
+    }
+
     pub fn run_output(self) -> Result<std::process::Output> {
         let mut cmd = self.repo.git_cmd();
         for (k, v) in &self.envs {
