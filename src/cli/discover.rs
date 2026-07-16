@@ -25,4 +25,8 @@ impl super::Command for Discover {
         )?;
         Ok(Box::new(results))
     }
+
+    fn requires_clear_operation(&self) -> bool {
+        false
+    }
 }

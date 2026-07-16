@@ -18,4 +18,8 @@ impl super::Command for Diff {
         let output = repo.run(&["diff", &format!("{}..{}", target, tip)])?;
         Ok(Box::new(PlainOutput(output)))
     }
+
+    fn requires_clear_operation(&self) -> bool {
+        false
+    }
 }

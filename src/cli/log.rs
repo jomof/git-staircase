@@ -29,4 +29,8 @@ impl super::Command for Log {
 
         Ok(Box::new(LogOutput(commits)))
     }
+
+    fn requires_clear_operation(&self) -> bool {
+        false
+    }
 }

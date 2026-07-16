@@ -111,8 +111,8 @@ impl ToPresentation for ProviderDoctorReport {
     }
 }
 
-impl ProviderCmd {
-    pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+impl super::Command for ProviderCmd {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let record = find_workspace_record_for_path(&repo.workdir)?;
         let report = match &self.provider {
             ProviderSubcommand::Repo(_) => {
@@ -194,6 +194,10 @@ impl ProviderCmd {
             }
         };
         Ok(Box::new(report))
+    }
+
+    fn requires_clear_operation(&self) -> bool {
+        false
     }
 }
 

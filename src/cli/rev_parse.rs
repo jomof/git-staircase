@@ -156,4 +156,8 @@ impl Command for RevParse {
             step_id,
         }))
     }
+
+    fn requires_clear_operation(&self) -> bool {
+        false
+    }
 }

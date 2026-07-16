@@ -170,7 +170,7 @@ enum Commands {
     Unarchive(cli::unarchive::UnarchiveCmd),
 }
 
-impl Commands {
+impl Command for Commands {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
         match self {
             Commands::Workspace(cmd) => cmd.run(repo),
@@ -221,25 +221,101 @@ impl Commands {
     }
 
     fn requires_clear_operation(&self) -> bool {
-        !matches!(
-            self,
-            Commands::Workspace(_)
-                | Commands::Provider(_)
-                | Commands::Discover(_)
-                | Commands::List(_)
-                | Commands::Show(_)
-                | Commands::Status(_)
-                | Commands::Id(_)
-                | Commands::Log(_)
-                | Commands::Diff(_)
-                | Commands::Graph(_)
-                | Commands::Steps(_)
-                | Commands::Commits(_)
-                | Commands::RevParse(_)
-                | Commands::Operation(_)
-                | Commands::Continue(_)
-                | Commands::Abort(_)
-        )
+        match self {
+            Commands::Workspace(cmd) => cmd.requires_clear_operation(),
+            Commands::Provider(cmd) => cmd.requires_clear_operation(),
+            Commands::Land(cmd) => cmd.requires_clear_operation(),
+            Commands::Append(cmd) => cmd.requires_clear_operation(),
+            Commands::Reorder(cmd) => cmd.requires_clear_operation(),
+            Commands::Move(cmd) => cmd.requires_clear_operation(),
+            Commands::Drop(cmd) => cmd.requires_clear_operation(),
+            Commands::Discover(cmd) => cmd.requires_clear_operation(),
+            Commands::Discovery(cmd) => cmd.requires_clear_operation(),
+            Commands::Adopt(cmd) => cmd.requires_clear_operation(),
+            Commands::List(cmd) => cmd.requires_clear_operation(),
+            Commands::Show(cmd) => cmd.requires_clear_operation(),
+            Commands::Status(cmd) => cmd.requires_clear_operation(),
+            Commands::Split(cmd) => cmd.requires_clear_operation(),
+            Commands::Join(cmd) => cmd.requires_clear_operation(),
+            Commands::Rebase(cmd) => cmd.requires_clear_operation(),
+            Commands::Restack(cmd) => cmd.requires_clear_operation(),
+            Commands::Verify(cmd) => cmd.requires_clear_operation(),
+            Commands::Id(cmd) => cmd.requires_clear_operation(),
+            Commands::Delete(cmd) => cmd.requires_clear_operation(),
+            Commands::Log(cmd) => cmd.requires_clear_operation(),
+            Commands::Diff(cmd) => cmd.requires_clear_operation(),
+            Commands::Graph(cmd) => cmd.requires_clear_operation(),
+            Commands::Steps(cmd) => cmd.requires_clear_operation(),
+            Commands::Review(cmd) => cmd.requires_clear_operation(),
+            Commands::Commits(cmd) => cmd.requires_clear_operation(),
+            Commands::Draft(cmd) => cmd.requires_clear_operation(),
+            Commands::Describe(cmd) => cmd.requires_clear_operation(),
+            Commands::Metadata(cmd) => cmd.requires_clear_operation(),
+            Commands::Policy(cmd) => cmd.requires_clear_operation(),
+            Commands::Layout(cmd) => cmd.requires_clear_operation(),
+            Commands::Normalize(cmd) => cmd.requires_clear_operation(),
+            Commands::Continue(cmd) => cmd.requires_clear_operation(),
+            Commands::Abort(cmd) => cmd.requires_clear_operation(),
+            Commands::Operation(cmd) => cmd.requires_clear_operation(),
+            Commands::Name(cmd) => cmd.requires_clear_operation(),
+            Commands::Rename(cmd) => cmd.requires_clear_operation(),
+            Commands::Unname(cmd) => cmd.requires_clear_operation(),
+            Commands::Tag(cmd) => cmd.requires_clear_operation(),
+            Commands::RevParse(cmd) => cmd.requires_clear_operation(),
+            Commands::Push(cmd) => cmd.requires_clear_operation(),
+            Commands::Fetch(cmd) => cmd.requires_clear_operation(),
+            Commands::Archive(cmd) => cmd.requires_clear_operation(),
+            Commands::Unarchive(cmd) => cmd.requires_clear_operation(),
+        }
+    }
+
+    fn requires_bootstrap(&self) -> bool {
+        match self {
+            Commands::Workspace(cmd) => cmd.requires_bootstrap(),
+            Commands::Provider(cmd) => cmd.requires_bootstrap(),
+            Commands::Land(cmd) => cmd.requires_bootstrap(),
+            Commands::Append(cmd) => cmd.requires_bootstrap(),
+            Commands::Reorder(cmd) => cmd.requires_bootstrap(),
+            Commands::Move(cmd) => cmd.requires_bootstrap(),
+            Commands::Drop(cmd) => cmd.requires_bootstrap(),
+            Commands::Discover(cmd) => cmd.requires_bootstrap(),
+            Commands::Discovery(cmd) => cmd.requires_bootstrap(),
+            Commands::Adopt(cmd) => cmd.requires_bootstrap(),
+            Commands::List(cmd) => cmd.requires_bootstrap(),
+            Commands::Show(cmd) => cmd.requires_bootstrap(),
+            Commands::Status(cmd) => cmd.requires_bootstrap(),
+            Commands::Split(cmd) => cmd.requires_bootstrap(),
+            Commands::Join(cmd) => cmd.requires_bootstrap(),
+            Commands::Rebase(cmd) => cmd.requires_bootstrap(),
+            Commands::Restack(cmd) => cmd.requires_bootstrap(),
+            Commands::Verify(cmd) => cmd.requires_bootstrap(),
+            Commands::Id(cmd) => cmd.requires_bootstrap(),
+            Commands::Delete(cmd) => cmd.requires_bootstrap(),
+            Commands::Log(cmd) => cmd.requires_bootstrap(),
+            Commands::Diff(cmd) => cmd.requires_bootstrap(),
+            Commands::Graph(cmd) => cmd.requires_bootstrap(),
+            Commands::Steps(cmd) => cmd.requires_bootstrap(),
+            Commands::Review(cmd) => cmd.requires_bootstrap(),
+            Commands::Commits(cmd) => cmd.requires_bootstrap(),
+            Commands::Draft(cmd) => cmd.requires_bootstrap(),
+            Commands::Describe(cmd) => cmd.requires_bootstrap(),
+            Commands::Metadata(cmd) => cmd.requires_bootstrap(),
+            Commands::Policy(cmd) => cmd.requires_bootstrap(),
+            Commands::Layout(cmd) => cmd.requires_bootstrap(),
+            Commands::Normalize(cmd) => cmd.requires_bootstrap(),
+            Commands::Continue(cmd) => cmd.requires_bootstrap(),
+            Commands::Abort(cmd) => cmd.requires_bootstrap(),
+            Commands::Operation(cmd) => cmd.requires_bootstrap(),
+            Commands::Name(cmd) => cmd.requires_bootstrap(),
+            Commands::Rename(cmd) => cmd.requires_bootstrap(),
+            Commands::Unname(cmd) => cmd.requires_bootstrap(),
+            Commands::Tag(cmd) => cmd.requires_bootstrap(),
+            Commands::RevParse(cmd) => cmd.requires_bootstrap(),
+            Commands::Push(cmd) => cmd.requires_bootstrap(),
+            Commands::Fetch(cmd) => cmd.requires_bootstrap(),
+            Commands::Archive(cmd) => cmd.requires_bootstrap(),
+            Commands::Unarchive(cmd) => cmd.requires_bootstrap(),
+        }
     }
 }
 
@@ -283,7 +359,7 @@ fn run(cli: Cli) -> Result<()> {
         ),
     };
 
-    if !matches!(&cli.command, Commands::Provider(_)) {
+    if cli.command.requires_bootstrap() {
         let bootstrap_res = bootstrap(&repo, &options)?;
         if let Some(ref msg) = bootstrap_res.message {
             if matches!(format, cli::OutputFormat::Human) {
