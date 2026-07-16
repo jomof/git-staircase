@@ -123,7 +123,7 @@ impl ToPresentation for StaircaseMetadata {
             },
             Presentation::List(p_children),
         )
-}
+    }
 }
 
 impl ToPresentation for StaircaseStatus {

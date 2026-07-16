@@ -165,12 +165,25 @@ fn test_show_porcelain_alignment() {
     commit(dir, "file2.txt", "2", "commit 2");
 
     // Show implicit staircase
-    let (success, stdout, stderr) = run_staircase(dir, &["show", "feature/auth-core", "--porcelain"]);
+    let (success, stdout, stderr) =
+        run_staircase(dir, &["show", "feature/auth-core", "--porcelain"]);
     assert!(success, "show --porcelain failed: {}", stderr);
 
-    assert!(stdout.contains("feature/auth"), "Should contain name in output: {}", stdout);
-    assert!(stdout.contains("target\t"), "Should contain target in output: {}", stdout);
-    assert!(stdout.contains("step\t"), "Should contain steps in output: {}", stdout);
+    assert!(
+        stdout.contains("feature/auth"),
+        "Should contain name in output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("target\t"),
+        "Should contain target in output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("step\t"),
+        "Should contain steps in output: {}",
+        stdout
+    );
 }
 
 #[test]
@@ -180,15 +193,23 @@ fn test_describe_porcelain_alignment() {
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     commit(dir, "file1.txt", "1", "commit 1");
-    
+
     run_staircase(dir, &["adopt", "auth", "feature/auth-core"]);
     run_staircase(dir, &["metadata", "set-title", "auth", "Auth System"]);
 
     let (success, stdout, stderr) = run_staircase(dir, &["describe", "auth", "--porcelain"]);
     assert!(success, "describe --porcelain failed: {}", stderr);
 
-    assert!(stdout.contains("name\tauth"), "Should contain name: {}", stdout);
-    assert!(stdout.contains("title\tAuth System"), "Should contain title: {}", stdout);
+    assert!(
+        stdout.contains("name\tauth"),
+        "Should contain name: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("title\tAuth System"),
+        "Should contain title: {}",
+        stdout
+    );
 }
 
 #[test]
@@ -198,13 +219,22 @@ fn test_metadata_show_porcelain_alignment() {
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
     commit(dir, "file1.txt", "1", "commit 1");
-    
+
     run_staircase(dir, &["adopt", "auth", "feature/auth-core"]);
     run_staircase(dir, &["metadata", "add-label", "auth", "security"]);
 
-    let (success, stdout, stderr) = run_staircase(dir, &["metadata", "show", "auth", "--porcelain"]);
+    let (success, stdout, stderr) =
+        run_staircase(dir, &["metadata", "show", "auth", "--porcelain"]);
     assert!(success, "metadata show --porcelain failed: {}", stderr);
 
-    assert!(!stdout.trim().starts_with("{"), "Porcelain should not be JSON: {}", stdout);
-    assert!(stdout.contains("label\tsecurity"), "Should contain labels: {}", stdout);
+    assert!(
+        !stdout.trim().starts_with("{"),
+        "Porcelain should not be JSON: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("label\tsecurity"),
+        "Should contain labels: {}",
+        stdout
+    );
 }

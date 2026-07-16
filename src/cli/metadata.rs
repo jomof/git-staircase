@@ -151,17 +151,27 @@ impl ToPresentation for UserMetadataOutput {
             });
         }
 
-        let mut p_children = vec![
-            Presentation::Record(vec!["name".to_string(), self.name.clone()]),
-        ];
+        let mut p_children = vec![Presentation::Record(vec![
+            "name".to_string(),
+            self.name.clone(),
+        ])];
         if let Some(ref title) = self.metadata.title {
-            p_children.push(Presentation::Record(vec!["title".to_string(), title.clone()]));
+            p_children.push(Presentation::Record(vec![
+                "title".to_string(),
+                title.clone(),
+            ]));
         }
         if let Some(ref desc) = self.metadata.description {
-            p_children.push(Presentation::Record(vec!["description".to_string(), desc.clone()]));
+            p_children.push(Presentation::Record(vec![
+                "description".to_string(),
+                desc.clone(),
+            ]));
         }
         for label in &self.metadata.labels {
-            p_children.push(Presentation::Record(vec!["label".to_string(), label.clone()]));
+            p_children.push(Presentation::Record(vec![
+                "label".to_string(),
+                label.clone(),
+            ]));
         }
         for link in &self.metadata.links {
             p_children.push(Presentation::Record(vec![
@@ -218,13 +228,22 @@ impl ToPresentation for StepMetadataOutput {
             Presentation::Record(vec!["step".to_string(), self.step_key.clone()]),
         ];
         if let Some(ref title) = self.metadata.title {
-            p_children.push(Presentation::Record(vec!["title".to_string(), title.clone()]));
+            p_children.push(Presentation::Record(vec![
+                "title".to_string(),
+                title.clone(),
+            ]));
         }
         if let Some(ref desc) = self.metadata.description {
-            p_children.push(Presentation::Record(vec!["description".to_string(), desc.clone()]));
+            p_children.push(Presentation::Record(vec![
+                "description".to_string(),
+                desc.clone(),
+            ]));
         }
         for label in &self.metadata.labels {
-            p_children.push(Presentation::Record(vec!["label".to_string(), label.clone()]));
+            p_children.push(Presentation::Record(vec![
+                "label".to_string(),
+                label.clone(),
+            ]));
         }
 
         Presentation::List(vec![

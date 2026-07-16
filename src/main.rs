@@ -1,7 +1,7 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand, error::ErrorKind};
-use git_staircase::{GitRepo, StaircaseError};
 use git_staircase::core;
+use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
 use git_staircase::cli::{self, Command};

@@ -1,3 +1,4 @@
+use super::discovery::compute_implicit_id;
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -165,6 +166,13 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     let mut staircase = staircase.clone();
     staircase.target = target;
     if staircase.id.starts_with("implicit@") {
+        let current_id = compute_implicit_id(repo, &staircase.target, &staircase.steps)?;
+        if current_id != staircase.id {
+            return Err(StaircaseError::Other(format!(
+                "Implicit staircase state changed; structural key {} is now {}",
+                staircase.id, current_id
+            )));
+        }
         staircase.id = Uuid::new_v4().to_string();
     }
     for step in &mut staircase.steps {
@@ -180,6 +188,21 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     let mut last_cut = target_oid;
     for step in &staircase.steps {
         let current_cut = repo.resolve_commit(&step.cut)?;
+        if let Some(branch) = &step.branch {
+            let full_ref = if branch.starts_with("refs/") {
+                branch.clone()
+            } else {
+                format!("refs/heads/{}", branch)
+            };
+            if let Ok(actual_oid) = repo.resolve_commit(&full_ref) {
+                if actual_oid != current_cut {
+                    return Err(StaircaseError::Other(format!(
+                        "Branch \"{}\" moved from {} to {} during adoption; structural binding failed",
+                        branch, current_cut, actual_oid
+                    )));
+                }
+            }
+        }
         if current_cut == last_cut {
             return Err(StaircaseError::InvalidStructure(format!(
                 "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
