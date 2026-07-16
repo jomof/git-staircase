@@ -41,13 +41,17 @@ fn test_storage_race_condition() {
             b.wait();
             // Try to update the record multiple times
             for _ in 0..10 {
-                if let Ok(Some(rec)) = load_workspace_record_by_id(&wid) {
-                    let expected_gen = rec.generation;
-                    let mut updated = rec.clone();
-                    updated
-                        .extensions
-                        .insert("update".to_string(), serde_json::json!("done"));
-                    let _ = save_workspace_record_cas(&updated, Some(expected_gen));
+                loop {
+                    if let Ok(Some(rec)) = load_workspace_record_by_id(&wid) {
+                        let expected_gen = rec.generation;
+                        let mut updated = rec.clone();
+                        updated
+                            .extensions
+                            .insert("update".to_string(), serde_json::json!("done"));
+                        if save_workspace_record_cas(&updated, Some(expected_gen)).is_ok() {
+                            break;
+                        }
+                    }
                 }
             }
         }));
