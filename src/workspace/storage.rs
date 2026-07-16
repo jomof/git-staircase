@@ -114,11 +114,10 @@ pub fn list_workspace_records() -> Result<Vec<WorkspaceRecord>> {
                     continue;
                 }
             }
-            if let Ok(data) = fs::read_to_string(&path) {
-                if let Ok(record) = serde_json::from_str::<WorkspaceRecord>(&data) {
-                    records.push(record);
-                }
-            }
+            let data = std::fs::read_to_string(&path)?;
+            let record: WorkspaceRecord = serde_json::from_str(&data)
+                .map_err(|e| crate::error::StaircaseError::Other(format!("Invalid storage record {}: {}", path.display(), e)))?;
+            records.push(record);
         }
     }
     Ok(records)
