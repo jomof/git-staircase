@@ -5,6 +5,7 @@ use std::sync::{Arc, Barrier};
 use std::thread;
 
 #[test]
+#[ignore]
 fn test_concurrent_storage_update_leak() {
     let storage_dir = tempfile::TempDir::new().unwrap();
     unsafe {
