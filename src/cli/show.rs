@@ -58,6 +58,7 @@ impl super::Command for Show {
                 build_command: None,
                 test_command: None,
                 draft: false,
+                timeout: None,
             };
             return cmd.run(repo);
         }

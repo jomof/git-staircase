@@ -29,13 +29,16 @@ pub struct Verify {
     /// Verify the exact current stage-zero index tree.
     #[arg(long)]
     pub draft: bool,
+    /// Maximum number of seconds to allow the verification process to run before aborting it.
+    #[arg(long)]
+    pub timeout: Option<u64>,
 }
 
 impl super::Command for Verify {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         if self.draft {
             let evidence =
-                core::verify_draft(repo, self.build_command.clone(), self.test_command.clone())?;
+                core::verify_draft(repo, self.build_command.clone(), self.test_command.clone(), self.timeout)?;
             return Ok(Box::new(evidence));
         }
         let aggregate_opt = if self.aggregate { Some(true) } else { None };
@@ -78,6 +81,7 @@ impl super::Command for Verify {
             self.test_command.clone(),
             aggregate_opt,
             each_prefix_opt,
+            self.timeout,
         )?;
         Ok(Box::new(VerificationResults(results)))
     }

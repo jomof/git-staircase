@@ -25,6 +25,7 @@ pub fn verify(
     test_command_override: Option<String>,
     aggregate_only: Option<bool>,
     each_prefix: Option<bool>,
+    timeout_secs: Option<u64>,
 ) -> Result<Vec<VerificationResult>> {
     let draft = super::draft::get_worktree_draft(repo)?;
     if draft.classification != crate::model::DraftClassification::Clean {
@@ -49,6 +50,9 @@ pub fn verify(
     });
 
     let mut results = Vec::new();
+
+    let default_timeout = 300;
+    let timeout = timeout_secs.unwrap_or(default_timeout);
 
     let mut targets = Vec::new();
     if verify_each {
@@ -89,7 +93,7 @@ pub fn verify(
         let mut stderr = String::new();
 
         if let Some(ref cmd) = build_cmd {
-            let (ok, out, err) = run_shell_command(&repo.workdir, cmd)?;
+            let (ok, out, err) = run_shell_command(&repo.workdir, cmd, timeout)?;
             stdout.push_str(&out);
             stderr.push_str(&err);
             if !ok {
@@ -99,7 +103,7 @@ pub fn verify(
 
         if success {
             if let Some(ref cmd) = test_cmd {
-                let (ok, out, err) = run_shell_command(&repo.workdir, cmd)?;
+                let (ok, out, err) = run_shell_command(&repo.workdir, cmd, timeout)?;
                 stdout.push_str(&out);
                 stderr.push_str(&err);
                 if !ok {
@@ -139,6 +143,7 @@ pub fn verify_draft(
     repo: &GitRepo,
     build_command: Option<String>,
     test_command: Option<String>,
+    timeout_secs: Option<u64>,
 ) -> Result<DraftVerificationEvidence> {
     let draft = super::draft::get_worktree_draft(repo)?;
     if let Some(operation) = draft.transient_operation {
@@ -158,15 +163,19 @@ pub fn verify_draft(
     let mut success = true;
     let mut stdout = String::new();
     let mut stderr = String::new();
+    
+    let default_timeout = 300; // 5 minutes default
+    let timeout = timeout_secs.unwrap_or(default_timeout);
+
     if let Some(command) = &build_command {
-        let (ok, out, err) = run_shell_command(&repo.workdir, command)?;
+        let (ok, out, err) = run_shell_command(&repo.workdir, command, timeout)?;
         success &= ok;
         stdout.push_str(&out);
         stderr.push_str(&err);
     }
     if success {
         if let Some(command) = &test_command {
-            let (ok, out, err) = run_shell_command(&repo.workdir, command)?;
+            let (ok, out, err) = run_shell_command(&repo.workdir, command, timeout)?;
             success &= ok;
             stdout.push_str(&out);
             stderr.push_str(&err);
@@ -186,12 +195,35 @@ pub fn verify_draft(
     })
 }
 
-fn run_shell_command(dir: &std::path::Path, command: &str) -> Result<(bool, String, String)> {
-    let output = std::process::Command::new("sh")
+fn run_shell_command(dir: &std::path::Path, command: &str, timeout_secs: u64) -> Result<(bool, String, String)> {
+    let mut child = std::process::Command::new("sh")
         .current_dir(dir)
         .arg("-c")
         .arg(command)
-        .output()?;
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped())
+        .spawn()?;
+
+    let start = std::time::Instant::now();
+    let timeout = std::time::Duration::from_secs(timeout_secs);
+    let output = loop {
+        match child.try_wait() {
+            Ok(Some(_)) => {
+                break child.wait_with_output()?;
+            }
+            Ok(None) => {
+                if start.elapsed() >= timeout {
+                    let _ = child.kill();
+                    return Err(crate::error::StaircaseError::Other(format!(
+                        "Verification shell command timed out after {} seconds",
+                        timeout_secs
+                    )));
+                }
+                std::thread::sleep(std::time::Duration::from_millis(20));
+            }
+            Err(e) => return Err(crate::error::StaircaseError::Other(e.to_string())),
+        }
+    };
 
     let stdout = String::from_utf8_lossy(&output.stdout).into_owned();
     let stderr = String::from_utf8_lossy(&output.stderr).into_owned();
