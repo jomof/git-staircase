@@ -7,6 +7,7 @@ use uuid::Uuid;
 
 use super::inference::infer_onto;
 use super::utils::{check_sequential_layout, common_prefix};
+use crate::workspace::gerrit_provider;
 
 fn hash_field(hasher: &mut sha2::Sha256, label: &[u8], value: &[u8]) {
     use sha2::Digest;
@@ -109,11 +110,28 @@ pub fn discover(
             );
             discoveries.push(Discovery::Ambiguous(family));
         } else {
-            let paths = extract_all_linear_paths(&root, &children_map, &active_branches);
+            let mut paths = extract_all_linear_paths(&root, &children_map, &active_branches);
+
+            // Refine steps for Gerrit if applicable
+            if let Ok(Some(_)) = gerrit_provider::probe_gerrit_route(repo, None) {
+                for path in &mut paths {
+                    if let Ok(refined) = refine_steps_for_gerrit(repo, &onto_oid, path) {
+                        if !refined.is_empty() {
+                            *path = refined;
+                        }
+                    }
+                }
+            }
+
             for steps in paths {
-                let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
-                let name = common_prefix(&branch_names)
-                    .unwrap_or_else(|| steps.last().unwrap().name.clone());
+                let branch_names: Vec<&str> =
+                    steps.iter().filter_map(|s| s.branch.as_deref()).collect();
+                let name = if branch_names.is_empty() {
+                    steps.last().unwrap().name.clone()
+                } else {
+                    common_prefix(&branch_names)
+                        .unwrap_or_else(|| steps.last().unwrap().name.clone())
+                };
 
                 let base = check_sequential_layout(&steps);
                 let (layout, layout_base) = if let Some(b) = base {
@@ -283,4 +301,64 @@ fn find_paths_recursive(
         }
     }
     current_path.pop();
+}
+
+fn refine_steps_for_gerrit(
+    repo: &GitRepo,
+    onto_oid: &str,
+    original_steps: &[Step],
+) -> Result<Vec<Step>> {
+    let mut refined_steps = Vec::new();
+    let mut last_oid = onto_oid.to_string();
+
+    for step in original_steps {
+        let commits = repo.commits_between(&last_oid, &step.cut)?;
+        for oid in commits {
+            let msg = repo.run(&["log", "-1", "--format=%B", &oid])?;
+            let change_id = match gerrit_provider::parse_change_ids(&msg) {
+                gerrit_provider::ChangeIdParseResult::Single(id) => Some(id),
+                gerrit_provider::ChangeIdParseResult::Multiple(ids) => ids.first().cloned(),
+                _ => None,
+            };
+
+            if let Some(id) = change_id {
+                let subject = repo.run(&["log", "-1", "--format=%s", &oid])?;
+                refined_steps.push(Step {
+                    id,
+                    name: subject,
+                    cut: oid,
+                    branch: None,
+                });
+            }
+        }
+
+        // If the original step was a branch, ensure it's represented
+        if let Some(branch_name) = &step.branch {
+            if let Some(last_refined) = refined_steps.last_mut() {
+                if last_refined.cut == step.cut {
+                    last_refined.branch = Some(branch_name.clone());
+                    // Keep the Change-Id as the primary identity, but maybe update name if it was just subject
+                    // Actually, for Gerrit discovery, we prefer Change-Id as identity.
+                } else {
+                    refined_steps.push(Step {
+                        id: String::new(),
+                        name: branch_name.clone(),
+                        cut: step.cut.clone(),
+                        branch: Some(branch_name.clone()),
+                    });
+                }
+            } else {
+                refined_steps.push(Step {
+                    id: String::new(),
+                    name: branch_name.clone(),
+                    cut: step.cut.clone(),
+                    branch: Some(branch_name.clone()),
+                });
+            }
+        }
+
+        last_oid = step.cut.clone();
+    }
+
+    Ok(refined_steps)
 }
