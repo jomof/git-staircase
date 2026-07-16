@@ -40,7 +40,61 @@ pub fn save_workspace_record_cas(
 
     let filename = format!("{}.json", record.workspace_id);
     let target_path = dir.join(&filename);
-    let temp_path = dir.join(format!(".tmp_{}.json", record.workspace_id));
+    let lock_path = dir.join(format!("{}.lock", record.workspace_id));
+    
+    let open = || std::fs::OpenOptions::new().write(true).create_new(true).open(&lock_path);
+    let mut _lock_file = loop {
+        match open() {
+            Ok(file) => break file,
+            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                let existing_text = match fs::read_to_string(&lock_path) {
+                    Ok(t) => t,
+                    Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                    Err(e) => return Err(StaircaseError::Io(e)),
+                };
+                let existing = serde_json::from_str::<serde_json::Value>(&existing_text).ok();
+                let pid = existing
+                    .as_ref()
+                    .and_then(|lock| lock.get("pid"))
+                    .and_then(|pid| pid.as_u64());
+                let live = pid
+                    .map(|pid| {
+                        std::process::Command::new("kill")
+                            .args(["-0", &pid.to_string()])
+                            .stdout(std::process::Stdio::null())
+                            .stderr(std::process::Stdio::null())
+                            .status()
+                            .is_ok_and(|status| status.success())
+                    })
+                    .unwrap_or(true);
+                if live {
+                    std::thread::sleep(std::time::Duration::from_millis(5));
+                    continue;
+                }
+                let _ = fs::remove_file(&lock_path);
+                continue;
+            }
+            Err(error) => return Err(StaircaseError::Io(error)),
+        }
+    };
+    use std::io::Write;
+    let lock_data = serde_json::json!({
+        "schema": "git-staircase/workspace-lock",
+        "version": 1,
+        "pid": std::process::id()
+    });
+    let _ = _lock_file.write_all(serde_json::to_string(&lock_data).unwrap().as_bytes());
+    let _ = _lock_file.sync_all();
+
+    struct LockGuard(std::path::PathBuf);
+    impl Drop for LockGuard {
+        fn drop(&mut self) {
+            let _ = fs::remove_file(&self.0);
+        }
+    }
+    let _guard = LockGuard(lock_path);
+
+    let temp_path = dir.join(format!(".tmp_{}_{}.json", record.workspace_id, uuid::Uuid::new_v4()));
 
     let existing = if target_path.exists() {
         let data = fs::read_to_string(&target_path)?;
