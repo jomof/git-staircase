@@ -18,25 +18,43 @@ fn test_restack_manual_rebase_of_multiple_steps() {
 
     // 1. Create a staircase with two steps
     let b_root = repo.write_blob("root").unwrap();
-    let tree_root = repo.write_tree(&[TreeEntry::blob(b_root, "root.txt")]).unwrap();
-    let root_commit = repo.command().args(&["commit-tree", &tree_root, "-m", "root"]).run().unwrap();
+    let tree_root = repo
+        .write_tree(&[TreeEntry::blob(b_root, "root.txt")])
+        .unwrap();
+    let root_commit = repo
+        .command()
+        .args(&["commit-tree", &tree_root, "-m", "root"])
+        .run()
+        .unwrap();
     repo.update_branch("main", &root_commit).unwrap();
     repo.command().args(&["checkout", "main"]).run().unwrap();
 
     let b1 = repo.write_blob("c1").unwrap();
-    let tree_c1 = repo.write_tree(&[
-        TreeEntry::blob(repo.write_blob("root").unwrap(), "root.txt"),
-        TreeEntry::blob(b1, "file1.txt"),
-    ]).unwrap();
-    let c1 = repo.command().args(&["commit-tree", &tree_c1, "-p", &root_commit, "-m", "c1"]).run().unwrap();
+    let tree_c1 = repo
+        .write_tree(&[
+            TreeEntry::blob(repo.write_blob("root").unwrap(), "root.txt"),
+            TreeEntry::blob(b1, "file1.txt"),
+        ])
+        .unwrap();
+    let c1 = repo
+        .command()
+        .args(&["commit-tree", &tree_c1, "-p", &root_commit, "-m", "c1"])
+        .run()
+        .unwrap();
 
     let b2 = repo.write_blob("c2").unwrap();
-    let tree_c2 = repo.write_tree(&[
-        TreeEntry::blob(repo.write_blob("root").unwrap(), "root.txt"),
-        TreeEntry::blob(repo.write_blob("c1").unwrap(), "file1.txt"),
-        TreeEntry::blob(b2, "file2.txt"),
-    ]).unwrap();
-    let c2 = repo.command().args(&["commit-tree", &tree_c2, "-p", &c1, "-m", "c2"]).run().unwrap();
+    let tree_c2 = repo
+        .write_tree(&[
+            TreeEntry::blob(repo.write_blob("root").unwrap(), "root.txt"),
+            TreeEntry::blob(repo.write_blob("c1").unwrap(), "file1.txt"),
+            TreeEntry::blob(b2, "file2.txt"),
+        ])
+        .unwrap();
+    let c2 = repo
+        .command()
+        .args(&["commit-tree", &tree_c2, "-p", &c1, "-m", "c2"])
+        .run()
+        .unwrap();
 
     repo.update_branch("b1", &c1).unwrap();
     repo.update_branch("b2", &c2).unwrap();
@@ -72,11 +90,17 @@ fn test_restack_manual_rebase_of_multiple_steps() {
 
     // 4. Update branch b1 to point to a1 (simulating local manual rebase)
     let b_a1 = repo.write_blob("a1").unwrap();
-    let tree_a1 = repo.write_tree(&[
-        TreeEntry::blob(repo.write_blob("root").unwrap(), "root.txt"),
-        TreeEntry::blob(b_a1, "file1.txt"),
-    ]).unwrap();
-    let a1 = repo.command().args(&["commit-tree", &tree_a1, "-p", &root_commit, "-m", "a1"]).run().unwrap();
+    let tree_a1 = repo
+        .write_tree(&[
+            TreeEntry::blob(repo.write_blob("root").unwrap(), "root.txt"),
+            TreeEntry::blob(b_a1, "file1.txt"),
+        ])
+        .unwrap();
+    let a1 = repo
+        .command()
+        .args(&["commit-tree", &tree_a1, "-p", &root_commit, "-m", "a1"])
+        .run()
+        .unwrap();
     repo.update_branch("b1", &a1).unwrap();
 
     // 5. Run restack
@@ -97,11 +121,10 @@ fn test_restack_manual_rebase_of_multiple_steps() {
         latest_metadata.steps[0].cut, a1,
         "Step 1 cut should be updated to a1"
     );
-    let step2_parent = repo.run(&["rev-parse", &format!("{}^", latest_metadata.steps[1].cut)]).unwrap();
-    assert_eq!(
-        step2_parent, a1,
-        "Step 2 cut parent should be a1"
-    );
+    let step2_parent = repo
+        .run(&["rev-parse", &format!("{}^", latest_metadata.steps[1].cut)])
+        .unwrap();
+    assert_eq!(step2_parent, a1, "Step 2 cut parent should be a1");
 
     let status =
         git_staircase::core::status::get_status_metadata(&repo, latest_metadata, true).unwrap();
