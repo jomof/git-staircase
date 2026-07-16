@@ -26,7 +26,10 @@ fn command_output(path: &std::path::Path, args: &[&str]) -> std::process::Output
         .output()
     {
         Ok(out) => out,
-        Err(e) => panic!("Failed to run binary '{:?}' in dir '{:?}': {}", binary, path, e),
+        Err(e) => panic!(
+            "Failed to run binary '{:?}' in dir '{:?}': {}",
+            binary, path, e
+        ),
     }
 }
 

@@ -43,7 +43,10 @@ fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
         .output()
     {
         Ok(out) => out,
-        Err(e) => panic!("Failed to run binary '{:?}' in dir '{:?}': {}", binary, dir, e),
+        Err(e) => panic!(
+            "Failed to run binary '{:?}' in dir '{:?}': {}",
+            binary, dir, e
+        ),
     };
     (
         output.status.success(),
