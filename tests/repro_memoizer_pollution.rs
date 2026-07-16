@@ -23,14 +23,14 @@ fn test_memoizer_cross_repo_pollution() {
     let shared_memoizer = Memoizer::new();
     
     let mut repo1 = setup_repo(tmp1.path().to_path_buf());
-    repo1.memoizer = shared_memoizer.clone();
+    repo1.memoizer = shared_memoizer.clone().with_namespace(tmp1.path().to_string_lossy().to_string());
     
     let mut repo2 = setup_repo(tmp2.path().to_path_buf());
     // Create a different commit in repo2
     std::fs::write(tmp2.path().join("file2.txt"), "different").unwrap();
     Command::new("git").current_dir(tmp2.path()).args(&["add", "."]).output().unwrap();
     Command::new("git").current_dir(tmp2.path()).args(&["commit", "-m", "second"]).output().unwrap();
-    repo2.memoizer = shared_memoizer;
+    repo2.memoizer = shared_memoizer.with_namespace(tmp2.path().to_string_lossy().to_string());
     
     let head1 = repo1.resolve_commit("main").unwrap();
     let head2_actual = repo2.command().args(&["rev-parse", "main"]).run().unwrap();

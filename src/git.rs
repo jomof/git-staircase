@@ -159,14 +159,16 @@ impl TreeEntry {
 
 impl GitRepo {
     pub fn new(workdir: PathBuf) -> Self {
+        let namespace = workdir.to_string_lossy().to_string();
         GitRepo {
             workdir,
-            memoizer: Memoizer::new(),
+            memoizer: Memoizer::new().with_namespace(namespace),
         }
     }
 
     pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
-        GitRepo { workdir, memoizer }
+        let namespace = workdir.to_string_lossy().to_string();
+        GitRepo { workdir, memoizer: memoizer.with_namespace(namespace) }
     }
 
     pub fn git_cmd(&self) -> Command {
