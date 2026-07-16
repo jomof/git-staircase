@@ -66,6 +66,17 @@ pub fn run_git(dir: &Path, args: &[&str]) -> String {
 }
 
 #[allow(dead_code)]
+pub fn get_test_binary_path() -> std::path::PathBuf {
+    if let Ok(cwd) = std::env::current_dir() {
+        let bin = cwd.join("target").join("debug").join("git-staircase");
+        if bin.exists() {
+            return bin;
+        }
+    }
+    panic!("Could not find git-staircase binary");
+}
+
+#[allow(dead_code)]
 pub fn get_head_oid(dir: &Path) -> String {
     let head_file = dir.join(".git").join("HEAD");
     if let Ok(content) = fs::read_to_string(&head_file) {
