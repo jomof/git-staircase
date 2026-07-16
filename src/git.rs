@@ -756,10 +756,13 @@ impl GitRepo {
     }
 
     pub fn ls_tree(&self, oid: &str) -> Result<Vec<TreeEntry>> {
-        let output = self.run(&["ls-tree", oid])?;
+        let output = self.run(&["ls-tree", "-z", oid])?;
         let mut entries = Vec::new();
-        for line in output.lines() {
-            let (metadata, name) = line.split_once("\t").ok_or_else(|| {
+        for record in output.split('\0') {
+            if record.is_empty() {
+                continue;
+            }
+            let (metadata, name) = record.split_once('\t').ok_or_else(|| {
                 StaircaseError::Other(format!("invalid ls-tree entry in {}", oid))
             })?;
             let fields: Vec<_> = metadata.split_whitespace().collect();
