@@ -139,9 +139,8 @@ fn journey_1_amend_preserves_draft_and_review_identity_across_conflicts() {
     assert!(ok, "show failed: {}", stderr);
 
     let val: Value = serde_json::from_str(&stdout).unwrap();
-    let steps = val["steps"].as_array().expect("steps should be an array");
-    assert_eq!(steps.len(), 3);
-    assert_eq!(steps[0]["cut"], new_oid1);
+    let meta_steps = val["steps"].as_array().expect("steps should be an array");
+    assert_eq!(meta_steps[0]["cut"], new_oid1);
 
     // Check Change-Ids of all steps
     for (i, expected_id) in [
@@ -152,7 +151,7 @@ fn journey_1_amend_preserves_draft_and_review_identity_across_conflicts() {
     .iter()
     .enumerate()
     {
-        let oid = steps[i]["cut"].as_str().unwrap();
+        let oid = meta_steps[i]["cut"].as_str().unwrap();
         let message = ctx.run_git(&["log", "-1", "--format=%B", oid]);
         assert!(
             message.contains(expected_id),

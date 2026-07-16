@@ -803,7 +803,11 @@ pub fn list_staircases_filtered(
         for line in lines {
             let refname = line.trim();
             let name = refname.strip_prefix(PUBLIC_PREFIX).unwrap_or_default();
-            if name.starts_with("by-revision/") || name.ends_with("/verification") {
+            if name.starts_with("by-revision/")
+                || name.starts_with("active/")
+                || name.starts_with("archived/")
+                || name.ends_with("/verification")
+            {
                 continue;
             }
             let mut record = read_record(repo, refname)?;

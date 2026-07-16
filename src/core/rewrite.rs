@@ -75,8 +75,9 @@ pub(crate) fn replay(
     }
 
     let mut desired = desired;
-    let needs_adoption = crate::core::identity::needs_adoption(repo, staircase)?;
-    let (managed_metadata, actually_managed) = if needs_adoption {
+    let (managed_metadata, actually_managed) = if staircase.is_managed() {
+        (staircase.metadata().clone(), true)
+    } else if crate::core::identity::needs_adoption(repo, staircase)? {
         (
             crate::core::manipulation::adopt_implicit_for_mutation(repo, staircase, kind)?,
             true,
@@ -86,7 +87,9 @@ pub(crate) fn replay(
     };
 
     desired.id = managed_metadata.id.clone();
-    desired.name = managed_metadata.name.clone();
+    if !managed_metadata.name.is_empty() {
+        desired.name = managed_metadata.name.clone();
+    }
     for (old, new) in managed_metadata.steps.iter().zip(desired.steps.iter_mut()) {
         if new.id.is_empty() {
             new.id = old.id.clone();
@@ -107,6 +110,9 @@ pub(crate) fn replay(
     if let Some(oid) = &old_record_oid {
         let record = persistence::read_record(repo, oid)?;
         old_record_metadata = record.metadata;
+        if old_record_metadata.name.is_empty() {
+            old_record_metadata.name = desired.name.clone();
+        }
         user_metadata = record.user_metadata;
         lifecycle = record.lifecycle;
     }
@@ -296,7 +302,7 @@ fn lease_plan(
             Some(oid.into()),
         )?;
         let public = StaircaseRefs::public(&old.name);
-        if repo.resolve_ref_opt(&public)?.as_deref() == Some(oid) {
+        if repo.resolve_ref_opt(&public)?.is_some() {
             lease(repo, &mut plan, public, Some(oid.into()))?;
         }
     }
@@ -418,6 +424,9 @@ fn publication_plan(
         .chain(new_steps.keys())
         .collect::<BTreeSet<_>>()
     {
+        if id.is_empty() {
+            continue;
+        }
         let reference = StaircaseRefs::step(&state.desired.id, id, LifecycleState::Active);
         if state.was_managed || journal.expected_refs.contains_key(&reference) {
             update(reference, new_steps.get(id).map(|step| step.cut.clone()))?;

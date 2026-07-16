@@ -86,7 +86,8 @@ fn test_restack_manual_rebase_of_multiple_steps() {
         lifecycle: None,
     };
 
-    let staircase = git_staircase::core::ResolvedStaircase::Implicit(metadata);
+    git_staircase::core::persistence::write_metadata(&repo, &metadata).unwrap();
+    let staircase = git_staircase::core::resolution::resolve_by_name(&repo, "test").unwrap();
 
     // 4. Update branch b1 to point to a1 (simulating local manual rebase)
     let b_a1 = repo.write_blob("a1").unwrap();
