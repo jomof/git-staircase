@@ -449,7 +449,7 @@ fn gerrit_black_box_create_persists_pending_associations() {
     let workspace = TempDir::new().unwrap();
     let bin_str = env!("CARGO_BIN_EXE_git-staircase");
     let mut binary = std::path::PathBuf::from(bin_str);
-    if !binary.exists() {
+    if bin_str.contains("/shadow-") || !binary.exists() {
         let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("debug")

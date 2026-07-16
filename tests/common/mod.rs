@@ -106,7 +106,7 @@ pub fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
     let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", dir));
     let bin_str = env!("CARGO_BIN_EXE_git-staircase");
     let mut bin = std::path::PathBuf::from(bin_str);
-    if !bin.exists() {
+    if bin_str.contains("/shadow-") || !bin.exists() {
         let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
             .join("target")
             .join("debug")
