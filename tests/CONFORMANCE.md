@@ -25,7 +25,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 ## Core specification Appendix B
 
 * Observation (`discover`, `list`, inspection) — `[existing] tests/conformance_adoption.rs::observation_never_adopts`
-* Revision-derived identity — `[planned] tests/conformance_adoption.rs::revision_identity_remains_implicit_but_stable_identity_adopts`
+* Revision-derived identity — `[existing] tests/conformance_adoption.rs::revision_identity_remains_implicit_but_stable_identity_adopts`
 * Exact verification versus persistent verification history — `[planned] tests/conformance_adoption.rs::verification_adopts_only_for_lineage_relative_history`
 * `split` — `[existing] tests/spec_align_reshape_flags_test.rs::test_split_no_ref_triggers_adoption`
 * `join` — `[existing] tests/spec_align_reshape_flags_test.rs::test_join_keep_boundary_ref_triggers_adoption`

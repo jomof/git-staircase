@@ -58,3 +58,65 @@ fn observation_never_adopts() {
         refs
     );
 }
+
+#[test]
+fn revision_identity_remains_implicit_but_stable_identity_adopts() {
+    // ARRANGE: Create a repository with a single commit.
+    let ctx = TestContext::new();
+    ctx.run_git(&["checkout", "-b", "feature"]);
+    ctx.commit("feature.txt", "feature content", "feature commit");
+
+    // ACT: Query its identity using `git staircase status --json`.
+    let (success, stdout, _) = ctx.run_staircase(&["status", "feature", "--json"]);
+    assert!(success);
+
+    // ASSERT: Verify `is_implicit: true`.
+    assert!(
+        stdout.contains("\"is_implicit\": true"),
+        "Initially should be implicit"
+    );
+
+    // ACT: Query revision identity.
+    let (id_ok, stdout_id, _) =
+        ctx.run_staircase(&["id", "--kind", "revision", "feature", "--json"]);
+    assert!(id_ok);
+    assert!(stdout_id.contains("\"id\":"));
+
+    // ACT: Query lineage identity.
+    let (id_ok2, stdout_id2, _) =
+        ctx.run_staircase(&["id", "--kind", "lineage", "feature", "--json"]);
+    assert!(id_ok2);
+    assert!(stdout_id2.contains("\"id\": \"implicit@"));
+
+    // Verify no managed refs created by read-only query.
+    let refs = ctx.run_git(&["for-each-ref", "refs/staircase*"]);
+    assert!(
+        refs.is_empty(),
+        "Querying status should not create managed refs, but found: {}",
+        refs
+    );
+
+    // ACT: Run `git staircase adopt`.
+    let (adopt_ok, _, _) = ctx.run_staircase(&["adopt", "feature", "feature"]);
+    assert!(adopt_ok);
+
+    // ASSERT: Verify the staircase is now reported as managed (not implicit).
+    let (success2, stdout2, _) = ctx.run_staircase(&["status", "feature", "--json"]);
+    assert!(success2);
+    assert!(
+        stdout2.contains("\"is_implicit\": false"),
+        "Should NOT be implicit after adoption"
+    );
+
+    // ASSERT: Verify that a persistent record has been created in `refs/staircase-state/`.
+    let refs_after = ctx.run_git(&[
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/staircase-state/",
+    ]);
+    assert!(
+        !refs_after.is_empty(),
+        "Adoption should create managed records in refs/staircase-state/, but got: '{}'",
+        refs_after
+    );
+}
