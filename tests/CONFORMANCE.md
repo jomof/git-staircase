@@ -9,7 +9,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 ## Core specification Appendix A
 
 * A.2.1 difficult `repo` and Gerrit starting state — `[existing] tests/conformance_core_journeys.rs::journey_1_bootstraps_repo_gerrit_and_publishes_three_reviews`
-* A.2.2 amend the bottom step and resolve two restack conflicts — `[planned] tests/conformance_core_journeys.rs::journey_1_amend_preserves_draft_and_review_identity_across_conflicts`
+* A.2.2 amend the bottom step and resolve two restack conflicts — `[existing] tests/conformance_core_journeys.rs::journey_1_amend_preserves_draft_and_review_identity_across_conflicts`
 * A.2.3 rebase the whole staircase with nonadjacent conflicts — `[existing] tests/local_journeys_test.rs::conflict_pause_has_recovery_refs_and_continue_is_deterministic`
 * A.2.4 externally owned `repo sync` conflict — `[existing] tests/provider_journeys_test.rs::repo_journey_3_external_sync_operation_remains_external`
 * A.2.5 split a reviewed middle step — `[existing] tests/provider_journeys_test.rs::gerrit_journey_3_split_preserves_one_identity`

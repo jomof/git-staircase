@@ -127,3 +127,96 @@ fn journey_1_bootstraps_repo_gerrit_and_publishes_three_reviews() {
         log
     );
 }
+
+#[test]
+fn journey_1_amend_preserves_draft_and_review_identity_across_conflicts() {
+    let ctx = TestContext::new();
+    let dir = ctx.path();
+
+    // ARRANGE: Create a staircase with two steps. Both steps have Gerrit review identities.
+    // main -> s1 -> s2
+    ctx.run_git(&["checkout", "-b", "s1", "main"]);
+    ctx.commit("conflict.txt", "line 1\n", "Step 1\n\nChange-Id: I111\n");
+    ctx.run_git(&["checkout", "-b", "s2"]);
+    ctx.commit(
+        "conflict.txt",
+        "line 1\nline 2\n",
+        "Step 2\n\nChange-Id: I222\n",
+    );
+
+    // Adopt it. We need to make sure 'main' is recognized as the anchor.
+    // Discovery usually picks 'main' if it exists.
+    let (success, _, stderr) = ctx.run_staircase(&["adopt", "feature", "s1", "s2"]);
+    assert!(success, "adopt failed: {}", stderr);
+
+    // Checkout Step 1 to amend it.
+    ctx.run_git(&["checkout", "s1"]);
+
+    // Add a staged change (will be amended).
+    // Change line 1 in a way that conflicts with Step 2 (Step 2 expects 'line 1\n').
+    fs::write(dir.join("conflict.txt"), "line 1 amended\n").unwrap();
+    ctx.run_git(&["add", "conflict.txt"]);
+
+    // Add an unstaged draft change (should be preserved).
+    fs::write(dir.join("draft.txt"), "draft content\n").unwrap();
+
+    // ACT: Amend Step 1 with the staged change.
+    // This should trigger a restack of Step 2, which will conflict.
+    let (success, stdout, stderr) = ctx.run_staircase(&[
+        "draft",
+        "materialize",
+        "feature",
+        "--amend",
+        "--message",
+        "Step 1 amended\n\nChange-Id: I111\n",
+    ]);
+
+    // ASSERT: Verify the operation pauses for conflict.
+    assert!(!success, "materialize should have paused for conflict");
+    assert!(
+        stderr.contains("conflict") || stdout.contains("conflict"),
+        "Expected conflict message. STDOUT: {}\nSTDERR: {}",
+        stdout,
+        stderr
+    );
+
+    // ACT: Resolve conflict and git staircase continue.
+    fs::write(dir.join("conflict.txt"), "line 1 amended\nline 2\n").unwrap();
+    ctx.run_git(&["add", "conflict.txt"]);
+
+    let (success, stdout, stderr) = ctx.run_staircase(&["continue"]);
+    assert!(
+        success,
+        "continue failed:\nSTDOUT: {}\nSTDERR: {}",
+        stdout, stderr
+    );
+
+    // ASSERT: Verify Step 1 and Step 2 still have their original review identities.
+    let log = ctx.run_git(&["log", "--format=%B", "-n", "2", "s2"]);
+    assert!(
+        log.contains("Change-Id: I111"),
+        "Step 1 should retain I111. Log:\n{}",
+        log
+    );
+    assert!(
+        log.contains("Change-Id: I222"),
+        "Step 2 should retain I222. Log:\n{}",
+        log
+    );
+
+    // Verify the draft change was preserved.
+    assert!(
+        dir.join("draft.txt").exists(),
+        "draft.txt should still exist"
+    );
+    let draft_content = fs::read_to_string(dir.join("draft.txt")).unwrap();
+    assert_eq!(draft_content, "draft content\n");
+
+    // Verify it is still unstaged (not in the index).
+    let staged = ctx.run_git(&["diff", "--cached", "--name-only"]);
+    assert!(
+        !staged.contains("draft.txt"),
+        "draft.txt should not be staged. Staged files:\n{}",
+        staged
+    );
+}
