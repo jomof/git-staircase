@@ -1,6 +1,7 @@
 use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core;
 use crate::git::GitRepo;
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use anyhow::{Result, anyhow};
 use clap::Args;
 use serde::Serialize;
@@ -23,6 +24,45 @@ pub struct DescribeOutput {
     pub title: Option<String>,
     pub description: Option<String>,
 }
+
+impl ToPresentation for DescribeOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
+        if let Some(ref t) = self.title {
+            h_children.push(Presentation::Field {
+                label: "Title".into(),
+                value: t.clone(),
+            });
+        }
+        if let Some(ref d) = self.description {
+            h_children.push(Presentation::Plain(d.clone()));
+        }
+        if h_children.is_empty() {
+            h_children.push(Presentation::Plain(format!(
+                "No description for staircase '{}'",
+                self.name
+            )));
+        }
+
+        let mut p_records = vec![Presentation::Record(vec!["name".into(), self.name.clone()])];
+        if let Some(ref t) = self.title {
+            p_records.push(Presentation::Record(vec!["title".into(), t.clone()]));
+        }
+        if let Some(ref d) = self.description {
+            p_records.push(Presentation::Record(vec![
+                "description".into(),
+                d.replace('\n', "\n"),
+            ]));
+        }
+
+        Presentation::pair(
+            Presentation::List(h_children),
+            Presentation::List(p_records),
+        )
+    }
+}
+
+impl UsePresentation for DescribeOutput {}
 
 impl Command for Describe {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {

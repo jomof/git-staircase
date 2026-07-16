@@ -1,6 +1,8 @@
 pub use crate::model::{StaircaseFamily, StaircaseStatus, Step};
 pub use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use serde::Serialize;
+use serde_json::Value;
+use std::collections::BTreeMap;
 
 pub trait ToHuman {
     fn to_human(&self) -> String;
@@ -139,9 +141,62 @@ impl Success {
     }
 }
 
+impl ToPresentation for Success {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain(self.message.clone())
+    }
+}
+
+impl UsePresentation for Success {}
+
 #[derive(Serialize)]
 #[serde(transparent)]
 pub struct Summary<T>(pub T);
+
+impl ToPresentation for Summary<StaircaseStatus> {
+    fn to_presentation(&self) -> Presentation {
+        let s = &self.0;
+        let m = &s.metadata;
+        let steps_count = m.steps.len();
+        let steps_word = if steps_count == 1 { "step" } else { "steps" };
+        let implicit_marker = if s.is_implicit { " (implicit)" } else { "" };
+        Presentation::pair(
+            Presentation::Plain(format!(
+                "{} [{}] {} {} {}{}",
+                m.name,
+                m.id,
+                steps_count,
+                steps_word,
+                s.state(),
+                implicit_marker
+            )),
+            Presentation::Record(vec![m.name.clone(), m.id.clone(), s.state().to_string()]),
+        )
+    }
+}
+
+impl ToPresentation for Summary<StaircaseFamily> {
+    fn to_presentation(&self) -> Presentation {
+        let f = &self.0;
+        let path_count = f.steps.values().filter(|s| s.children.is_empty()).count();
+        let paths_word = if path_count == 1 { "path" } else { "paths" };
+        Presentation::pair(
+            Presentation::Plain(format!(
+                "{} [{}] {} {} (implicit)",
+                f.name, f.id, path_count, paths_word
+            )),
+            Presentation::Record(vec![
+                f.name.clone(),
+                f.id.clone(),
+                "family".to_string(),
+                f.steps.len().to_string(),
+            ]),
+        )
+    }
+}
+
+impl UsePresentation for Summary<StaircaseStatus> {}
+impl UsePresentation for Summary<StaircaseFamily> {}
 
 #[derive(Serialize)]
 #[serde(transparent)]
@@ -149,14 +204,90 @@ pub struct ReorderResult {
     pub status: StaircaseStatus,
 }
 
+impl ToPresentation for ReorderResult {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain("Reordered staircase.".to_string())
+    }
+}
+
+impl UsePresentation for ReorderResult {}
+
 #[derive(Serialize)]
 #[serde(transparent)]
 pub struct StepsList(pub Vec<Step>);
+
+impl ToPresentation for StepsList {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_rows = vec![];
+        let mut p_rows = vec![];
+        for (i, step) in self.0.iter().enumerate() {
+            h_rows.push(vec![
+                format!("Step {}:", i + 1),
+                step.name.clone(),
+                format!("({})", &step.cut[..7]),
+            ]);
+            p_rows.push(vec![
+                (i + 1).to_string(),
+                step.id.clone(),
+                step.name.clone(),
+                step.cut.clone(),
+            ]);
+        }
+        Presentation::pair(
+            Presentation::Table {
+                name: None,
+                rows: h_rows,
+            },
+            Presentation::Table {
+                name: None,
+                rows: p_rows,
+            },
+        )
+    }
+}
+
+impl UsePresentation for StepsList {}
 
 #[derive(Serialize)]
 pub struct StaircaseCommits {
     pub steps: Vec<StepCommits>,
 }
+
+impl ToPresentation for StaircaseCommits {
+    fn to_presentation(&self) -> Presentation {
+        let mut children = vec![];
+        for step in &self.steps {
+            let mut h_commits = vec![];
+            let mut p_commits = vec![];
+            for commit in &step.commits {
+                h_commits.push(Presentation::Plain(format!(
+                    "{} {}",
+                    commit.hash, commit.subject
+                )));
+                p_commits.push(Presentation::Record(vec![
+                    "commit".to_string(),
+                    commit.hash.clone(),
+                    commit.subject.clone(),
+                ]));
+            }
+            children.push(Presentation::List(vec![
+                Presentation::human(Presentation::Section {
+                    title: format!("Step {}: {}", step.index, step.name),
+                    children: h_commits,
+                }),
+                Presentation::porcelain(Presentation::Record(vec![
+                    "step".to_string(),
+                    step.index.to_string(),
+                    step.name.clone(),
+                ])),
+                Presentation::porcelain(Presentation::List(p_commits)),
+            ]));
+        }
+        Presentation::List(children)
+    }
+}
+
+impl UsePresentation for StaircaseCommits {}
 
 #[derive(Serialize)]
 pub struct StepCommits {
@@ -169,6 +300,49 @@ pub struct StepCommits {
 #[serde(transparent)]
 pub struct PlainOutput(pub String);
 
+impl ToPresentation for PlainOutput {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::Plain(self.0.clone())
+    }
+}
+
+impl UsePresentation for PlainOutput {}
+
 #[derive(Serialize)]
 #[serde(transparent)]
 pub struct LogOutput(pub Vec<CommitInfo>);
+
+impl ToPresentation for LogOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_items = vec![];
+        let mut p_items = vec![];
+        for c in &self.0 {
+            h_items.push(Presentation::Plain(format!("{} {}", c.hash, c.subject)));
+            p_items.push(Presentation::Record(vec![
+                c.hash.clone(),
+                c.subject.clone(),
+            ]));
+        }
+        Presentation::pair(Presentation::List(h_items), Presentation::List(p_items))
+    }
+}
+
+impl UsePresentation for LogOutput {}
+
+impl ToPresentation for BTreeMap<String, Value> {
+    fn to_presentation(&self) -> Presentation {
+        let mut fields = vec![];
+        for (k, v) in self {
+            fields.push(Presentation::Field {
+                label: k.clone(),
+                value: v.to_string(),
+            });
+        }
+        Presentation::Section {
+            title: "Values:".into(),
+            children: fields,
+        }
+    }
+}
+
+impl UsePresentation for BTreeMap<String, Value> {}
