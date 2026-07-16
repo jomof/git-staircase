@@ -8,6 +8,9 @@ use crate::model::{StaircaseLink, StaircaseUserMetadata, StepMetadata};
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
 use serde::Serialize;
+use std::env;
+use std::fs;
+use std::process;
 
 #[derive(Args, Clone, Debug)]
 pub struct MetadataCmd {
@@ -222,8 +225,30 @@ impl Command for MetadataCmd {
                     core::get_user_metadata_snapshot(repo, &sel)?;
                 let json_str = serde_json::to_string_pretty(&current_meta)?;
 
-                let edited =
-                    crate::presentation::cli::edit_in_editor(&json_str, "STAIRCASE_META", "json")?;
+                let temp_dir = env::temp_dir();
+                let temp_file = temp_dir.join(format!(
+                    "STAIRCASE_META_{}.json",
+                    uuid::Uuid::new_v4().simple()
+                ));
+                fs::write(&temp_file, &json_str)?;
+
+                let editor = env::var("GIT_EDITOR")
+                    .or_else(|_| env::var("VISUAL"))
+                    .or_else(|_| env::var("EDITOR"))
+                    .unwrap_or_else(|_| "vi".to_string());
+
+                let status = process::Command::new(&editor)
+                    .arg(&temp_file)
+                    .status()
+                    .map_err(|e| anyhow!("Failed to launch editor: {}", e))?;
+
+                if !status.success() {
+                    let _ = fs::remove_file(&temp_file);
+                    return Err(anyhow!("Editor exited with non-zero status"));
+                }
+
+                let edited = fs::read_to_string(&temp_file)?;
+                let _ = fs::remove_file(&temp_file);
 
                 let parsed: StaircaseUserMetadata = serde_json::from_str(&edited)
                     .map_err(|e| anyhow!("Invalid JSON metadata: {}", e))?;
@@ -295,8 +320,28 @@ impl Command for MetadataCmd {
                     core::get_step_metadata_snapshot(repo, &sel, &step_key)?;
                 let json_str = serde_json::to_string_pretty(&current_step_meta)?;
 
-                let edited =
-                    crate::presentation::cli::edit_in_editor(&json_str, "STEP_META", "json")?;
+                let temp_dir = env::temp_dir();
+                let temp_file =
+                    temp_dir.join(format!("STEP_META_{}.json", uuid::Uuid::new_v4().simple()));
+                fs::write(&temp_file, &json_str)?;
+
+                let editor = env::var("GIT_EDITOR")
+                    .or_else(|_| env::var("VISUAL"))
+                    .or_else(|_| env::var("EDITOR"))
+                    .unwrap_or_else(|_| "vi".to_string());
+
+                let status = process::Command::new(&editor)
+                    .arg(&temp_file)
+                    .status()
+                    .map_err(|e| anyhow!("Failed to launch editor: {}", e))?;
+
+                if !status.success() {
+                    let _ = fs::remove_file(&temp_file);
+                    return Err(anyhow!("Editor exited with non-zero status"));
+                }
+
+                let edited = fs::read_to_string(&temp_file)?;
+                let _ = fs::remove_file(&temp_file);
 
                 let parsed: StepMetadata = serde_json::from_str(&edited)
                     .map_err(|e| anyhow!("Invalid JSON step metadata: {}", e))?;

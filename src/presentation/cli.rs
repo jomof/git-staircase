@@ -1,12 +1,8 @@
 use crate::cli::formatting::*;
 use crate::model::*;
 use crate::presentation::{Presentation, ToPresentation};
-use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::BTreeMap;
-use std::env;
-use std::fs;
-use std::process::Command;
 
 impl ToPresentation for Success {
     fn to_presentation(&self) -> Presentation {
@@ -285,36 +281,4 @@ impl ToPresentation for IdResult {
             Presentation::Plain(self.id.clone()),
         )
     }
-}
-
-pub fn edit_in_editor(initial_content: &str, file_prefix: &str, file_ext: &str) -> Result<String> {
-    let editor = env::var("GIT_EDITOR")
-        .or_else(|_| env::var("VISUAL"))
-        .or_else(|_| env::var("EDITOR"))
-        .unwrap_or_else(|_| "vi".to_string());
-
-    let temp_dir = env::temp_dir();
-    let temp_file = temp_dir.join(format!(
-        "{}_{}.{}",
-        file_prefix,
-        uuid::Uuid::new_v4().simple(),
-        file_ext
-    ));
-
-    fs::write(&temp_file, initial_content)?;
-
-    let status = Command::new(&editor)
-        .arg(&temp_file)
-        .status()
-        .map_err(|e| anyhow!("Failed to launch editor '{}': {}", editor, e))?;
-
-    if !status.success() {
-        let _ = fs::remove_file(&temp_file);
-        return Err(anyhow!("Editor exited with non-zero status"));
-    }
-
-    let edited_content = fs::read_to_string(&temp_file)?;
-    let _ = fs::remove_file(&temp_file);
-
-    Ok(edited_content)
 }

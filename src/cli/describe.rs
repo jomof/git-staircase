@@ -4,6 +4,9 @@ use crate::git::GitRepo;
 use anyhow::{Result, anyhow};
 use clap::Args;
 use serde::Serialize;
+use std::env;
+use std::fs;
+use std::process;
 
 #[derive(Args, Clone, Debug)]
 pub struct Describe {
@@ -32,8 +35,30 @@ impl Command for Describe {
                 user_meta.description.as_deref().unwrap_or("")
             );
 
-            let edited_content =
-                crate::presentation::cli::edit_in_editor(&init_content, "STAIRCASE_DESC", "txt")?;
+            let temp_dir = env::temp_dir();
+            let temp_file = temp_dir.join(format!(
+                "STAIRCASE_DESC_{}.txt",
+                uuid::Uuid::new_v4().simple()
+            ));
+            fs::write(&temp_file, &init_content)?;
+
+            let editor = env::var("GIT_EDITOR")
+                .or_else(|_| env::var("VISUAL"))
+                .or_else(|_| env::var("EDITOR"))
+                .unwrap_or_else(|_| "vi".to_string());
+
+            let status = process::Command::new(&editor)
+                .arg(&temp_file)
+                .status()
+                .map_err(|e| anyhow!("Failed to launch editor '{}': {}", editor, e))?;
+
+            if !status.success() {
+                let _ = fs::remove_file(&temp_file);
+                return Err(anyhow!("Editor exited with non-zero status"));
+            }
+
+            let edited_content = fs::read_to_string(&temp_file)?;
+            let _ = fs::remove_file(&temp_file);
 
             let mut title = None;
             let mut desc_lines = Vec::new();
