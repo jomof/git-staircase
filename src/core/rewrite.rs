@@ -28,6 +28,7 @@ struct RewriteContinuation {
     next_commit: usize,
     current_base: String,
     pending_cherry_pick: bool,
+    ensure_change_ids: bool,
 }
 
 pub(crate) fn replay(
@@ -39,6 +40,7 @@ pub(crate) fn replay(
     base_oid: String,
     kind: &str,
     dry_run: bool,
+    ensure_change_ids: bool,
 ) -> Result<()> {
     if start_step > desired.steps.len() || start_step + commit_groups.len() > desired.steps.len() {
         return Err(StaircaseError::InvalidStructure(
@@ -124,6 +126,7 @@ pub(crate) fn replay(
         next_commit: 0,
         current_base: base_oid,
         pending_cherry_pick: false,
+        ensure_change_ids,
     };
     let mut journal = begin_resumable(repo, &lease_plan, serde_json::to_value(&continuation)?)?;
     repo.run(&["reset", "--hard", "HEAD"])?;
@@ -180,17 +183,42 @@ fn run(repo: &GitRepo, journal: &mut OperationJournal) -> Result<()> {
         let commits = &state.commit_groups[group_index];
         while state.next_commit < commits.len() {
             let commit = commits[state.next_commit].clone();
-            if let Err(error) = repo.run(&["cherry-pick", &commit]) {
-                state.pending_cherry_pick = crate::core::draft::check_transient_operation(repo)?
-                    .as_deref()
-                    == Some("cherry-pick");
-                journal.phase = OperationPhase::Paused;
-                save_state(repo, journal, &state)?;
-                let _ = error;
-                return Err(StaircaseError::OperationPaused {
-                    operation_id: journal.operation_id.clone(),
-                    kind: journal.kind.clone(),
-                });
+            if state.ensure_change_ids {
+                if let Err(error) = repo.run(&["cherry-pick", "--no-commit", &commit]) {
+                    state.pending_cherry_pick =
+                        crate::core::draft::check_transient_operation(repo)?.as_deref()
+                            == Some("cherry-pick");
+                    journal.phase = OperationPhase::Paused;
+                    save_state(repo, journal, &state)?;
+                    let _ = error;
+                    return Err(StaircaseError::OperationPaused {
+                        operation_id: journal.operation_id.clone(),
+                        kind: journal.kind.clone(),
+                    });
+                }
+                let mut msg = repo.run(&["log", "-1", "--format=%B", &commit])?;
+                if !msg.contains("\nChange-Id: I") {
+                    msg = format!(
+                        "{}\n\nChange-Id: {}",
+                        msg.trim_end(),
+                        super::utils::generate_change_id()
+                    );
+                }
+                repo.run(&["commit", "--allow-empty", "-C", &commit])?;
+                repo.run_with_stdin(&["commit", "--amend", "-F", "-"], &msg)?;
+            } else {
+                if let Err(error) = repo.run(&["cherry-pick", &commit]) {
+                    state.pending_cherry_pick =
+                        crate::core::draft::check_transient_operation(repo)?.as_deref()
+                            == Some("cherry-pick");
+                    journal.phase = OperationPhase::Paused;
+                    save_state(repo, journal, &state)?;
+                    let _ = error;
+                    return Err(StaircaseError::OperationPaused {
+                        operation_id: journal.operation_id.clone(),
+                        kind: journal.kind.clone(),
+                    });
+                }
             }
             state.current_base = repo.resolve_commit("HEAD")?;
             state.next_commit += 1;

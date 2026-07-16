@@ -323,6 +323,7 @@ fn reorder_internal(
             target,
             "reorder",
             dry_run,
+            false,
         )
     }
 }
@@ -379,6 +380,7 @@ pub fn drop_with_dry_run(
         target,
         "drop",
         dry_run,
+        false,
     )
 }
 
@@ -478,7 +480,7 @@ pub fn move_commits_with_dry_run(
     }
     let target = recorded_target(repo, &metadata)?;
     super::rewrite::replay(
-        repo, staircase, metadata, groups, 0, target, "move", dry_run,
+        repo, staircase, metadata, groups, 0, target, "move", dry_run, false,
     )
 }
 
@@ -551,6 +553,7 @@ pub fn restack(
         current_base,
         "restack",
         false,
+        false,
     )
 }
 
@@ -608,6 +611,7 @@ pub fn restack_from(
         base,
         "restack",
         dry_run,
+        false,
     )
 }
 
@@ -649,6 +653,7 @@ pub fn rebase_with_dry_run(
         repo.resolve_commit(onto)?,
         "rebase",
         dry_run,
+        false,
     )
 }
 
@@ -674,7 +679,10 @@ fn ensure_rewrite_supported(
     Ok(())
 }
 
-fn step_commit_groups(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Vec<Vec<String>>> {
+pub(crate) fn step_commit_groups(
+    repo: &GitRepo,
+    metadata: &StaircaseMetadata,
+) -> Result<Vec<Vec<String>>> {
     let mut predecessor = recorded_target(repo, metadata)?;
     let mut groups = Vec::new();
     for step in &metadata.steps {

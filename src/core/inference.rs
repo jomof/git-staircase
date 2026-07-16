@@ -15,6 +15,64 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
         }
     }
 
+    // 1b. Check for repo workspace manifest evidence directly if record-based inference failed
+    if inferred.is_none() {
+        if let Ok(Some(report)) = crate::workspace::repo_provider::observe_repo_workspace(repo) {
+            // Prefer strong/authoritative candidates that are NOT the current HEAD if we are on a branch
+            let head_oid = repo.resolve_commit("HEAD").ok();
+            let current_branch = repo.current_branch().ok().flatten();
+
+            let mut best_candidate = None;
+            for cand in &report.integration_candidates {
+                if !cand.eligible {
+                    continue;
+                }
+                let Some(oid) = cand.resolved_oid.clone() else {
+                    continue;
+                };
+
+                // If we are on a branch, don't use the branch's own OID as the anchor
+                if let Some(ref branch) = current_branch {
+                    if let Ok(branch_oid) = repo.resolve_commit(branch) {
+                        if oid == branch_oid {
+                            continue;
+                        }
+                    }
+                } else if let Some(ref head) = head_oid {
+                    if oid == *head {
+                        continue;
+                    }
+                }
+
+                match cand.authority {
+                    crate::workspace::model::EvidenceAuthority::Authoritative => {
+                        best_candidate = Some(oid);
+                        break;
+                    }
+                    crate::workspace::model::EvidenceAuthority::Strong => {
+                        if best_candidate.is_none() {
+                            best_candidate = Some(oid);
+                        }
+                    }
+                    _ => {}
+                }
+            }
+
+            if let Some(oid) = best_candidate {
+                inferred = Some(oid);
+            } else {
+                // Fallback to any eligible candidate if no strong one found
+                if let Some(cand) = report
+                    .integration_candidates
+                    .iter()
+                    .find(|c| c.eligible && c.resolved_oid.is_some())
+                {
+                    inferred = cand.resolved_oid.clone();
+                }
+            }
+        }
+    }
+
     // 2. Applicable branch upstream configuration
     if inferred.is_none() {
         if let Ok(Some(head)) = repo.current_branch() {

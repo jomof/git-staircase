@@ -122,6 +122,7 @@ pub fn normalize(
     repo: &GitRepo,
     selector: &ResolvedSelector,
     dry_run: bool,
+    ensure_change_ids: bool,
 ) -> Result<LocalMutationResult> {
     if !selector.is_managed() {
         return Err(StaircaseError::Other(
@@ -129,7 +130,33 @@ pub fn normalize(
         ));
     }
     let metadata = selector.metadata().clone();
-    publish_metadata(repo, selector, metadata, "normalize", dry_run)
+    if ensure_change_ids {
+        let groups = super::manipulation::step_commit_groups(repo, &metadata)?;
+        let target = repo.resolve_commit(&metadata.target)?;
+        super::rewrite::replay(
+            repo,
+            &selector.staircase,
+            metadata,
+            groups,
+            0,
+            target,
+            "normalize",
+            dry_run,
+            true,
+        )?;
+        Ok(LocalMutationResult {
+            schema: "git-staircase/local-mutation-result".into(),
+            version: 1,
+            kind: "normalize".into(),
+            staircase_id: selector.metadata().id.clone(),
+            staircase_name: selector.metadata().name.clone(),
+            record_oid: None, // Will be updated by replay? Wait, replay doesn't return anything.
+            dry_run,
+            changed_refs: Vec::new(),
+        })
+    } else {
+        publish_metadata(repo, selector, metadata, "normalize", dry_run)
+    }
 }
 
 pub fn layout_state(repo: &GitRepo, selector: &ResolvedSelector) -> Result<LayoutState> {

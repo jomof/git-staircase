@@ -1048,9 +1048,9 @@ fn resolve_manifest_locator(repo: &GitRepo, locator: &str) -> Option<String> {
         vec![locator.to_string()]
     } else {
         vec![
-            locator.to_string(),
-            format!("refs/heads/{}", locator),
             format!("refs/remotes/{}/{}", "m", locator),
+            format!("refs/heads/{}", locator),
+            locator.to_string(),
         ]
     };
     candidates
