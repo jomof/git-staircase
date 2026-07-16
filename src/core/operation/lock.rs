@@ -13,41 +13,48 @@ impl RepositoryLock {
     pub fn acquire(repo: &GitRepo, operation_id: &str, name: &str) -> Result<Self> {
         let path = locks_dir(repo)?.join(name);
         let open = || OpenOptions::new().write(true).create_new(true).open(&path);
-        let mut file = match open() {
-            Ok(file) => file,
-            Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
-                let existing = fs::read_to_string(&path)
-                    .ok()
-                    .and_then(|content| serde_json::from_str::<serde_json::Value>(&content).ok());
-                let pid = existing
-                    .as_ref()
-                    .and_then(|lock| lock.get("pid"))
-                    .and_then(|pid| pid.as_u64());
-                let live = pid
-                    .map(|pid| {
-                        std::process::Command::new("kill")
-                            .args(["-0", &pid.to_string()])
-                            .stdout(std::process::Stdio::null())
-                            .stderr(std::process::Stdio::null())
-                            .status()
-                            .is_ok_and(|status| status.success())
-                    })
-                    .unwrap_or(true);
-                if live {
-                    return Err(StaircaseError::OperationInProgress {
-                        operation_id: existing
-                            .as_ref()
-                            .and_then(|lock| lock.get("operation_id"))
-                            .and_then(|id| id.as_str())
-                            .unwrap_or(operation_id)
-                            .into(),
-                        kind: "repository-lock".into(),
-                    });
+        let mut file = loop {
+            match open() {
+                Ok(file) => break file,
+                Err(error) if error.kind() == std::io::ErrorKind::AlreadyExists => {
+                    let text_result = fs::read_to_string(&path);
+                    let existing_text = match text_result {
+                        Ok(text) => text,
+                        Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+                        Err(e) => return Err(e.into()),
+                    };
+                    let existing = serde_json::from_str::<serde_json::Value>(&existing_text).ok();
+                    let pid = existing
+                        .as_ref()
+                        .and_then(|lock| lock.get("pid"))
+                        .and_then(|pid| pid.as_u64());
+                    let live = pid
+                        .map(|pid| {
+                            std::process::Command::new("kill")
+                                .args(["-0", &pid.to_string()])
+                                .stdout(std::process::Stdio::null())
+                                .stderr(std::process::Stdio::null())
+                                .status()
+                                .is_ok_and(|status| status.success())
+                        })
+                        .unwrap_or(true);
+                    if live {
+                        return Err(StaircaseError::OperationInProgress {
+                            operation_id: existing
+                                .as_ref()
+                                .and_then(|lock| lock.get("operation_id"))
+                                .and_then(|id| id.as_str())
+                                .unwrap_or(operation_id)
+                                .into(),
+                            kind: "repository-lock".into(),
+                        });
+                    }
+                    // Stale lock, attempt to clear it. Ignore errors if another thread already cleared it.
+                    let _ = fs::remove_file(&path);
+                    continue;
                 }
-                fs::remove_file(&path)?;
-                open()?
+                Err(error) => return Err(error.into()),
             }
-            Err(error) => return Err(error.into()),
         };
         let lock = serde_json::json!({
             "schema": "git-staircase/operation-lock",
