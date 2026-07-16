@@ -103,6 +103,12 @@ pub fn setup_repo() -> (TempDir, GitRepo) {
 
 #[allow(dead_code)]
 pub fn get_test_binary_path() -> std::path::PathBuf {
+    if let Ok(cwd) = std::env::current_dir() {
+        let bin = cwd.join("target").join("debug").join("git-staircase");
+        if bin.exists() {
+            return bin;
+        }
+    }
     let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
         .join("target")
         .join("debug")
