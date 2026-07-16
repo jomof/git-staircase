@@ -209,8 +209,6 @@ fn finalize(
     journal: &mut OperationJournal,
     state: &RewriteContinuation,
 ) -> Result<()> {
-    let require_clean = state.start_step == 0 && state.end_step == state.desired.steps.len();
-    super::resolved::validate_structure(repo, &state.desired, require_clean)?;
     let record = persistence::write_record(
         repo,
         &state.desired,

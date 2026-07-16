@@ -15,20 +15,6 @@ pub enum ResolvedStaircase {
     ImplicitFamily(StaircaseFamily),
 }
 
-impl ResolvedStaircase {
-    pub fn is_implicit(&self) -> bool {
-        matches!(self, Self::Implicit(_) | Self::ImplicitFamily(_))
-    }
-
-    pub fn metadata(&self) -> &StaircaseMetadata {
-        match self {
-            Self::Managed(m) => m,
-            Self::Implicit(m) => m,
-            Self::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
-        }
-    }
-}
-
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSelector {
     pub staircase: ResolvedStaircase,
@@ -50,6 +36,14 @@ impl ResolvedSelector {
 }
 
 impl ResolvedStaircase {
+    pub fn metadata(&self) -> &StaircaseMetadata {
+        match self {
+            ResolvedStaircase::Managed(s) => s,
+            ResolvedStaircase::Implicit(s) => s,
+            ResolvedStaircase::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
+        }
+    }
+
     pub fn is_managed(&self) -> bool {
         matches!(self, ResolvedStaircase::Managed(_))
     }
@@ -69,7 +63,6 @@ impl ResolvedStaircase {
         }
         metadata.steps.insert(index, step.clone());
 
-        validate_structure(repo, &metadata, false)?;
         validate_renumbering(repo, managed.metadata(), &mut metadata)?;
         publish_managed(repo, &managed, metadata)
     }
@@ -79,7 +72,6 @@ impl ResolvedStaircase {
         let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         metadata.steps.remove(index);
-        validate_structure(repo, &metadata, false)?;
         validate_renumbering(repo, managed.metadata(), &mut metadata)?;
         publish_managed(repo, &managed, metadata)
     }
@@ -94,7 +86,6 @@ impl ResolvedStaircase {
         let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         metadata.steps[index].cut = new_oid.clone();
-        validate_structure(repo, &metadata, false)?;
         publish_managed(repo, &managed, metadata)
     }
 
@@ -108,7 +99,6 @@ impl ResolvedStaircase {
         let managed = ensure_managed(repo, self)?;
         let mut metadata = metadata;
         metadata.id = managed.metadata().id.clone();
-        validate_structure(repo, &metadata, false)?;
         validate_renumbering(repo, managed.metadata(), &mut metadata)?;
         publish_managed(repo, &managed, metadata)
     }
@@ -166,12 +156,22 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
     Ok(true)
 }
 
-pub fn validate_structure(
-    repo: &GitRepo,
-    staircase: &StaircaseMetadata,
-    require_clean: bool,
-) -> Result<()> {
+pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
+    let target = match repo.resolve_symbolic_full_name(&staircase.target) {
+        Ok(t) => t,
+        Err(_) => repo.resolve_commit(&staircase.target)?,
+    };
     let target_oid = repo.resolve_commit(&staircase.target)?;
+    let mut staircase = staircase.clone();
+    staircase.target = target;
+    if staircase.id.starts_with("implicit@") {
+        staircase.id = Uuid::new_v4().to_string();
+    }
+    for step in &mut staircase.steps {
+        if step.id.is_empty() {
+            step.id = Uuid::new_v4().to_string();
+        }
+    }
     let mut oids = vec![target_oid.as_str()];
     for step in &staircase.steps {
         oids.push(step.cut.as_str());
@@ -186,7 +186,7 @@ pub fn validate_structure(
                 step.name, step.cut
             )));
         }
-        if require_clean && !repo.is_ancestor(&last_cut, &current_cut)? {
+        if !repo.is_ancestor(&last_cut, &current_cut)? {
             return Err(StaircaseError::InvalidStructure(format!(
                 "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
                 step.name, step.cut
@@ -194,29 +194,6 @@ pub fn validate_structure(
         }
         last_cut = current_cut;
     }
-    Ok(())
-}
-
-pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
-    if repo.no_adopt {
-        return Err(StaircaseError::AdoptionRequired);
-    }
-    let target = match repo.resolve_symbolic_full_name(&staircase.target) {
-        Ok(t) => t,
-        Err(_) => repo.resolve_commit(&staircase.target)?,
-    };
-    let mut staircase = staircase.clone();
-    staircase.target = target;
-    if staircase.id.starts_with("implicit@") {
-        staircase.id = Uuid::new_v4().to_string();
-    }
-    for step in &mut staircase.steps {
-        if step.id.is_empty() {
-            step.id = Uuid::new_v4().to_string();
-        }
-    }
-
-    validate_structure(repo, &staircase, true)?;
 
     persistence::write_metadata(repo, &staircase)?;
     Ok(staircase)

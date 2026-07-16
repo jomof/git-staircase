@@ -23,8 +23,4 @@ impl super::Command for Graph {
         ])?;
         Ok(Box::new(PlainOutput(output)))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }

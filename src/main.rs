@@ -1,6 +1,5 @@
 use anyhow::{Context, Result, anyhow};
 use clap::{Parser, Subcommand, error::ErrorKind};
-use git_staircase::core;
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
@@ -43,42 +42,6 @@ struct Cli {
 
     #[arg(long, global = true)]
     workspace_mode: Option<String>,
-
-    #[arg(long, global = true)]
-    no_adopt: bool,
-}
-
-impl Cli {
-    fn output_format(&self) -> cli::OutputFormat {
-        if self.json || self.format.as_deref() == Some("json") {
-            cli::OutputFormat::Json
-        } else if self.porcelain || self.format.as_deref() == Some("porcelain") {
-            cli::OutputFormat::Porcelain
-        } else {
-            cli::OutputFormat::Human
-        }
-    }
-}
-
-fn requested_error_format() -> cli::OutputFormat {
-    let args: Vec<String> = std::env::args().collect();
-    if args.iter().any(|arg| arg == "--json")
-        || args
-            .windows(2)
-            .any(|pair| pair[0] == "--format" && pair[1] == "json")
-        || args.iter().any(|arg| arg == "--format=json")
-    {
-        cli::OutputFormat::Json
-    } else if args.iter().any(|arg| arg == "--porcelain")
-        || args
-            .windows(2)
-            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
-        || args.iter().any(|arg| arg == "--format=porcelain")
-    {
-        cli::OutputFormat::Porcelain
-    } else {
-        cli::OutputFormat::Human
-    }
 }
 
 #[derive(Subcommand)]
@@ -141,8 +104,6 @@ enum Commands {
     Describe(cli::describe::Describe),
     /// User-facing metadata management
     Metadata(cli::metadata::MetadataCmd),
-    /// Adopt and upload a staircase to the review provider
-    Publish(cli::publish::Publish),
     /// Manage persistent typed policy
     Policy(cli::policy::PolicyCmd),
     /// Inspect or repair primary branch layout
@@ -174,36 +135,79 @@ enum Commands {
     /// Unarchive a staircase
     Unarchive(cli::unarchive::UnarchiveCmd),
 }
-macro_rules! impl_command_dispatch {
-    ($($variant:ident),*) => {
-        impl cli::Command for Commands {
-            fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
-                match self {
-                    $(Commands::$variant(cmd) => cmd.run(repo),)*
-                }
-            }
 
-            fn requires_clear_operation(&self) -> bool {
-                match self {
-                    $(Commands::$variant(cmd) => cmd.requires_clear_operation(),)*
-                }
-            }
-
-            fn requires_bootstrap(&self) -> bool {
-                match self {
-                    $(Commands::$variant(cmd) => cmd.requires_bootstrap(),)*
-                }
-            }
+impl Commands {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn cli::PresentationOutput>> {
+        match self {
+            Commands::Workspace(cmd) => cmd.run(repo),
+            Commands::Provider(cmd) => cmd.run(repo),
+            Commands::Land(cmd) => cmd.run(repo),
+            Commands::Append(cmd) => cmd.run(repo),
+            Commands::Reorder(cmd) => cmd.run(repo),
+            Commands::Move(cmd) => cmd.run(repo),
+            Commands::Drop(cmd) => cmd.run(repo),
+            Commands::Discover(cmd) => cmd.run(repo),
+            Commands::Discovery(cmd) => cmd.run(repo),
+            Commands::Adopt(cmd) => cmd.run(repo),
+            Commands::List(cmd) => cmd.run(repo),
+            Commands::Show(cmd) => cmd.run(repo),
+            Commands::Status(cmd) => cmd.run(repo),
+            Commands::Split(cmd) => cmd.run(repo),
+            Commands::Join(cmd) => cmd.run(repo),
+            Commands::Rebase(cmd) => cmd.run(repo),
+            Commands::Restack(cmd) => cmd.run(repo),
+            Commands::Verify(cmd) => cmd.run(repo),
+            Commands::Id(cmd) => cmd.run(repo),
+            Commands::Delete(cmd) => cmd.run(repo),
+            Commands::Log(cmd) => cmd.run(repo),
+            Commands::Diff(cmd) => cmd.run(repo),
+            Commands::Graph(cmd) => cmd.run(repo),
+            Commands::Steps(cmd) => cmd.run(repo),
+            Commands::Review(cmd) => cmd.run(repo),
+            Commands::Commits(cmd) => cmd.run(repo),
+            Commands::Draft(cmd) => cmd.run(repo),
+            Commands::Describe(cmd) => cmd.run(repo),
+            Commands::Metadata(cmd) => cmd.run(repo),
+            Commands::Policy(cmd) => cmd.run(repo),
+            Commands::Layout(cmd) => cmd.run(repo),
+            Commands::Normalize(cmd) => cmd.run(repo),
+            Commands::Continue(cmd) => cmd.run(repo),
+            Commands::Abort(cmd) => cmd.run(repo),
+            Commands::Operation(cmd) => cmd.run(repo),
+            Commands::Name(cmd) => cmd.run(repo),
+            Commands::Rename(cmd) => cmd.run(repo),
+            Commands::Unname(cmd) => cmd.run(repo),
+            Commands::Tag(cmd) => cmd.run(repo),
+            Commands::RevParse(cmd) => cmd.run(repo),
+            Commands::Push(cmd) => cmd.run(repo),
+            Commands::Fetch(cmd) => cmd.run(repo),
+            Commands::Archive(cmd) => cmd.run(repo),
+            Commands::Unarchive(cmd) => cmd.run(repo),
         }
-    };
-}
+    }
 
-impl_command_dispatch!(
-    Workspace, Provider, Land, Append, Reorder, Move, Drop, Discover, Discovery, Adopt, List, Show,
-    Status, Split, Join, Rebase, Restack, Verify, Id, Delete, Log, Diff, Graph, Steps, Review,
-    Commits, Draft, Describe, Metadata, Publish, Policy, Layout, Normalize, Continue, Abort,
-    Operation, Name, Rename, Unname, Tag, RevParse, Push, Fetch, Archive, Unarchive
-);
+    fn requires_clear_operation(&self) -> bool {
+        !matches!(
+            self,
+            Commands::Workspace(_)
+                | Commands::Provider(_)
+                | Commands::Discover(_)
+                | Commands::List(_)
+                | Commands::Show(_)
+                | Commands::Status(_)
+                | Commands::Id(_)
+                | Commands::Log(_)
+                | Commands::Diff(_)
+                | Commands::Graph(_)
+                | Commands::Steps(_)
+                | Commands::Commits(_)
+                | Commands::RevParse(_)
+                | Commands::Operation(_)
+                | Commands::Continue(_)
+                | Commands::Abort(_)
+        )
+    }
+}
 
 fn find_repo_root() -> Result<PathBuf> {
     let output = std::process::Command::new("git")
@@ -222,15 +226,22 @@ fn find_repo_root() -> Result<PathBuf> {
 
 fn run(cli: Cli) -> Result<()> {
     let repo_root = find_repo_root()?;
-    let mut repo = GitRepo::new(repo_root);
-    repo.set_no_adopt(cli.no_adopt);
+    let repo = GitRepo::new(repo_root);
     if cli.command.requires_clear_operation() {
-        core::ensure_no_active(&repo)?;
-        if let Some((operation, owner)) = core::external_git_operation(&repo)? {
+        git_staircase::core::ensure_no_active(&repo)?;
+        if let Some((operation, owner)) = git_staircase::core::external_git_operation(&repo)? {
             return Err(StaircaseError::ExternalOperation { operation, owner }.into());
         }
     }
-    let format = cli.output_format();
+    let is_json = cli.json || matches!(cli.format.as_deref(), Some("json"));
+    let is_porcelain = cli.porcelain || matches!(cli.format.as_deref(), Some("porcelain"));
+    let format = if is_json {
+        cli::OutputFormat::Json
+    } else if is_porcelain {
+        cli::OutputFormat::Porcelain
+    } else {
+        cli::OutputFormat::Human
+    };
 
     let options = BootstrapOptions {
         no_bootstrap: cli.no_bootstrap,
@@ -240,13 +251,10 @@ fn run(cli: Cli) -> Result<()> {
         review_provider: cli.review_provider,
         provider_profile: cli.provider_profile,
         workspace_mode: cli.workspace_mode,
-        is_porcelain_or_json: matches!(
-            format,
-            cli::OutputFormat::Json | cli::OutputFormat::Porcelain
-        ),
+        is_porcelain_or_json: is_json || is_porcelain,
     };
 
-    if cli.command.requires_bootstrap() {
+    if !matches!(&cli.command, Commands::Provider(_)) {
         let bootstrap_res = bootstrap(&repo, &options)?;
         if let Some(ref msg) = bootstrap_res.message {
             if matches!(format, cli::OutputFormat::Human) {
@@ -258,6 +266,34 @@ fn run(cli: Cli) -> Result<()> {
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
 
+#[derive(Clone, Copy)]
+enum ErrorFormat {
+    Human,
+    Json,
+    Porcelain,
+}
+
+fn requested_error_format() -> ErrorFormat {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--json")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "json")
+        || args.iter().any(|arg| arg == "--format=json")
+    {
+        ErrorFormat::Json
+    } else if args.iter().any(|arg| arg == "--porcelain")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
+        || args.iter().any(|arg| arg == "--format=porcelain")
+    {
+        ErrorFormat::Porcelain
+    } else {
+        ErrorFormat::Human
+    }
+}
+
 fn escape_machine_field(value: &str) -> String {
     value
         .replace('\\', "\\\\")
@@ -266,7 +302,7 @@ fn escape_machine_field(value: &str) -> String {
         .replace('\t', "\\t")
 }
 
-fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
+fn render_error(error: &anyhow::Error, format: ErrorFormat) -> i32 {
     let typed = error
         .chain()
         .find_map(|cause| cause.downcast_ref::<StaircaseError>());
@@ -276,7 +312,7 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
     let details = typed.map_or(serde_json::Value::Null, StaircaseError::details);
 
     match format {
-        cli::OutputFormat::Json => {
+        ErrorFormat::Json => {
             let diagnostic = serde_json::json!({
                 "error": {
                     "code": code,
@@ -291,10 +327,10 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
                     .unwrap_or_else(|_| r#"{"error":{"code":"serialization-error"}}"#.into())
             );
         }
-        cli::OutputFormat::Porcelain => {
+        ErrorFormat::Porcelain => {
             eprintln!("error\t{}\t{}", code, escape_machine_field(&message));
         }
-        cli::OutputFormat::Human => {
+        ErrorFormat::Human => {
             eprintln!("error [{}]: {}", code, message);
             if !details.is_null() {
                 if let Ok(rendered) = serde_json::to_string_pretty(&details) {
@@ -308,7 +344,6 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
 
 fn main() {
     let format = requested_error_format();
-
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(error) => {

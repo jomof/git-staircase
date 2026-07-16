@@ -71,10 +71,6 @@ impl super::Command for List {
 
         Ok(Box::new(ListResult(all_results)))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }
 
 #[derive(Serialize)]

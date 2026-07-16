@@ -42,8 +42,4 @@ impl super::Command for Commits {
 
         Ok(Box::new(StaircaseCommits { steps }))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }

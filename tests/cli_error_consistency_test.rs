@@ -41,11 +41,5 @@ fn test_error_output_consistency() {
 }
 
 fn get_bin_path() -> String {
-    if let Ok(cwd) = std::env::current_dir() {
-        let bin = cwd.join("target").join("debug").join("git-staircase");
-        if bin.exists() {
-            return bin.to_string_lossy().to_string();
-        }
-    }
     env!("CARGO_BIN_EXE_git-staircase").to_string()
 }

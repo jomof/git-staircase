@@ -26,11 +26,15 @@ impl ToPresentation for MaterializeResult {
         Presentation::pair(
             Presentation::Plain(format!(
                 "Materialized draft as commit {} on step '{}' of staircase '{}'",
-                Presentation::truncate_hash(&self.commit_oid),
+                if self.commit_oid.len() >= 7 {
+                    &self.commit_oid[..7]
+                } else {
+                    &self.commit_oid
+                },
                 self.step_name,
                 self.staircase_name
             )),
-            Presentation::record(vec![
+            Presentation::Record(vec![
                 "materialized".to_string(),
                 self.staircase_name.clone(),
                 self.step_name.clone(),
@@ -44,26 +48,32 @@ impl UsePresentation for MaterializeResult {}
 
 impl ToPresentation for LocalMutationResult {
     fn to_presentation(&self) -> Presentation {
-        let mut children = Presentation::fields(vec![
-            ("kind", self.kind.clone()),
-            ("staircase", self.staircase_name.clone()),
-        ]);
+        let mut children = vec![
+            Presentation::Field {
+                label: "kind".to_string(),
+                value: self.kind.clone(),
+            },
+            Presentation::Field {
+                label: "staircase".to_string(),
+                value: self.staircase_name.clone(),
+            },
+        ];
         if let Some(ref oid) = self.record_oid {
-            children.push(Presentation::field(
-                "record oid",
-                Presentation::truncate_hash(oid),
-            ));
+            children.push(Presentation::Field {
+                label: "record oid".to_string(),
+                value: oid[..7.min(oid.len())].to_string(),
+            });
         }
         if self.dry_run {
             children.push(Presentation::Plain("(dry run)".to_string()));
         }
 
         Presentation::pair(
-            Presentation::section(
-                format!("Operation '{}' completed successfully:", self.kind),
+            Presentation::Section {
+                title: format!("Operation '{}' completed successfully:", self.kind),
                 children,
-            ),
-            Presentation::record(vec![
+            },
+            Presentation::Record(vec![
                 self.kind.clone(),
                 self.staircase_name.clone(),
                 self.record_oid.clone().unwrap_or_default(),
@@ -78,24 +88,35 @@ impl ToPresentation for LayoutState {
         for b in &self.branches {
             branches.push(vec![
                 b.step_name.clone(),
-                Presentation::truncate_hash(&b.expected_oid).to_string(),
-                Presentation::truncate_hash(b.actual_oid.as_deref().unwrap_or("none")).to_string(),
+                b.expected_oid[..7.min(b.expected_oid.len())].to_string(),
+                b.actual_oid.as_deref().unwrap_or("none")
+                    [..7.min(b.actual_oid.as_deref().unwrap_or("none").len())]
+                    .to_string(),
             ]);
         }
         Presentation::pair(
-            Presentation::section(
-                format!("Layout state for staircase {}:", self.staircase_id),
-                {
-                    let mut children = Presentation::fields(vec![
-                        ("profile", self.profile.clone().unwrap_or("none".into())),
-                        ("base", self.base.clone().unwrap_or("none".into())),
-                        ("state", self.state.clone()),
-                    ]);
-                    children.push(Presentation::table(Some("branches".to_string()), branches));
-                    children
-                },
-            ),
-            Presentation::record(vec![
+            Presentation::Section {
+                title: format!("Layout state for staircase {}:", self.staircase_id),
+                children: vec![
+                    Presentation::Field {
+                        label: "profile".to_string(),
+                        value: self.profile.clone().unwrap_or("none".into()),
+                    },
+                    Presentation::Field {
+                        label: "base".to_string(),
+                        value: self.base.clone().unwrap_or("none".into()),
+                    },
+                    Presentation::Field {
+                        label: "state".to_string(),
+                        value: self.state.clone(),
+                    },
+                    Presentation::Table {
+                        name: Some("branches".into()),
+                        rows: branches,
+                    },
+                ],
+            },
+            Presentation::Record(vec![
                 "layout".to_string(),
                 self.staircase_id.clone(),
                 self.state.clone(),
@@ -125,13 +146,19 @@ impl ToPresentation for OperationResult {
 
 impl ToPresentation for OperationJournal {
     fn to_presentation(&self) -> Presentation {
-        Presentation::section(
-            format!("Operation '{}' (ID: {})", self.kind, self.operation_id),
-            Presentation::fields(vec![
-                ("Phase", format!("{:?}", self.phase)),
-                ("Disposition", self.disposition.clone()),
-            ]),
-        )
+        Presentation::Section {
+            title: format!("Operation '{}' (ID: {})", self.kind, self.operation_id),
+            children: vec![
+                Presentation::Field {
+                    label: "Phase".into(),
+                    value: format!("{:?}", self.phase),
+                },
+                Presentation::Field {
+                    label: "Disposition".into(),
+                    value: self.disposition.clone(),
+                },
+            ],
+        }
     }
 }
 

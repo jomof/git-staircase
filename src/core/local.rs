@@ -448,28 +448,8 @@ pub fn publish_metadata(
     kind: &str,
     dry_run: bool,
 ) -> Result<LocalMutationResult> {
-    crate::core::resolved::validate_structure(repo, &metadata, false)?;
-    if selector.is_managed() {
-        let old = current_record(repo, selector)?;
-        publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
-    } else {
-        let mut plan = MutationPlan::new(kind, None);
-        let overridden_refs = BTreeSet::new();
-        add_branch_permutation(
-            repo,
-            selector.metadata(),
-            &metadata,
-            &mut plan,
-            &overridden_refs,
-        )?;
-        let changed_refs = plan
-            .refs
-            .iter()
-            .map(|edit| edit.reference.clone())
-            .collect();
-        plan.publish(repo, dry_run)?;
-        Ok(result(kind, &metadata, None, dry_run, changed_refs))
-    }
+    let old = current_record(repo, selector)?;
+    publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
 }
 
 fn publish_record_parts(
@@ -651,9 +631,15 @@ fn add_branch_permutation(
         }
         let planned = new_owned.get(&reference).cloned();
         if actual != planned {
-            if let Some(_path) = checked_out.get(&reference) {
-                // Conformance A.5: Allow cross-worktree updates for staircase branches.
-                // We just log it or proceed. The other worktree will be stale.
+            if let Some(path) = checked_out.get(&reference) {
+                return Err(StaircaseError::UnsupportedTopology {
+                    operation: "branch-layout".into(),
+                    reason: format!(
+                        "branch {} is checked out in worktree {}; move or detach that worktree first",
+                        reference,
+                        path.display()
+                    ),
+                });
             }
         }
         if actual != planned {

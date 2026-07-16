@@ -14,18 +14,18 @@ use serde::Serialize;
 pub struct RevParse {
     #[command(flatten)]
     pub selector: StaircaseSelectorArgs,
-    #[arg(long = "show-ref", group = "projection")]
-    pub show_ref: bool,
-    #[arg(long = "show-lineage", group = "projection")]
-    pub show_lineage: bool,
-    #[arg(long = "show-record", group = "projection")]
-    pub show_record: bool,
-    #[arg(long = "show-structure", group = "projection")]
-    pub show_structure: bool,
-    #[arg(long = "show-top", group = "projection")]
-    pub show_top: bool,
-    #[arg(long = "show-step", group = "projection")]
-    pub show_step: bool,
+    #[arg(long, group = "projection")]
+    pub r#ref: bool,
+    #[arg(long, group = "projection")]
+    pub lineage: bool,
+    #[arg(long, group = "projection")]
+    pub record: bool,
+    #[arg(long, group = "projection")]
+    pub structure: bool,
+    #[arg(long, group = "projection")]
+    pub top: bool,
+    #[arg(long, group = "projection")]
+    pub step: bool,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -80,7 +80,7 @@ impl Command for RevParse {
             record_oid = Some(record.record_oid);
             structure_oid = Some(record.structure_oid);
         }
-        let (kind, value, step_id) = if self.show_ref {
+        let (kind, value, step_id) = if self.r#ref {
             let reference = StaircaseRefs::public(&metadata.name);
             if repo.resolve_ref_opt(&reference)?.is_some() {
                 ("ref", reference, None)
@@ -102,7 +102,7 @@ impl Command for RevParse {
                     None,
                 )
             }
-        } else if self.show_lineage {
+        } else if self.lineage {
             if !selector.is_managed() {
                 return Err(StaircaseError::Other(
                     "implicit staircases do not have lineage identity".into(),
@@ -110,7 +110,7 @@ impl Command for RevParse {
                 .into());
             }
             ("lineage", metadata.id.clone(), None)
-        } else if self.show_record {
+        } else if self.record {
             (
                 "record",
                 record_oid.clone().ok_or_else(|| {
@@ -118,15 +118,15 @@ impl Command for RevParse {
                 })?,
                 None,
             )
-        } else if self.show_structure {
+        } else if self.structure {
             (
                 "structure",
                 structure_oid.clone().unwrap_or_else(|| metadata.id.clone()),
                 None,
             )
-        } else if self.show_top {
+        } else if self.top {
             ("top", top_oid.clone(), None)
-        } else if self.show_step {
+        } else if self.step {
             let index = selector
                 .step_index
                 .ok_or_else(|| StaircaseError::Other("--step requires a step selector".into()))?;
@@ -155,9 +155,5 @@ impl Command for RevParse {
             top_oid,
             step_id,
         }))
-    }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
     }
 }

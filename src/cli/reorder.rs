@@ -12,8 +12,6 @@ pub struct Reorder {
     pub steps: Vec<String>,
     #[arg(long)]
     pub dry_run: bool,
-    #[arg(long)]
-    pub no_restack: bool,
 }
 
 impl super::Command for Reorder {
@@ -41,9 +39,7 @@ impl super::Command for Reorder {
                 repo,
                 &rs,
                 &zero_based_steps,
-                core::ReorderOptions {
-                    no_restack: self.no_restack,
-                },
+                core::ReorderOptions { no_restack: false },
             )?;
             return Ok(Box::new(super::Success::new(format!(
                 "Planned reorder of staircase '{}'",
@@ -54,9 +50,7 @@ impl super::Command for Reorder {
                 repo,
                 &rs,
                 &zero_based_steps,
-                core::ReorderOptions {
-                    no_restack: self.no_restack,
-                },
+                core::ReorderOptions { no_restack: false },
             )?;
         }
 

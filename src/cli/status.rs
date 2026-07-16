@@ -15,8 +15,4 @@ impl super::Command for Status {
         let status = core::get_status_metadata(repo, rs.metadata().clone(), !rs.is_managed())?;
         Ok(Box::new(status))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }

@@ -26,10 +26,6 @@ impl super::Command for Id {
             name: rs.metadata().name.clone(),
         }))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }
 
 #[derive(Serialize)]

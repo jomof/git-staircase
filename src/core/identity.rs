@@ -13,7 +13,10 @@ pub fn compute_identity(
     staircase: &ResolvedStaircase,
     kind: IdentityKind,
 ) -> Result<String> {
-    let metadata = staircase.metadata().clone();
+    let mut metadata = staircase.metadata().clone();
+    if kind == IdentityKind::Lineage && !staircase.is_managed() {
+        metadata = super::resolved::adopt(repo, &metadata)?;
+    }
     match kind {
         IdentityKind::Lineage => Ok(metadata.id.clone()),
         IdentityKind::Nominal => Ok(metadata.name.clone()),

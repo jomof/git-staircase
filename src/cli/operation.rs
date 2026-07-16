@@ -25,19 +25,11 @@ impl Command for Continue {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         Ok(Box::new(core::continue_active(repo)?))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }
 
 impl Command for Abort {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         Ok(Box::new(core::abort_active(repo)?))
-    }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
     }
 }
 
@@ -50,9 +42,5 @@ impl Command for OperationCmd {
                 Ok(Box::new(operation))
             }
         }
-    }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
     }
 }

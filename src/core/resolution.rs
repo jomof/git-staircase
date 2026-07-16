@@ -10,18 +10,6 @@ use std::collections::BTreeMap;
 use super::inference::{extract_path_to, infer_onto};
 use super::utils::check_sequential_layout;
 
-#[derive(Default, Clone, Debug)]
-pub struct Selector<'a> {
-    pub name: Option<&'a str>,
-    pub onto: Option<&'a str>,
-    pub id: Option<&'a str>,
-    pub record: Option<&'a str>,
-    pub explicit_name: Option<&'a str>,
-    pub refname: Option<&'a str>,
-    pub structural_key: Option<&'a str>,
-    pub steps: Option<&'a [String]>,
-}
-
 pub fn resolve_staircase_internal(
     repo: &GitRepo,
     name: &str,
@@ -326,7 +314,7 @@ pub fn resolve_explicit_staircase(
     } else {
         (None, None)
     };
-    let metadata = StaircaseMetadata {
+    Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
         landing_policy: None,
         id,
         name: steps
@@ -340,9 +328,7 @@ pub fn resolve_explicit_staircase(
         branch_layout_base: layout_base,
         user_metadata: None,
         lifecycle: None,
-    };
-    super::resolved::validate_structure(repo, &metadata, true)?;
-    Ok(ResolvedStaircase::Implicit(metadata))
+    }))
 }
 
 pub fn resolve_by_id(repo: &GitRepo, id: &str) -> Result<ResolvedStaircase> {
@@ -483,14 +469,14 @@ pub fn resolve_staircase(
     onto: Option<&str>,
 ) -> Result<Option<ResolvedSelector>> {
     if name.contains(':') {
-        if let Some((sc_name, step_selector)) = name.rsplit_once(':') {
-            if let Some(rs) = resolve_staircase_internal(repo, sc_name, onto)? {
-                if let Ok(ordinal) = step_selector.parse::<usize>() {
-                    if ordinal == 0 {
-                        return Err(StaircaseError::Other(
-                            "Step ordinal must be 1-based".to_string(),
-                        ));
-                    }
+        if let Some((sc_name, ordinal_str)) = name.rsplit_once(':') {
+            if let Ok(ordinal) = ordinal_str.parse::<usize>() {
+                if ordinal == 0 {
+                    return Err(StaircaseError::Other(
+                        "Step ordinal must be 1-based".to_string(),
+                    ));
+                }
+                if let Some(rs) = resolve_staircase_internal(repo, sc_name, onto)? {
                     if ordinal > rs.metadata().steps.len() {
                         return Err(StaircaseError::Other(format!(
                             "Step ordinal {} out of range for staircase '{}' (which has {} steps)",
@@ -504,19 +490,6 @@ pub fn resolve_staircase(
                         step_index: Some(ordinal - 1),
                     }));
                 }
-
-                // Try step ID or name
-                let meta = rs.metadata();
-                if let Some(pos) = meta
-                    .steps
-                    .iter()
-                    .position(|s| s.id == step_selector || s.name == step_selector)
-                {
-                    return Ok(Some(ResolvedSelector {
-                        staircase: rs,
-                        step_index: Some(pos),
-                    }));
-                }
             }
         }
     }
@@ -527,110 +500,4 @@ pub fn resolve_staircase(
             step_index: None,
         }),
     )
-}
-
-pub fn resolve_step(sel: &ResolvedSelector, step_arg: Option<&str>) -> Result<usize> {
-    if let Some(idx) = sel.step_index {
-        return Ok(idx);
-    }
-    let Some(arg) = step_arg else {
-        return Err(StaircaseError::Other("No step specified".into()));
-    };
-
-    // Try ordinal
-    if let Ok(ordinal) = arg.parse::<usize>() {
-        if ordinal == 0 {
-            return Err(StaircaseError::Other("Step ordinal must be 1-based".into()));
-        }
-        if ordinal <= sel.metadata().steps.len() {
-            return Ok(ordinal - 1);
-        }
-    }
-
-    // Try name or ID
-    if let Some(pos) = sel
-        .metadata()
-        .steps
-        .iter()
-        .position(|s| s.id == arg || s.name == arg)
-    {
-        return Ok(pos);
-    }
-
-    Err(StaircaseError::Other(format!(
-        "Step '{}' not found in staircase",
-        arg
-    )))
-}
-
-pub fn resolve(repo: &GitRepo, selector: &Selector) -> Result<ResolvedSelector> {
-    let selector_count = [
-        selector.id.is_some(),
-        selector.record.is_some(),
-        selector.explicit_name.is_some(),
-        selector.refname.is_some(),
-        selector.structural_key.is_some(),
-        selector.steps.is_some_and(|s| !s.is_empty()),
-        selector.name.is_some(),
-    ]
-    .into_iter()
-    .filter(|selected| *selected)
-    .count();
-
-    if selector_count > 1 {
-        return Err(StaircaseError::Other(
-            "exactly one staircase selector may be provided".into(),
-        ));
-    }
-
-    if let Some(id) = selector.id {
-        return Ok(ResolvedSelector {
-            staircase: resolve_by_id(repo, id)?,
-            step_index: None,
-        });
-    }
-
-    if let Some(record) = selector.record {
-        return Ok(ResolvedSelector {
-            staircase: resolve_by_record(repo, record)?,
-            step_index: None,
-        });
-    }
-
-    if let Some(name) = selector.explicit_name {
-        return Ok(ResolvedSelector {
-            staircase: resolve_by_name(repo, name)?,
-            step_index: None,
-        });
-    }
-
-    if let Some(r) = selector.refname {
-        return Ok(ResolvedSelector {
-            staircase: resolve_by_ref(repo, r)?,
-            step_index: None,
-        });
-    }
-
-    if let Some(key) = selector.structural_key {
-        return Ok(ResolvedSelector {
-            staircase: resolve_by_structural_key(repo, key, selector.onto)?,
-            step_index: None,
-        });
-    }
-
-    if let Some(steps) = selector.steps {
-        if !steps.is_empty() {
-            return Ok(ResolvedSelector {
-                staircase: resolve_explicit_staircase(repo, steps, selector.onto)?,
-                step_index: None,
-            });
-        }
-    }
-
-    let name = selector.name.ok_or_else(|| {
-        StaircaseError::Other("Either a name, --steps, or an explicit selector (--id, --name, --ref, --record, --structural-key) must be provided".into())
-    })?;
-
-    resolve_staircase(repo, name, selector.onto)?
-        .ok_or_else(|| StaircaseError::NotFound(name.to_string()))
 }

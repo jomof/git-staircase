@@ -56,9 +56,8 @@ pub use persistence::{
     list_all_staircases, list_archived_staircases, list_staircases, read_record, write_record,
 };
 pub use resolution::{
-    Selector, find_by_name, resolve, resolve_by_id, resolve_by_name, resolve_by_record,
-    resolve_by_ref, resolve_by_revision, resolve_by_structural_key, resolve_explicit_staircase,
-    resolve_staircase, resolve_step,
+    find_by_name, resolve_by_id, resolve_by_name, resolve_by_record, resolve_by_ref,
+    resolve_by_revision, resolve_by_structural_key, resolve_explicit_staircase, resolve_staircase,
 };
 pub use resolved::adopt;
 pub use resolved::{ResolvedSelector, ResolvedStaircase};

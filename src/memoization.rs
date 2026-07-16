@@ -39,45 +39,25 @@ pub enum MemoValue {
 }
 
 impl MemoValue {
-    pub fn into_bool(self) -> Option<bool> {
+    pub fn as_bool(&self) -> Option<bool> {
         match self {
-            MemoValue::Bool(b) => Some(b),
+            MemoValue::Bool(b) => Some(*b),
             _ => None,
         }
     }
 
-    pub fn into_text(self) -> Option<String> {
+    pub fn as_text(&self) -> Option<&str> {
         match self {
-            MemoValue::Text(s) => Some(s),
+            MemoValue::Text(s) => Some(s.as_str()),
             _ => None,
-        }
-    }
-
-    pub fn into_opt_text(self) -> Option<Option<String>> {
-        match self {
-            MemoValue::Text(s) => Some(Some(s)),
-            MemoValue::NoneText => Some(None),
-            _ => None,
-        }
-    }
-
-    pub fn from_bool(b: bool) -> Self {
-        MemoValue::Bool(b)
-    }
-
-    pub fn from_text(s: String) -> Self {
-        MemoValue::Text(s)
-    }
-
-    pub fn from_opt_text(s: Option<String>) -> Self {
-        match s {
-            Some(s) => MemoValue::Text(s),
-            None => MemoValue::NoneText,
         }
     }
 }
 
 /// Abstract store for immutable operation memoization.
+///
+/// Implementations range from per-command in-process thread-safe hash maps (default)
+/// to a shared out-of-process daemon memoizer communicating over IPC/sockets.
 pub trait MemoizationStore: Send + Sync + Debug {
     fn get(&self, key: &MemoKey) -> Option<MemoValue>;
     fn put(&self, key: MemoKey, value: MemoValue);
@@ -142,81 +122,159 @@ impl Memoizer {
     pub fn with_store(store: Arc<dyn MemoizationStore>) -> Self {
         Self { store }
     }
-}
 
-/// Helper for a pending memoization operation.
-pub struct MemoOp<'a, V> {
-    memoizer: &'a Memoizer,
-    key: MemoKey,
-    from_value: fn(MemoValue) -> Option<V>,
-    to_value: fn(V) -> MemoValue,
-}
-
-impl<'a, V: Clone> MemoOp<'a, V> {
-    pub fn get(&self) -> Option<V> {
-        self.memoizer.store.get(&self.key).and_then(self.from_value)
+    pub fn get_ancestry(&self, ancestor: &str, descendant: &str) -> Option<bool> {
+        let key = MemoKey::Ancestry {
+            ancestor: ancestor.to_string(),
+            descendant: descendant.to_string(),
+        };
+        self.store.get(&key).and_then(|v| v.as_bool())
     }
 
-    pub fn put(&self, value: V) {
-        self.memoizer
-            .store
-            .put(self.key.clone(), (self.to_value)(value));
+    pub fn set_ancestry(&self, ancestor: &str, descendant: &str, is_ancestor: bool) {
+        let key = MemoKey::Ancestry {
+            ancestor: ancestor.to_string(),
+            descendant: descendant.to_string(),
+        };
+        self.store.put(key, MemoValue::Bool(is_ancestor));
     }
 
-    pub fn get_or_compute<F, E>(&self, f: F) -> Result<V, E>
-    where
-        F: FnOnce() -> Result<V, E>,
-    {
-        if let Some(val) = self.get() {
-            return Ok(val);
-        }
-        let val = f()?;
-        self.put(val.clone());
-        Ok(val)
+    pub fn get_merge_base(&self, a: &str, b: &str) -> Option<String> {
+        let key = MemoKey::MergeBase {
+            a: a.to_string(),
+            b: b.to_string(),
+        };
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
     }
-}
 
-macro_rules! define_memo_ops {
-    ($($name:ident { $($field:ident : $ftype:ty),* } -> $vtype:ty : $from:path, $to:path);* $(;)?) => {
-        impl Memoizer {
-            $(
-                #[allow(non_snake_case)]
-                pub fn $name(&self, $($field: $ftype),*) -> MemoOp<'_, $vtype> {
-                    MemoOp {
-                        memoizer: self,
-                        key: MemoKey::$name { $($field),* },
-                        from_value: $from,
-                        to_value: $to,
-                    }
-                }
-            )*
-        }
-    };
-}
+    pub fn set_merge_base(&self, a: &str, b: &str, result: &str) {
+        let key = MemoKey::MergeBase {
+            a: a.to_string(),
+            b: b.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(result.to_string()));
+    }
 
-define_memo_ops! {
-    Ancestry { ancestor: String, descendant: String } -> bool : MemoValue::into_bool, MemoValue::from_bool;
-    MergeBase { a: String, b: String } -> String : MemoValue::into_text, MemoValue::from_text;
-    PatchId { base: String, tip: String } -> String : MemoValue::into_text, MemoValue::from_text;
-    TreeId { commit: String } -> String : MemoValue::into_text, MemoValue::from_text;
-    ObjectFormat {} -> String : MemoValue::into_text, MemoValue::from_text;
-    ResolveCommit { rev: String } -> String : MemoValue::into_text, MemoValue::from_text;
-    ResolveRef { rev: String } -> Option<String> : MemoValue::into_opt_text, MemoValue::from_opt_text;
-    ResolveSymbolic { name: String } -> String : MemoValue::into_text, MemoValue::from_text;
-}
+    pub fn get_patch_id(&self, base: &str, tip: &str) -> Option<String> {
+        let key = MemoKey::PatchId {
+            base: base.to_string(),
+            tip: tip.to_string(),
+        };
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
 
-impl Memoizer {
-    pub fn hash_data(&self, data: &str) -> MemoOp<'_, String> {
+    pub fn set_patch_id(&self, base: &str, tip: &str, patch_id: &str) {
+        let key = MemoKey::PatchId {
+            base: base.to_string(),
+            tip: tip.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(patch_id.to_string()));
+    }
+
+    pub fn get_tree_id(&self, commit: &str) -> Option<String> {
+        let key = MemoKey::TreeId {
+            commit: commit.to_string(),
+        };
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_tree_id(&self, commit: &str, tree_id: &str) {
+        let key = MemoKey::TreeId {
+            commit: commit.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(tree_id.to_string()));
+    }
+
+    pub fn get_object_format(&self) -> Option<String> {
+        let key = MemoKey::ObjectFormat;
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_object_format(&self, format: &str) {
+        let key = MemoKey::ObjectFormat;
+        self.store.put(key, MemoValue::Text(format.to_string()));
+    }
+
+    pub fn get_hash_data(&self, data: &str) -> Option<String> {
         use sha2::{Digest, Sha256};
         let mut hasher = Sha256::new();
         hasher.update(data.as_bytes());
         let content_sha = format!("{:x}", hasher.finalize());
-        MemoOp {
-            memoizer: self,
-            key: MemoKey::HashData { content_sha },
-            from_value: MemoValue::into_text,
-            to_value: MemoValue::from_text,
+        let key = MemoKey::HashData { content_sha };
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_hash_data(&self, data: &str, hash: &str) {
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(data.as_bytes());
+        let content_sha = format!("{:x}", hasher.finalize());
+        let key = MemoKey::HashData { content_sha };
+        self.store.put(key, MemoValue::Text(hash.to_string()));
+    }
+
+    pub fn get_resolve_commit(&self, rev: &str) -> Option<String> {
+        let key = MemoKey::ResolveCommit {
+            rev: rev.to_string(),
+        };
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_resolve_commit(&self, rev: &str, oid: &str) {
+        let key = MemoKey::ResolveCommit {
+            rev: rev.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(oid.to_string()));
+    }
+
+    pub fn get_resolve_ref(&self, rev: &str) -> Option<Option<String>> {
+        let key = MemoKey::ResolveRef {
+            rev: rev.to_string(),
+        };
+        match self.store.get(&key) {
+            Some(MemoValue::Text(s)) => Some(Some(s)),
+            Some(MemoValue::NoneText) => Some(None),
+            _ => None,
         }
+    }
+
+    pub fn set_resolve_ref(&self, rev: &str, oid: Option<&str>) {
+        let key = MemoKey::ResolveRef {
+            rev: rev.to_string(),
+        };
+        let val = match oid {
+            Some(s) => MemoValue::Text(s.to_string()),
+            None => MemoValue::NoneText,
+        };
+        self.store.put(key, val);
+    }
+
+    pub fn get_symbolic_name(&self, name: &str) -> Option<String> {
+        let key = MemoKey::ResolveSymbolic {
+            name: name.to_string(),
+        };
+        self.store
+            .get(&key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_symbolic_name(&self, name: &str, full_name: &str) {
+        let key = MemoKey::ResolveSymbolic {
+            name: name.to_string(),
+        };
+        self.store.put(key, MemoValue::Text(full_name.to_string()));
     }
 
     pub fn clear(&self) {
@@ -232,37 +290,24 @@ mod tests {
     fn test_in_process_memo_store() {
         let memoizer = Memoizer::new();
 
-        assert_eq!(
-            memoizer.Ancestry("commitA".into(), "commitB".into()).get(),
-            None
-        );
-        memoizer
-            .Ancestry("commitA".into(), "commitB".into())
-            .put(true);
-        assert_eq!(
-            memoizer.Ancestry("commitA".into(), "commitB".into()).get(),
-            Some(true)
-        );
+        assert_eq!(memoizer.get_ancestry("commitA", "commitB"), None);
+        memoizer.set_ancestry("commitA", "commitB", true);
+        assert_eq!(memoizer.get_ancestry("commitA", "commitB"), Some(true));
 
-        assert_eq!(memoizer.ObjectFormat().get(), None);
-        memoizer.ObjectFormat().put("sha1".into());
-        assert_eq!(memoizer.ObjectFormat().get(), Some("sha1".to_string()));
+        assert_eq!(memoizer.get_object_format(), None);
+        memoizer.set_object_format("sha1");
+        assert_eq!(memoizer.get_object_format(), Some("sha1".to_string()));
 
-        assert_eq!(memoizer.PatchId("c1".into(), "c2".into()).get(), None);
-        memoizer
-            .PatchId("c1".into(), "c2".into())
-            .put("patch123".into());
+        assert_eq!(memoizer.get_patch_id("c1", "c2"), None);
+        memoizer.set_patch_id("c1", "c2", "patch123");
         assert_eq!(
-            memoizer.PatchId("c1".into(), "c2".into()).get(),
+            memoizer.get_patch_id("c1", "c2"),
             Some("patch123".to_string())
         );
 
         memoizer.clear();
-        assert_eq!(
-            memoizer.Ancestry("commitA".into(), "commitB".into()).get(),
-            None
-        );
-        assert_eq!(memoizer.ObjectFormat().get(), None);
+        assert_eq!(memoizer.get_ancestry("commitA", "commitB"), None);
+        assert_eq!(memoizer.get_object_format(), None);
     }
 
     #[derive(Debug)]
@@ -297,11 +342,8 @@ mod tests {
         });
 
         let memoizer = Memoizer::with_store(mock_daemon);
-        memoizer.TreeId("commit1".into()).put("tree1".into());
-        assert_eq!(
-            memoizer.TreeId("commit1".into()).get(),
-            Some("tree1".to_string())
-        );
+        memoizer.set_tree_id("commit1", "tree1");
+        assert_eq!(memoizer.get_tree_id("commit1"), Some("tree1".to_string()));
 
         let recorded = calls.lock().unwrap();
         assert_eq!(recorded.len(), 1);

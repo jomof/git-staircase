@@ -1,8 +1,12 @@
 use crate::cli::formatting::*;
 use crate::model::*;
 use crate::presentation::{Presentation, ToPresentation};
+use anyhow::{Result, anyhow};
 use serde_json::Value;
 use std::collections::BTreeMap;
+use std::env;
+use std::fs;
+use std::process::Command;
 
 impl ToPresentation for Success {
     fn to_presentation(&self) -> Presentation {
@@ -27,7 +31,7 @@ impl ToPresentation for Summary<StaircaseStatus> {
                 s.state(),
                 implicit_marker
             )),
-            Presentation::record(vec![m.name.clone(), m.id.clone(), s.state().to_string()]),
+            Presentation::Record(vec![m.name.clone(), m.id.clone(), s.state().to_string()]),
         )
     }
 }
@@ -42,7 +46,7 @@ impl ToPresentation for Summary<StaircaseFamily> {
                 "{} [{}] {} {} (implicit)",
                 f.name, f.id, path_count, paths_word
             )),
-            Presentation::record(vec![
+            Presentation::Record(vec![
                 f.name.clone(),
                 f.id.clone(),
                 "family".to_string(),
@@ -66,7 +70,7 @@ impl ToPresentation for StepsList {
             h_rows.push(vec![
                 format!("Step {}:", i + 1),
                 step.name.clone(),
-                format!("({})", Presentation::truncate_hash(&step.cut)),
+                format!("({})", &step.cut[..7]),
             ]);
             p_rows.push(vec![
                 (i + 1).to_string(),
@@ -99,7 +103,7 @@ impl ToPresentation for StaircaseCommits {
                     "{} {}",
                     commit.hash, commit.subject
                 )));
-                p_commits.push(Presentation::record(vec![
+                p_commits.push(Presentation::Record(vec![
                     "commit".to_string(),
                     commit.hash.clone(),
                     commit.subject.clone(),
@@ -110,7 +114,7 @@ impl ToPresentation for StaircaseCommits {
                     title: format!("Step {}: {}", step.index, step.name),
                     children: h_commits,
                 }),
-                Presentation::porcelain(Presentation::record(vec![
+                Presentation::porcelain(Presentation::Record(vec![
                     "step".to_string(),
                     step.index.to_string(),
                     step.name.clone(),
@@ -134,7 +138,7 @@ impl ToPresentation for LogOutput {
         let mut p_items = vec![];
         for c in &self.0 {
             h_items.push(Presentation::Plain(format!("{} {}", c.hash, c.subject)));
-            p_items.push(Presentation::record(vec![
+            p_items.push(Presentation::Record(vec![
                 c.hash.clone(),
                 c.subject.clone(),
             ]));
@@ -147,9 +151,15 @@ impl ToPresentation for BTreeMap<String, Value> {
     fn to_presentation(&self) -> Presentation {
         let mut fields = vec![];
         for (k, v) in self {
-            fields.push(Presentation::field(k.clone(), v.to_string()));
+            fields.push(Presentation::Field {
+                label: k.clone(),
+                value: v.to_string(),
+            });
         }
-        Presentation::section("Values:", fields)
+        Presentation::Section {
+            title: "Values:".into(),
+            children: fields,
+        }
     }
 }
 
@@ -170,22 +180,23 @@ impl ToPresentation for ArchiveOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
         if !self.result.moved_branches.is_empty() {
-            h_children.push(Presentation::section(
-                "Moved owned branches from refs/heads/:",
-                self.result
+            h_children.push(Presentation::Section {
+                title: "Moved owned branches from refs/heads/:".into(),
+                children: self
+                    .result
                     .moved_branches
                     .iter()
                     .map(|b| Presentation::Plain(format!("  {}", b)))
                     .collect(),
-            ));
+            });
         }
         for warn in &self.result.unowned_warnings {
             h_children.push(Presentation::Plain(warn.clone()));
         }
 
         Presentation::pair(
-            Presentation::section(
-                if self.result.is_dry_run {
+            Presentation::Section {
+                title: if self.result.is_dry_run {
                     "Dry run: planned archive operations:".into()
                 } else {
                     format!(
@@ -193,9 +204,9 @@ impl ToPresentation for ArchiveOutput {
                         self.result.canonical_name, self.result.archived_staircase_id
                     )
                 },
-                h_children,
-            ),
-            Presentation::record(vec![
+                children: h_children,
+            },
+            Presentation::Record(vec![
                 "archived".into(),
                 self.result.canonical_name.clone(),
                 self.result.archived_staircase_id.clone(),
@@ -212,7 +223,7 @@ impl ToPresentation for ReleaseNameOutput {
                 "Released canonical name reservation (record OID: {})",
                 self.record_oid
             )),
-            Presentation::record(vec!["name_released".into(), self.record_oid.clone()]),
+            Presentation::Record(vec!["name_released".into(), self.record_oid.clone()]),
         )
     }
 }
@@ -223,7 +234,10 @@ impl ToPresentation for DescribeOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
         if let Some(ref t) = self.title {
-            h_children.push(Presentation::field("Title", t.clone()));
+            h_children.push(Presentation::Field {
+                label: "Title".into(),
+                value: t.clone(),
+            });
         }
         if let Some(ref d) = self.description {
             h_children.push(Presentation::Plain(d.clone()));
@@ -235,12 +249,12 @@ impl ToPresentation for DescribeOutput {
             )));
         }
 
-        let mut p_records = vec![Presentation::record(vec!["name".into(), self.name.clone()])];
+        let mut p_records = vec![Presentation::Record(vec!["name".into(), self.name.clone()])];
         if let Some(ref t) = self.title {
-            p_records.push(Presentation::record(vec!["title".into(), t.clone()]));
+            p_records.push(Presentation::Record(vec!["title".into(), t.clone()]));
         }
         if let Some(ref d) = self.description {
-            p_records.push(Presentation::record(vec![
+            p_records.push(Presentation::Record(vec![
                 "description".into(),
                 d.replace('\n', "\n"),
             ]));
@@ -271,4 +285,36 @@ impl ToPresentation for IdResult {
             Presentation::Plain(self.id.clone()),
         )
     }
+}
+
+pub fn edit_in_editor(initial_content: &str, file_prefix: &str, file_ext: &str) -> Result<String> {
+    let editor = env::var("GIT_EDITOR")
+        .or_else(|_| env::var("VISUAL"))
+        .or_else(|_| env::var("EDITOR"))
+        .unwrap_or_else(|_| "vi".to_string());
+
+    let temp_dir = env::temp_dir();
+    let temp_file = temp_dir.join(format!(
+        "{}_{}.{}",
+        file_prefix,
+        uuid::Uuid::new_v4().simple(),
+        file_ext
+    ));
+
+    fs::write(&temp_file, initial_content)?;
+
+    let status = Command::new(&editor)
+        .arg(&temp_file)
+        .status()
+        .map_err(|e| anyhow!("Failed to launch editor '{}': {}", editor, e))?;
+
+    if !status.success() {
+        let _ = fs::remove_file(&temp_file);
+        return Err(anyhow!("Editor exited with non-zero status"));
+    }
+
+    let edited_content = fs::read_to_string(&temp_file)?;
+    let _ = fs::remove_file(&temp_file);
+
+    Ok(edited_content)
 }

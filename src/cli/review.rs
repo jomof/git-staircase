@@ -97,8 +97,8 @@ pub struct ReviewOpenCmd {
     pub selector: StaircaseSelectorArgs,
 }
 
-impl super::Command for ReviewCmd {
-    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+impl ReviewCmd {
+    pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let boot_res = bootstrap(repo, &BootstrapOptions::default())?;
 
         let providers: Vec<Box<dyn ReviewProvider>> = match self.provider.as_deref() {
@@ -138,9 +138,7 @@ impl super::Command for ReviewCmd {
             "No review provider route (Gerrit or GitHub) could be resolved. Please configure remote host or workspace review route."
         ))
     }
-}
 
-impl ReviewCmd {
     fn run_instance(
         &self,
         repo: &GitRepo,
@@ -229,7 +227,7 @@ impl ReviewCmd {
     }
 }
 
-pub fn managed_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
+fn managed_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
     let reference = format!("refs/staircase-state/{}/record", selector.metadata().id);
     Ok(read_record(repo, &reference)?)
 }

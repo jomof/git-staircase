@@ -7,7 +7,7 @@ use anyhow::Result;
 pub struct Delete {
     #[command(flatten)]
     pub staircase: StaircaseSelectorArgs,
-    #[arg(long, alias = "delete-refs")]
+    #[arg(long, alias = "delete-step-refs")]
     pub delete_branches: bool,
     #[arg(long)]
     pub delete_step_refs: bool,

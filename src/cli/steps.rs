@@ -13,8 +13,4 @@ impl super::Command for Steps {
         let rs = self.staircase.resolve(repo)?;
         Ok(Box::new(StepsList(rs.metadata().steps.clone())))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }

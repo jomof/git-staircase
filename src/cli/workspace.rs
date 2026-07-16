@@ -63,8 +63,8 @@ pub struct ForgetCmd {
     pub workspace_id: Option<String>,
 }
 
-impl super::Command for WorkspaceCmd {
-    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+impl WorkspaceCmd {
+    pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         match &self.command {
             WorkspaceSubcommands::Show(_) => {
                 let options = BootstrapOptions::default();
@@ -127,10 +127,6 @@ impl super::Command for WorkspaceCmd {
                 Ok(Box::new(WorkspaceMessageOutput(msg)))
             }
         }
-    }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
     }
 }
 

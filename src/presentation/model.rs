@@ -20,36 +20,47 @@ use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {
         Presentation::pair(
-            Presentation::Plain(format!(
-                "{} ({})",
-                self.name,
-                Presentation::truncate_hash(&self.cut)
-            )),
-            Presentation::record(vec![self.id.clone(), self.name.clone(), self.cut.clone()]),
+            Presentation::Plain(format!("{} ({})", self.name, &self.cut[..7])),
+            Presentation::Record(vec![self.id.clone(), self.name.clone(), self.cut.clone()]),
         )
     }
 }
 
 impl ToPresentation for StaircaseMetadata {
     fn to_presentation(&self) -> Presentation {
-        let mut h_children = Presentation::fields(vec![
-            ("Name", self.name.clone()),
-            ("ID", self.id.clone()),
-            ("Target", self.target.clone()),
-        ]);
+        let mut h_children = vec![
+            Presentation::Field {
+                label: "Name".to_string(),
+                value: self.name.clone(),
+            },
+            Presentation::Field {
+                label: "ID".to_string(),
+                value: self.id.clone(),
+            },
+            Presentation::Field {
+                label: "Target".to_string(),
+                value: self.target.clone(),
+            },
+        ];
 
         if let Some(ref policy) = self.verification_policy {
             let mut policy_children = vec![];
             if let Some(ref cmd) = policy.build_command {
-                policy_children.push(Presentation::field("Build", cmd.clone()));
+                policy_children.push(Presentation::Field {
+                    label: "Build".to_string(),
+                    value: cmd.clone(),
+                });
             }
             if let Some(ref cmd) = policy.test_command {
-                policy_children.push(Presentation::field("Test", cmd.clone()));
+                policy_children.push(Presentation::Field {
+                    label: "Test".to_string(),
+                    value: cmd.clone(),
+                });
             }
-            policy_children.push(Presentation::field(
-                "Verify each prefix",
-                policy.verify_each_prefix.to_string(),
-            ));
+            policy_children.push(Presentation::Field {
+                label: "Verify each prefix".to_string(),
+                value: policy.verify_each_prefix.to_string(),
+            });
             h_children.push(Presentation::Section {
                 title: "Verification Policy:".to_string(),
                 children: policy_children,
@@ -61,11 +72,23 @@ impl ToPresentation for StaircaseMetadata {
             steps_children.push(Presentation::Section {
                 title: format!("Step {}:", i + 1),
                 children: vec![
-                    Presentation::field("ID", step.id.clone()),
-                    Presentation::field("Name", step.name.clone()),
-                    Presentation::field("Cut", step.cut.clone()),
+                    Presentation::Field {
+                        label: "ID".to_string(),
+                        value: step.id.clone(),
+                    },
+                    Presentation::Field {
+                        label: "Name".to_string(),
+                        value: step.name.clone(),
+                    },
+                    Presentation::Field {
+                        label: "Cut".to_string(),
+                        value: step.cut.clone(),
+                    },
                     if let Some(ref b) = step.branch {
-                        Presentation::field("Branch", b.clone())
+                        Presentation::Field {
+                            label: "Branch".to_string(),
+                            value: b.clone(),
+                        }
                     } else {
                         Presentation::Empty
                     },
@@ -77,60 +100,53 @@ impl ToPresentation for StaircaseMetadata {
             children: steps_children,
         });
 
-        let mut p_children = vec![
-            Presentation::Record(vec!["name".to_string(), self.name.clone()]),
-            Presentation::Record(vec!["id".to_string(), self.id.clone()]),
-            Presentation::Record(vec!["target".to_string(), self.target.clone()]),
-        ];
-        for (i, step) in self.steps.iter().enumerate() {
-            p_children.push(Presentation::Record(vec![
-                "step".to_string(),
-                (i + 1).to_string(),
-                step.name.clone(),
-                step.cut.clone(),
-                step.id.clone(),
-                step.branch.clone().unwrap_or_default(),
-            ]));
-        }
-
         Presentation::pair(
             Presentation::Section {
                 title: String::new(),
                 children: h_children,
             },
-            Presentation::List(p_children),
+            Presentation::Record(vec![self.name.clone(), self.id.clone()]),
         )
     }
 }
 
 impl ToPresentation for StaircaseStatus {
     fn to_presentation(&self) -> Presentation {
-        let mut children = Presentation::fields(vec![
-            ("target", self.metadata.target.clone()),
-            ("state", self.state().to_string()),
-            ("steps", self.steps.len().to_string()),
-            (
-                "lineage",
-                if self.is_implicit {
+        let mut children = vec![
+            Presentation::Field {
+                label: "target".to_string(),
+                value: self.metadata.target.clone(),
+            },
+            Presentation::Field {
+                label: "state".to_string(),
+                value: self.state().to_string(),
+            },
+            Presentation::Field {
+                label: "steps".to_string(),
+                value: self.steps.len().to_string(),
+            },
+            Presentation::Field {
+                label: "lineage".to_string(),
+                value: if self.is_implicit {
                     "none".to_string()
                 } else {
                     self.metadata.id.clone()
                 },
-            ),
-        ]);
+            },
+        ];
 
         if let Some(ref results) = self.verification_results {
             let mut v_children = vec![];
             for result in results {
                 v_children.push(Presentation::pair(
-                    Presentation::field(
-                        result.step_name.clone(),
-                        if result.success {
+                    Presentation::Field {
+                        label: result.step_name.clone(),
+                        value: if result.success {
                             "PASS".to_string()
                         } else {
                             "FAIL".to_string()
                         },
-                    ),
+                    },
                     Presentation::Record(vec![
                         "verify".to_string(),
                         result.step_name.clone(),
@@ -202,23 +218,41 @@ impl ToPresentation for StaircaseStatus {
 
 impl ToPresentation for StaircaseFamily {
     fn to_presentation(&self) -> Presentation {
-        let mut children = Presentation::fields(vec![
-            ("ID", self.id.clone()),
-            ("Target", self.target.clone()),
-            ("Roots", self.roots.join(", ")),
-        ]);
+        let mut children = vec![
+            Presentation::Field {
+                label: "ID".to_string(),
+                value: self.id.clone(),
+            },
+            Presentation::Field {
+                label: "Target".to_string(),
+                value: self.target.clone(),
+            },
+            Presentation::Field {
+                label: "Roots".to_string(),
+                value: self.roots.join(", "),
+            },
+        ];
 
         let mut steps_children = vec![];
         let mut step_names: Vec<_> = self.steps.keys().cloned().collect();
         step_names.sort();
         for name in step_names {
             let step = &self.steps[&name];
-            let mut step_children = vec![Presentation::field("Cut", step.cut.clone())];
+            let mut step_children = vec![Presentation::Field {
+                label: "Cut".to_string(),
+                value: step.cut.clone(),
+            }];
             if let Some(ref b) = step.branch {
-                step_children.push(Presentation::field("Branch", b.clone()));
+                step_children.push(Presentation::Field {
+                    label: "Branch".to_string(),
+                    value: b.clone(),
+                });
             }
             if !step.children.is_empty() {
-                step_children.push(Presentation::field("Children", step.children.join(", ")));
+                step_children.push(Presentation::Field {
+                    label: "Children".to_string(),
+                    value: step.children.join(", "),
+                });
             }
             steps_children.push(Presentation::Section {
                 title: format!("Step {}:", name),
@@ -317,10 +351,15 @@ fn get_worktree_draft_presentation_fields(draft: &WorktreeDraft) -> Vec<Presenta
             value: intent_str.to_string(),
         });
     }
-    children.push(Presentation::field(
-        "basis",
-        Presentation::truncate_hash(&draft.basis),
-    ));
+    let basis_short = if draft.basis.len() >= 7 {
+        &draft.basis[..7]
+    } else {
+        &draft.basis
+    };
+    children.push(Presentation::Field {
+        label: "basis".to_string(),
+        value: basis_short.to_string(),
+    });
     children.push(Presentation::Field {
         label: "staged".to_string(),
         value: format!("{} paths", draft.staged_paths.len()),
@@ -381,7 +420,11 @@ impl ToPresentation for DraftAttachment {
                 "Attached to {} with intent '{}' (expected basis: {})",
                 attached_to.trim(),
                 intent_str,
-                Presentation::truncate_hash(&self.expected_basis)
+                if self.expected_basis.len() >= 7 {
+                    &self.expected_basis[..7]
+                } else {
+                    &self.expected_basis
+                }
             )),
             Presentation::Record(vec![
                 "attached".to_string(),
@@ -400,7 +443,11 @@ impl ToPresentation for DraftSnapshot {
             Presentation::Plain(format!(
                 "Created snapshot {} (basis: {})",
                 self.id,
-                Presentation::truncate_hash(&self.basis)
+                if self.basis.len() >= 7 {
+                    &self.basis[..7]
+                } else {
+                    &self.basis
+                }
             )),
             Presentation::Record(vec![
                 "snapshot".to_string(),
@@ -413,14 +460,23 @@ impl ToPresentation for DraftSnapshot {
 
 impl ToPresentation for ActiveOperationStatus {
     fn to_presentation(&self) -> Presentation {
-        Presentation::section(
-            "Active Operation:",
-            Presentation::fields(vec![
-                ("ID", self.operation_id.clone()),
-                ("Kind", self.kind.clone()),
-                ("Phase", self.phase.clone()),
-            ]),
-        )
+        Presentation::Section {
+            title: "Active Operation:".to_string(),
+            children: vec![
+                Presentation::Field {
+                    label: "ID".to_string(),
+                    value: self.operation_id.clone(),
+                },
+                Presentation::Field {
+                    label: "Kind".to_string(),
+                    value: self.kind.clone(),
+                },
+                Presentation::Field {
+                    label: "Phase".to_string(),
+                    value: self.phase.clone(),
+                },
+            ],
+        }
     }
 }
 

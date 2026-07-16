@@ -65,8 +65,4 @@ impl super::Command for Show {
         let rs = self.staircase.resolve(repo)?;
         Ok(Box::new(rs.metadata().clone()))
     }
-
-    fn requires_clear_operation(&self) -> bool {
-        false
-    }
 }

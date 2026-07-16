@@ -2,15 +2,12 @@ use crate::cli::{
     Command, Presentation, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
     ToPresentation, UsePresentation,
 };
-use crate::core;
+use crate::core::{self, ResolvedSelector};
 use crate::git::GitRepo;
 use crate::model::{StaircaseLink, StaircaseUserMetadata, StepMetadata};
 use anyhow::{Result, anyhow};
 use clap::{Args, Subcommand};
 use serde::Serialize;
-use std::env;
-use std::fs;
-use std::process;
 
 #[derive(Args, Clone, Debug)]
 pub struct MetadataCmd {
@@ -151,43 +148,14 @@ impl ToPresentation for UserMetadataOutput {
             });
         }
 
-        let mut p_children = vec![Presentation::Record(vec![
-            "name".to_string(),
-            self.name.clone(),
-        ])];
-        if let Some(ref title) = self.metadata.title {
-            p_children.push(Presentation::Record(vec![
-                "title".to_string(),
-                title.clone(),
-            ]));
-        }
-        if let Some(ref desc) = self.metadata.description {
-            p_children.push(Presentation::Record(vec![
-                "description".to_string(),
-                desc.clone(),
-            ]));
-        }
-        for label in &self.metadata.labels {
-            p_children.push(Presentation::Record(vec![
-                "label".to_string(),
-                label.clone(),
-            ]));
-        }
-        for link in &self.metadata.links {
-            p_children.push(Presentation::Record(vec![
-                "link".to_string(),
-                link.relationship.clone(),
-                link.url.clone(),
-                link.label.clone().unwrap_or_default(),
-            ]));
-        }
-
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: format!("Staircase: {}", self.name),
                 children: h_children,
             })),
-            Presentation::Porcelain(Box::new(Presentation::List(p_children))),
+            Presentation::Porcelain(Box::new(Presentation::Plain(
+                serde_json::to_string_pretty(&self.metadata).unwrap_or_default(),
+            ))),
         ])
     }
 }
@@ -223,35 +191,14 @@ impl ToPresentation for StepMetadataOutput {
             });
         }
 
-        let mut p_children = vec![
-            Presentation::Record(vec!["name".to_string(), self.name.clone()]),
-            Presentation::Record(vec!["step".to_string(), self.step_key.clone()]),
-        ];
-        if let Some(ref title) = self.metadata.title {
-            p_children.push(Presentation::Record(vec![
-                "title".to_string(),
-                title.clone(),
-            ]));
-        }
-        if let Some(ref desc) = self.metadata.description {
-            p_children.push(Presentation::Record(vec![
-                "description".to_string(),
-                desc.clone(),
-            ]));
-        }
-        for label in &self.metadata.labels {
-            p_children.push(Presentation::Record(vec![
-                "label".to_string(),
-                label.clone(),
-            ]));
-        }
-
         Presentation::List(vec![
             Presentation::Human(Box::new(Presentation::Section {
                 title: format!("Staircase: {}, Step: {}", self.name, self.step_key),
                 children: h_children,
             })),
-            Presentation::Porcelain(Box::new(Presentation::List(p_children))),
+            Presentation::Porcelain(Box::new(Presentation::Plain(
+                serde_json::to_string_pretty(&self.metadata).unwrap_or_default(),
+            ))),
         ])
     }
 }
@@ -275,30 +222,8 @@ impl Command for MetadataCmd {
                     core::get_user_metadata_snapshot(repo, &sel)?;
                 let json_str = serde_json::to_string_pretty(&current_meta)?;
 
-                let temp_dir = env::temp_dir();
-                let temp_file = temp_dir.join(format!(
-                    "STAIRCASE_META_{}.json",
-                    uuid::Uuid::new_v4().simple()
-                ));
-                fs::write(&temp_file, &json_str)?;
-
-                let editor = env::var("GIT_EDITOR")
-                    .or_else(|_| env::var("VISUAL"))
-                    .or_else(|_| env::var("EDITOR"))
-                    .unwrap_or_else(|_| "vi".to_string());
-
-                let status = process::Command::new(&editor)
-                    .arg(&temp_file)
-                    .status()
-                    .map_err(|e| anyhow!("Failed to launch editor: {}", e))?;
-
-                if !status.success() {
-                    let _ = fs::remove_file(&temp_file);
-                    return Err(anyhow!("Editor exited with non-zero status"));
-                }
-
-                let edited = fs::read_to_string(&temp_file)?;
-                let _ = fs::remove_file(&temp_file);
+                let edited =
+                    crate::presentation::cli::edit_in_editor(&json_str, "STAIRCASE_META", "json")?;
 
                 let parsed: StaircaseUserMetadata = serde_json::from_str(&edited)
                     .map_err(|e| anyhow!("Invalid JSON metadata: {}", e))?;
@@ -355,13 +280,7 @@ impl Command for MetadataCmd {
             }
             MetadataSubcommands::ShowStep(args) => {
                 let sel = args.selector.resolve(repo)?;
-                let idx = core::resolve_step(&sel, args.step.as_deref())?;
-                let step = &sel.metadata().steps[idx];
-                let step_key = if !step.id.is_empty() {
-                    step.id.clone()
-                } else {
-                    step.name.clone()
-                };
+                let step_key = resolve_step_arg(&sel, args.step.as_deref())?;
                 let meta = core::get_step_metadata(repo, &sel, &step_key)?;
                 Ok(Box::new(StepMetadataOutput {
                     name: sel.staircase.metadata().name.clone(),
@@ -371,39 +290,13 @@ impl Command for MetadataCmd {
             }
             MetadataSubcommands::EditStep(args) => {
                 let sel = args.selector.resolve(repo)?;
-                let idx = core::resolve_step(&sel, args.step.as_deref())?;
-                let step = &sel.metadata().steps[idx];
-                let step_key = if !step.id.is_empty() {
-                    step.id.clone()
-                } else {
-                    step.name.clone()
-                };
+                let step_key = resolve_step_arg(&sel, args.step.as_deref())?;
                 let (current_step_meta, expected_record_oid) =
                     core::get_step_metadata_snapshot(repo, &sel, &step_key)?;
                 let json_str = serde_json::to_string_pretty(&current_step_meta)?;
 
-                let temp_dir = env::temp_dir();
-                let temp_file =
-                    temp_dir.join(format!("STEP_META_{}.json", uuid::Uuid::new_v4().simple()));
-                fs::write(&temp_file, &json_str)?;
-
-                let editor = env::var("GIT_EDITOR")
-                    .or_else(|_| env::var("VISUAL"))
-                    .or_else(|_| env::var("EDITOR"))
-                    .unwrap_or_else(|_| "vi".to_string());
-
-                let status = process::Command::new(&editor)
-                    .arg(&temp_file)
-                    .status()
-                    .map_err(|e| anyhow!("Failed to launch editor: {}", e))?;
-
-                if !status.success() {
-                    let _ = fs::remove_file(&temp_file);
-                    return Err(anyhow!("Editor exited with non-zero status"));
-                }
-
-                let edited = fs::read_to_string(&temp_file)?;
-                let _ = fs::remove_file(&temp_file);
+                let edited =
+                    crate::presentation::cli::edit_in_editor(&json_str, "STEP_META", "json")?;
 
                 let parsed: StepMetadata = serde_json::from_str(&edited)
                     .map_err(|e| anyhow!("Invalid JSON step metadata: {}", e))?;
@@ -424,4 +317,22 @@ impl Command for MetadataCmd {
             }
         }
     }
+}
+
+fn resolve_step_arg(sel: &ResolvedSelector, step_arg: Option<&str>) -> Result<String> {
+    if let Some(idx) = sel.step_index {
+        let meta = sel.staircase.metadata();
+        if idx < meta.steps.len() {
+            let step = &meta.steps[idx];
+            return Ok(if !step.id.is_empty() {
+                step.id.clone()
+            } else {
+                step.name.clone()
+            });
+        }
+    }
+    if let Some(arg) = step_arg {
+        return Ok(arg.to_string());
+    }
+    Err(anyhow!("No step specified"))
 }
