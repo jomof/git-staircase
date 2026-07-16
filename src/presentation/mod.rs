@@ -79,7 +79,6 @@ impl<T: ToPresentation> ToPresentation for Vec<T> {
 
 pub trait UsePresentation: ToPresentation {}
 
-pub mod cli;
 pub mod core;
 pub mod model;
 pub mod workspace;

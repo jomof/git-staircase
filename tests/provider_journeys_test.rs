@@ -140,7 +140,7 @@ fn uploaded_gerrit(local: &LocalRepo) -> (FakeTransport, GerritProviderState) {
         .map(|index| format!("step-{}", index + 1))
         .collect::<Vec<_>>();
     let plan = machine
-        .plan_internal(
+        .plan(
             &local.repo,
             &gerrit_route(),
             &local.oids,
@@ -165,7 +165,7 @@ fn uploaded_gerrit(local: &LocalRepo) -> (FakeTransport, GerritProviderState) {
         uncertain: false,
         observations: serde_json::json!({"changes": changes}),
     });
-    let result = machine.upload_internal(&local.repo, &plan, state).unwrap();
+    let result = machine.upload(&local.repo, &plan, state).unwrap();
     assert_eq!(result.unknown, 0);
     (fake, result.state)
 }
@@ -535,7 +535,7 @@ fn gerrit_journey_5_uncertain_upload_requires_reconciliation() {
     let machine = GerritStateMachine::new(fake);
     let subjects = vec!["step-1".into()];
     let plan = machine
-        .plan_internal(
+        .plan(
             &local.repo,
             &gerrit_route(),
             &local.oids,
@@ -546,7 +546,7 @@ fn gerrit_journey_5_uncertain_upload_requires_reconciliation() {
         )
         .unwrap();
     let state = machine.create(&plan).unwrap();
-    let result = machine.upload_internal(&local.repo, &plan, state).unwrap();
+    let result = machine.upload(&local.repo, &plan, state).unwrap();
     assert_eq!(result.status, "upload-unknown");
     assert!(result.state.reconciliation_required);
 }
@@ -594,7 +594,7 @@ fn gerrit_journey_9_attach_existing_review_validates_route() {
     let machine = GerritStateMachine::new(FakeTransport::default());
     let subjects = vec!["step-1".into()];
     let plan = machine
-        .plan_internal(
+        .plan(
             &local.repo,
             &gerrit_route(),
             &local.oids,
@@ -629,7 +629,7 @@ fn github_journey_1_same_repository_stacked_chain() {
     let machine = GitHubStateMachine::new(fake.clone());
     let subjects = vec!["one".into(), "two".into(), "three".into()];
     let plan = machine
-        .plan_internal(
+        .plan(
             &github_route(false),
             "lineage",
             &local.oids,
@@ -650,7 +650,7 @@ fn github_journey_2_fork_stack_rejected_but_aggregate_allowed() {
     let subjects = vec!["one".into(), "two".into()];
     assert!(
         machine
-            .plan_internal(
+            .plan(
                 &github_route(true),
                 "lineage",
                 &local.oids,
@@ -663,7 +663,7 @@ fn github_journey_2_fork_stack_rejected_but_aggregate_allowed() {
     );
     assert_eq!(
         machine
-            .plan_internal(
+            .plan(
                 &github_route(true),
                 "lineage",
                 &local.oids,
@@ -689,7 +689,7 @@ fn github_journey_3_uncertain_branch_publication_is_journaled() {
     });
     let machine = GitHubStateMachine::new(fake);
     let plan = machine
-        .plan_internal(
+        .plan(
             &github_route(false),
             "lineage",
             &local.oids,
@@ -700,7 +700,7 @@ fn github_journey_3_uncertain_branch_publication_is_journaled() {
         )
         .unwrap();
     let state = machine.create_state(&plan).unwrap();
-    let result = machine.upload_internal(&local.repo, &plan, state).unwrap();
+    let result = machine.publish(&local.repo, &plan, state, false).unwrap();
     assert_eq!(result.status, "upload-unknown");
     assert!(result.journal_operation_id.is_some());
 }
@@ -711,7 +711,7 @@ fn github_journey_4_squash_landing_requires_upper_repair() {
     let fake = FakeTransport::default();
     let machine = GitHubStateMachine::new(fake.clone());
     let plan = machine
-        .plan_internal(
+        .plan(
             &github_route(false),
             "lineage",
             &local.oids,
@@ -741,7 +741,7 @@ fn github_journey_5_attach_detach_and_archive_are_local() {
     let fake = FakeTransport::default();
     let machine = GitHubStateMachine::new(fake.clone());
     let plan = machine
-        .plan_internal(
+        .plan(
             &github_route(false),
             "lineage",
             &local.oids,
@@ -807,7 +807,7 @@ fn gerrit_conformance_28_4_remote_newer_blocks_upload() {
     let machine = GerritStateMachine::new(FakeTransport::default());
     let state = machine.reconcile(state, &[gerrit_remote(0, &format!("{:040x}", 9), 5)]);
     let plan = machine
-        .plan_internal(
+        .plan(
             &local.repo,
             &gerrit_route(),
             &local.oids,

@@ -1,6 +1,7 @@
 use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core::{self, ArchiveOptions, ArchiveResult};
 use crate::git::GitRepo;
+use crate::presentation::{Presentation, ToPresentation, UsePresentation};
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::Serialize;
@@ -55,6 +56,62 @@ pub struct ArchiveOutput {
 pub struct ReleaseNameOutput {
     pub record_oid: String,
 }
+
+impl ToPresentation for ArchiveOutput {
+    fn to_presentation(&self) -> Presentation {
+        let mut h_children = vec![];
+        if !self.result.moved_branches.is_empty() {
+            h_children.push(Presentation::Section {
+                title: "Moved owned branches from refs/heads/:".into(),
+                children: self
+                    .result
+                    .moved_branches
+                    .iter()
+                    .map(|b| Presentation::Plain(format!("  {}", b)))
+                    .collect(),
+            });
+        }
+        for warn in &self.result.unowned_warnings {
+            h_children.push(Presentation::Plain(warn.clone()));
+        }
+
+        Presentation::pair(
+            Presentation::Section {
+                title: if self.result.is_dry_run {
+                    "Dry run: planned archive operations:".into()
+                } else {
+                    format!(
+                        "Archived staircase '{}' ({})",
+                        self.result.canonical_name, self.result.archived_staircase_id
+                    )
+                },
+                children: h_children,
+            },
+            Presentation::Record(vec![
+                "archived".into(),
+                self.result.canonical_name.clone(),
+                self.result.archived_staircase_id.clone(),
+                self.result.archive_event_id.clone(),
+            ]),
+        )
+    }
+}
+
+impl UsePresentation for ArchiveOutput {}
+
+impl ToPresentation for ReleaseNameOutput {
+    fn to_presentation(&self) -> Presentation {
+        Presentation::pair(
+            Presentation::Plain(format!(
+                "Released canonical name reservation (record OID: {})",
+                self.record_oid
+            )),
+            Presentation::Record(vec!["name_released".into(), self.record_oid.clone()]),
+        )
+    }
+}
+
+impl UsePresentation for ReleaseNameOutput {}
 
 impl Command for ArchiveCmd {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {

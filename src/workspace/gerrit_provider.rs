@@ -4,7 +4,6 @@ use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::parse_git_url;
 use crate::workspace::provider_base::{self, ProviderAssociation};
-use crate::workspace::provider_framework::{MutationResult, ReviewStateMachine};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
@@ -520,7 +519,15 @@ pub struct GerritReviewOperationPlan {
     pub items: Vec<GerritPlanItem>,
 }
 
-// Replaced by provider_framework::MutationResult
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct GerritMutationResult {
+    pub state: GerritProviderState,
+    pub status: String,
+    pub accepted: usize,
+    pub rejected: usize,
+    pub unknown: usize,
+    pub journal_operation_id: Option<String>,
+}
 
 pub struct GerritStateMachine<T: ProviderTransport> {
     pub transport: T,
@@ -530,114 +537,8 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
     pub fn new(transport: T) -> Self {
         Self { transport }
     }
-}
 
-impl<T: ProviderTransport> ReviewStateMachine<T> for GerritStateMachine<T> {
-    type State = GerritProviderState;
-    type Plan = GerritReviewOperationPlan;
-
-    fn provider_name(&self) -> &'static str {
-        "Gerrit"
-    }
-    fn extension_name(&self) -> &'static str {
-        "git-staircase.gerrit"
-    }
-    fn transport(&self) -> &T {
-        &self.transport
-    }
-
-    fn plan(
-        &self,
-        repo: &GitRepo,
-        oids: &[String],
-        state: Option<&GerritProviderState>,
-        record: Option<&StaircaseRecord>,
-    ) -> Result<GerritReviewOperationPlan> {
-        let subjects: Vec<String> = if let Some(record) = record {
-            record
-                .metadata
-                .steps
-                .iter()
-                .map(|step| step.id.clone())
-                .collect()
-        } else {
-            (0..oids.len())
-                .map(|index| format!("commit-{}", index + 1))
-                .collect()
-        };
-        let mapping_policy = state.map(|s| s.mapping_policy.as_str());
-        let record_revision = record.map(|r| (r.record_oid.as_str(), r.structure_oid.as_str()));
-
-        // We need a route. If we have state, we use state.route.
-        // If not, we have to probe it.
-        let route = if let Some(state) = state {
-            state.route.clone()
-        } else {
-            probe_gerrit_route(repo, None)?.ok_or_else(|| {
-                StaircaseError::Other("Gerrit route could not be discovered".into())
-            })?
-        };
-
-        self.plan_internal(
-            repo,
-            &route,
-            oids,
-            &subjects,
-            mapping_policy,
-            state,
-            record_revision,
-        )
-    }
-
-    fn execute_upload(
-        &self,
-        repo: &GitRepo,
-        plan: &GerritReviewOperationPlan,
-        state: GerritProviderState,
-    ) -> Result<MutationResult<GerritProviderState>> {
-        self.upload_internal(repo, plan, state)
-    }
-
-    fn execute_reconcile(
-        &self,
-        repo: &GitRepo,
-        state: GerritProviderState,
-    ) -> Result<GerritProviderState> {
-        let mut observations = Vec::new();
-        for association in &state.associations {
-            let selector = association
-                .confirmed
-                .as_ref()
-                .map(|confirmed| confirmed.numeric_id.to_string())
-                .unwrap_or_else(|| association.pending.change_id.clone());
-            let request = TransportRequest::Api {
-                tool: "curl".into(),
-                method: "GET".into(),
-                endpoint: format!(
-                    "https://{}/a/changes/{}/detail",
-                    state.route.server_id, selector
-                ),
-                arguments: Vec::new(),
-                body: None,
-            };
-            let response = self.transport.execute(repo, &request)?;
-            if response.uncertain {
-                return Err(StaircaseError::Other(
-                    "Gerrit reconciliation query outcome is uncertain".into(),
-                ));
-            }
-            if response.success {
-                if let Some(observation) = parse_gerrit_api_change(&response.observations) {
-                    observations.push(observation);
-                }
-            }
-        }
-        Ok(self.reconcile(state, &observations))
-    }
-}
-
-impl<T: ProviderTransport> GerritStateMachine<T> {
-    pub fn plan_internal(
+    pub fn plan(
         &self,
         repo: &GitRepo,
         route: &GerritRoute,
@@ -830,12 +731,12 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
         Ok(state)
     }
 
-    pub fn upload_internal(
+    pub fn upload(
         &self,
         repo: &GitRepo,
         plan: &GerritReviewOperationPlan,
         mut state: GerritProviderState,
-    ) -> Result<MutationResult<GerritProviderState>> {
+    ) -> Result<GerritMutationResult> {
         if state.reconciliation_required
             || plan.items.iter().any(|item| {
                 matches!(
@@ -901,7 +802,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                     request,
                     serde_json::json!({"error": error.to_string()}),
                 )?;
-                return Ok(MutationResult {
+                return Ok(GerritMutationResult {
                     unknown: state
                         .associations
                         .iter()
@@ -932,7 +833,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                 request,
                 response.observations,
             )?;
-            return Ok(MutationResult {
+            return Ok(GerritMutationResult {
                 unknown: state
                     .associations
                     .iter()
@@ -946,7 +847,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             });
         }
         if !response.success {
-            return Ok(MutationResult {
+            return Ok(GerritMutationResult {
                 state,
                 status: "rejected".into(),
                 accepted: 0,
@@ -1030,7 +931,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
         } else {
             None
         };
-        Ok(MutationResult {
+        Ok(GerritMutationResult {
             state,
             status: if unknown == 0 {
                 "uploaded".into()
@@ -1548,33 +1449,59 @@ impl GerritInstance {
                         format!("refs/for/{}", destination.trim_start_matches("refs/heads/"));
                 }
                 let machine = GerritStateMachine::new(ProductionTransport);
-                return machine.upload_orchestration(
+                let metadata = &record.metadata;
+                let subjects = metadata
+                    .steps
+                    .iter()
+                    .map(|step| step.id.clone())
+                    .collect::<Vec<_>>();
+                let plan = machine.plan(
                     repo,
+                    &state.route,
                     oids,
-                    Some(record),
-                    |state| {
-                        if let Some(destination) = destination {
-                            state.route.destination_branch = format!(
-                                "refs/heads/{}",
-                                destination.trim_start_matches("refs/heads/")
-                            );
-                            state.route.upload_ref = format!(
-                                "refs/for/{}",
-                                destination.trim_start_matches("refs/heads/")
-                            );
-                        }
-                        Ok(())
-                    },
-                    |_| {
-                        Err(StaircaseError::Other(
-                            "initial state not expected here".into(),
-                        ))
-                    },
-                );
+                    &subjects,
+                    Some(&state.mapping_policy),
+                    Some(&state),
+                    Some((&record.record_oid, &record.structure_oid)),
+                )?;
+                let result = machine.upload(repo, &plan, state)?;
+                let next = machine.persist(repo, &record, &result.state)?;
+                return Ok(UnifiedReviewUpload {
+                    provider_label: "Gerrit".into(),
+                    summary: result.status,
+                    details: vec![
+                        format!("accepted: {}", result.accepted),
+                        format!("rejected: {}", result.rejected),
+                        format!("unknown: {}", result.unknown),
+                        format!(
+                            "record revision: {} -> {}",
+                            record.record_oid, next.record_oid
+                        ),
+                    ],
+                });
             }
         }
+        let mut active_route = self.route.clone();
+        if let Some(dest) = destination {
+            active_route.destination_branch = format!("refs/heads/{}", dest);
+            active_route.upload_ref = format!("refs/for/{}", dest);
+        }
         let machine = GerritStateMachine::new(ProductionTransport);
-        machine.upload_orchestration(repo, oids, None, |_| Ok(()), |plan| machine.create(plan))
+        let subject_ids: Vec<String> = (0..oids.len())
+            .map(|index| format!("commit-{}", index + 1))
+            .collect();
+        let operation_plan =
+            machine.plan(repo, &active_route, oids, &subject_ids, None, None, None)?;
+        let state = machine.create(&operation_plan)?;
+        let result = machine.upload(repo, &operation_plan, state)?;
+        Ok(UnifiedReviewUpload {
+            provider_label: "Gerrit".to_string(),
+            summary: result.status,
+            details: vec![
+                format!("accepted: {}", result.accepted),
+                format!("unknown: {}", result.unknown),
+            ],
+        })
     }
 
     fn reconcile(
@@ -1583,8 +1510,62 @@ impl GerritInstance {
         oids: &[String],
         record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewReconcile> {
-        let machine = GerritStateMachine::new(ProductionTransport);
-        machine.reconcile_orchestration(repo, oids, record)
+        if let Some(record) = record {
+            if let Some(value) = record.user_metadata.extensions.get("git-staircase.gerrit") {
+                let state: GerritProviderState = serde_json::from_value(value.clone())?;
+                let machine = GerritStateMachine::new(ProductionTransport);
+                let mut observations = Vec::new();
+                for association in &state.associations {
+                    let selector = association
+                        .confirmed
+                        .as_ref()
+                        .map(|confirmed| confirmed.numeric_id.to_string())
+                        .unwrap_or_else(|| association.pending.change_id.clone());
+                    let request = TransportRequest::Api {
+                        tool: "curl".into(),
+                        method: "GET".into(),
+                        endpoint: format!(
+                            "https://{}/a/changes/{}/detail",
+                            state.route.server_id, selector
+                        ),
+                        arguments: Vec::new(),
+                        body: None,
+                    };
+                    let response = machine.transport.execute(repo, &request)?;
+                    if response.uncertain {
+                        return Err(StaircaseError::Other(
+                            "Gerrit reconciliation query outcome is uncertain".into(),
+                        ));
+                    }
+                    if response.success {
+                        if let Some(observation) = parse_gerrit_api_change(&response.observations) {
+                            observations.push(observation);
+                        }
+                    }
+                }
+                let state = machine.reconcile(state, &observations);
+                let pending = state.reconciliation_required;
+                let next = machine.persist(repo, &record, &state)?;
+                return Ok(UnifiedReviewReconcile {
+                    provider_label: "Gerrit".into(),
+                    status: format!(
+                        "{}; record {} -> {}",
+                        if pending {
+                            "reconciliation-required"
+                        } else {
+                            "reconciled"
+                        },
+                        record.record_oid,
+                        next.record_oid
+                    ),
+                });
+            }
+        }
+        let _plan = create_gerrit_upload_plan(repo, &self.route, oids, None)?;
+        Ok(UnifiedReviewReconcile {
+            provider_label: "Gerrit".to_string(),
+            status: "Reconciled with Gerrit server".to_string(),
+        })
     }
 
     fn get_stable_identifiers(
@@ -1641,7 +1622,7 @@ impl GerritInstance {
                 .cloned()
                 .map(serde_json::from_value::<GerritProviderState>)
                 .transpose()?;
-            let plan = machine.plan_internal(
+            let plan = machine.plan(
                 repo,
                 &route,
                 oids,
@@ -1670,8 +1651,7 @@ impl GerritInstance {
         let subjects: Vec<String> = (0..oids.len())
             .map(|index| format!("commit-{}", index + 1))
             .collect();
-        let plan =
-            machine.plan_internal(repo, &self.route, oids, &subjects, mapping, None, None)?;
+        let plan = machine.plan(repo, &self.route, oids, &subjects, mapping, None, None)?;
         let state = machine.create(&plan)?;
         Ok(UnifiedReviewMutation {
             provider_label: "Gerrit".into(),
