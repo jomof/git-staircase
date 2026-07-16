@@ -11,9 +11,7 @@ It specializes the provider contracts in **Git Staircase Specification**, especi
 * Provider accommodation requirements.
 * Output, recovery, and security requirements.
 
-When Gerrit is used, this addendum composes with **Addendum F: Gerrit Review and Verification Provider**.
-When monorepo worktrees are used, it composes with **Addendum G: Monorepo Worktree Management**.
-The providers remain separate:
+When Gerrit is used, this addendum composes with **Addendum F: Gerrit Review and Verification Provider**. The providers remain separate:
 
 ```text
 repo
@@ -1245,17 +1243,7 @@ security or parsing failures
 
 It MUST expose no credentials.
 
-### 17.3 Provider project listing
-
-```console
-git staircase provider repo list-projects
-```
-
-MUST print the list of all project paths defined in the effective manifest, relative to the workspace root, one per line.
-
-This list is used by monorepo worktree tools to reconstruct the workspace structure.
-
-### 17.4 Workspace show
+### 17.3 Workspace show
 
 `workspace show` SHOULD distinguish:
 
@@ -1270,7 +1258,7 @@ current HEAD
 
 It MUST NOT print one ambiguous `target` field.
 
-### 17.5 Diagnostics vocabulary
+### 17.4 Diagnostics vocabulary
 
 Diagnostics SHOULD distinguish at least:
 
@@ -1297,7 +1285,7 @@ workspace fingerprint stale
 external Git operation active
 ```
 
-### 17.6 Stable core errors
+### 17.5 Stable core errors
 
 Provider failures SHOULD appear beneath stable core codes such as:
 
@@ -1318,7 +1306,7 @@ repo.revision-unresolved
 repo.destination-not-branch
 ```
 
-### 17.7 Machine output
+### 17.6 Machine output
 
 Machine-readable output MUST:
 

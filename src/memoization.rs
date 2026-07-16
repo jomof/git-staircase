@@ -54,51 +54,6 @@ impl MemoValue {
     }
 }
 
-pub trait Memoizable: Clone {
-    fn to_value(&self) -> MemoValue;
-    fn from_value(value: MemoValue) -> Option<Self>;
-}
-
-impl Memoizable for String {
-    fn to_value(&self) -> MemoValue {
-        MemoValue::Text(self.clone())
-    }
-    fn from_value(value: MemoValue) -> Option<Self> {
-        match value {
-            MemoValue::Text(s) => Some(s),
-            _ => None,
-        }
-    }
-}
-
-impl Memoizable for bool {
-    fn to_value(&self) -> MemoValue {
-        MemoValue::Bool(*self)
-    }
-    fn from_value(value: MemoValue) -> Option<Self> {
-        match value {
-            MemoValue::Bool(b) => Some(b),
-            _ => None,
-        }
-    }
-}
-
-impl Memoizable for Option<String> {
-    fn to_value(&self) -> MemoValue {
-        match self {
-            Some(s) => MemoValue::Text(s.clone()),
-            None => MemoValue::NoneText,
-        }
-    }
-    fn from_value(value: MemoValue) -> Option<Self> {
-        match value {
-            MemoValue::Text(s) => Some(Some(s)),
-            MemoValue::NoneText => Some(None),
-            _ => None,
-        }
-    }
-}
-
 /// Abstract store for immutable operation memoization.
 ///
 /// Implementations range from per-command in-process thread-safe hash maps (default)
@@ -166,14 +121,6 @@ impl Memoizer {
 
     pub fn with_store(store: Arc<dyn MemoizationStore>) -> Self {
         Self { store }
-    }
-
-    pub fn get(&self, key: &MemoKey) -> Option<MemoValue> {
-        self.store.get(key)
-    }
-
-    pub fn put(&self, key: MemoKey, value: MemoValue) {
-        self.store.put(key, value);
     }
 
     pub fn get_ancestry(&self, ancestor: &str, descendant: &str) -> Option<bool> {
