@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use clap::{Parser, Subcommand, Args, error::ErrorKind};
+use clap::{Args, Parser, Subcommand, error::ErrorKind};
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 

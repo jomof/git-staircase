@@ -63,7 +63,7 @@ impl ResolvedStaircase {
         }
         metadata.steps.insert(index, step.clone());
 
-        validate_renumbering(repo, managed.metadata(), &mut metadata)?;
+        validate_renumbering(repo, managed.metadata(), &mut metadata, true)?;
         publish_managed(repo, &managed, metadata)
     }
 
@@ -72,7 +72,7 @@ impl ResolvedStaircase {
         let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         metadata.steps.remove(index);
-        validate_renumbering(repo, managed.metadata(), &mut metadata)?;
+        validate_renumbering(repo, managed.metadata(), &mut metadata, true)?;
         publish_managed(repo, &managed, metadata)
     }
 
@@ -99,7 +99,7 @@ impl ResolvedStaircase {
         let managed = ensure_managed(repo, self)?;
         let mut metadata = metadata;
         metadata.id = managed.metadata().id.clone();
-        validate_renumbering(repo, managed.metadata(), &mut metadata)?;
+        validate_renumbering(repo, managed.metadata(), &mut metadata, true)?;
         publish_managed(repo, &managed, metadata)
     }
 }
@@ -129,30 +129,10 @@ fn publish_managed(
 }
 
 pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
-    let target_oid = match repo.resolve_commit(&staircase.target) {
-        Ok(oid) => oid,
-        Err(_) => return Ok(false),
-    };
-    let mut oids = vec![target_oid.as_str()];
-    for step in &staircase.steps {
-        oids.push(step.cut.as_str());
+    if repo.resolve_commit(&staircase.target).is_err() {
+        return Ok(false);
     }
-    let _ = repo.preload_ancestry(&oids);
-
-    let mut last_cut = target_oid;
-    for step in &staircase.steps {
-        let current_cut = match repo.resolve_commit(&step.cut) {
-            Ok(oid) => oid,
-            Err(_) => return Ok(false),
-        };
-        if current_cut == last_cut {
-            return Ok(false);
-        }
-        if !repo.is_ancestor(&last_cut, &current_cut)? {
-            return Ok(false);
-        }
-        last_cut = current_cut;
-    }
+    validate_staircase_structure(repo, &staircase)?;
     Ok(true)
 }
 
@@ -161,7 +141,6 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
         Ok(t) => t,
         Err(_) => repo.resolve_commit(&staircase.target)?,
     };
-    let target_oid = repo.resolve_commit(&staircase.target)?;
     let mut staircase = staircase.clone();
     staircase.target = target;
     if staircase.id.starts_with("implicit@") {
@@ -172,28 +151,7 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
             step.id = Uuid::new_v4().to_string();
         }
     }
-    let mut oids = vec![target_oid.as_str()];
-    for step in &staircase.steps {
-        oids.push(step.cut.as_str());
-    }
-    let _ = repo.preload_ancestry(&oids);
-    let mut last_cut = target_oid;
-    for step in &staircase.steps {
-        let current_cut = repo.resolve_commit(&step.cut)?;
-        if current_cut == last_cut {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
-                step.name, step.cut
-            )));
-        }
-        if !repo.is_ancestor(&last_cut, &current_cut)? {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
-                step.name, step.cut
-            )));
-        }
-        last_cut = current_cut;
-    }
+    validate_staircase_structure(repo, &staircase)?;
 
     persistence::write_metadata(repo, &staircase)?;
     Ok(staircase)
@@ -323,7 +281,11 @@ pub(crate) fn validate_renumbering(
     repo: &GitRepo,
     old_metadata: &StaircaseMetadata,
     new_metadata: &mut StaircaseMetadata,
+    validate_ancestry: bool,
 ) -> Result<()> {
+    if validate_ancestry {
+        validate_staircase_structure(repo, new_metadata)?;
+    }
     plan_renumbering(repo, old_metadata, new_metadata).map(|_| ())
 }
 
@@ -333,4 +295,31 @@ fn sequential_branch_name(index: usize, total: usize, base: &str) -> String {
     } else {
         format!("{}-{}", base, index + 1)
     }
+}
+
+fn validate_staircase_structure(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<()> {
+    let target_oid = repo.resolve_commit(&staircase.target)?;
+    let mut oids = vec![target_oid.as_str()];
+    for step in &staircase.steps {
+        oids.push(step.cut.as_str());
+    }
+    let _ = repo.preload_ancestry(&oids);
+    let mut last_cut = target_oid;
+    for step in &staircase.steps {
+        let current_cut = repo.resolve_commit(&step.cut)?;
+        if current_cut == last_cut {
+            return Err(StaircaseError::InvalidStructure(format!(
+                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
+                step.name, step.cut
+            )));
+        }
+        if !repo.is_ancestor(&last_cut, &current_cut)? {
+            return Err(StaircaseError::InvalidStructure(format!(
+                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
+                step.name, step.cut
+            )));
+        }
+        last_cut = current_cut;
+    }
+    Ok(())
 }

@@ -131,24 +131,23 @@ fn test_adopt_output_consistency() {
 #[test]
 fn test_early_error_json_consistency() {
     let binary = Path::new(env!("CARGO_BIN_EXE_git-staircase"));
-    let output = Command::new(binary)
-        .arg("--json")
-        .output()
-        .unwrap();
+    let output = Command::new(binary).arg("--json").output().unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
-    let json: serde_json::Value = serde_json::from_str(&stderr)
-        .expect(&format!("stderr should be valid JSON: {}", stderr));
-    assert_eq!(json.get("error").and_then(|e| e.get("code")).and_then(|c| c.as_str()), Some("validation-failed"));
+    let json: serde_json::Value =
+        serde_json::from_str(&stderr).expect(&format!("stderr should be valid JSON: {}", stderr));
+    assert_eq!(
+        json.get("error")
+            .and_then(|e| e.get("code"))
+            .and_then(|c| c.as_str()),
+        Some("validation-failed")
+    );
 }
 
 #[test]
 fn test_early_error_porcelain_consistency() {
     let binary = Path::new(env!("CARGO_BIN_EXE_git-staircase"));
-    let output = Command::new(binary)
-        .arg("--porcelain")
-        .output()
-        .unwrap();
+    let output = Command::new(binary).arg("--porcelain").output().unwrap();
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(stderr.starts_with("error\tvalidation-failed\t"));
