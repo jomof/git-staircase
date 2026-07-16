@@ -211,7 +211,9 @@ impl GitRepo {
             }
         }
 
-        let oid = if !rev.starts_with("refs/") {
+        let is_full_oid = (rev.len() == 40 || rev.len() == 64) && rev.chars().all(|c| c.is_ascii_hexdigit());
+
+        let oid = if !rev.starts_with("refs/") && !is_full_oid {
             if let Ok(sha) = self
                 .command()
                 .args(&[
