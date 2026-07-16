@@ -573,6 +573,12 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             ));
         }
         let local = create_gerrit_upload_plan(repo, route, commit_oids, mapping_policy)?;
+        if local.commits.iter().any(|c| c.change_id_status != "valid") {
+            return Err(StaircaseError::Other(
+                "missing-change-id: one or more commits are missing a valid Change-Id trailer"
+                    .into(),
+            ));
+        }
         let mut items = Vec::new();
         for (planned, subject_id) in local.commits.iter().zip(subject_ids) {
             let association = state.and_then(|state| {
@@ -1428,7 +1434,7 @@ impl GerritInstance {
         _record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewPlan> {
         let plan = create_gerrit_upload_plan(repo, &self.route, oids, mapping)?;
-        let items = plan
+        let items: Vec<_> = plan
             .commits
             .iter()
             .map(|c| UnifiedReviewItem {
@@ -1437,6 +1443,13 @@ impl GerritInstance {
                 detail: c.change_id_status.clone(),
             })
             .collect();
+
+        if plan.commits.iter().any(|c| c.change_id_status != "valid") {
+            return Err(StaircaseError::Other(
+                "missing-change-id: one or more commits are missing a valid Change-Id trailer"
+                    .into(),
+            ));
+        }
 
         Ok(UnifiedReviewPlan {
             provider_label: "Gerrit".to_string(),
@@ -1821,7 +1834,14 @@ impl crate::workspace::stacked_provider::StackedReviewImplementation
         oids: &[String],
         mapping: Option<&str>,
     ) -> Result<Self::Plan> {
-        create_gerrit_upload_plan(repo, route, oids, mapping)
+        let plan = create_gerrit_upload_plan(repo, route, oids, mapping)?;
+        if plan.commits.iter().any(|c| c.change_id_status != "valid") {
+            return Err(StaircaseError::Other(
+                "missing-change-id: one or more commits are missing a valid Change-Id trailer"
+                    .into(),
+            ));
+        }
+        Ok(plan)
     }
 
     fn get_host(&self, route: &GerritRoute) -> String {

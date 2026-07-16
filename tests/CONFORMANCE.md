@@ -162,7 +162,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 ## Gerrit provider Appendix A
 
 * A.2.1 new review stack starting state — `[planned] tests/conformance_gerrit_journeys.rs::journey_1_discovers_new_review_stack`
-* A.2.2 planning detects missing Change-Id without mutation — `[planned] tests/conformance_gerrit_journeys.rs::journey_1_plan_rejects_missing_change_id_without_mutation`
+* A.2.2 planning detects missing Change-Id without mutation — `[existing] tests/conformance_gerrit_journeys.rs::journey_1_plan_rejects_missing_change_id_without_mutation`
 * A.2.3 normalization rewrites only required commit and descendants — `[planned] tests/conformance_gerrit_journeys.rs::journey_1_normalization_rewrites_required_suffix_only`
 * A.2.4 creation records pending keys and upload confirms identities — `[existing] tests/provider_journeys_test.rs::gerrit_black_box_create_persists_pending_associations`
 * A.3.3 rebase to manifest anchor with nonadjacent conflicts — `[existing] tests/provider_journeys_test.rs::gerrit_journey_2_rebase_stales_exact_revisions`
