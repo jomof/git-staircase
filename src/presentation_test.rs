@@ -16,9 +16,6 @@ mod tests {
         assert_eq!(human, "My Step (abcdef1)");
 
         let porcelain = step.to_porcelain();
-        assert_eq!(
-            porcelain,
-            "step\t1\t\"step-123\"\t\"My Step\"\t\"abcdef1234567890\"\n"
-        );
+        assert_eq!(porcelain, "step-123\tMy Step\tabcdef1234567890\n");
     }
 }

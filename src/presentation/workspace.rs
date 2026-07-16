@@ -26,7 +26,7 @@ impl ToPresentation for UnifiedProviderLanding {
                 self.provider_label
             )),
             Presentation::Record(vec![
-                "landed".into(), "1".into(),
+                "landed".into(),
                 self.landed.len().to_string(),
                 self.provider_label.clone(),
             ]),
@@ -67,12 +67,12 @@ impl ToPresentation for UnifiedReviewShow {
         });
 
         let mut p_records = vec![
-            record!["review_host".into(), "1".into(), self.host.clone()],
-            record!["review_project".into(), "1".into(), self.project.clone()],
+            record!["host".into(), self.host.clone()],
+            record!["project".into(), self.project.clone()],
         ];
         for item in &self.items {
             p_records.push(Presentation::Record(vec![
-                "commit".into(), "1".into(),
+                "commit".into(),
                 item.oid.clone(),
                 item.detail.clone(),
             ]));
@@ -111,7 +111,7 @@ impl ToPresentation for UnifiedReviewStatus {
                 title: format!("{} Review Status: {}", self.provider_label, self.status),
                 children: h_children,
             },
-            Presentation::Record(vec!["status".into(), "1".into(), "1".into(), self.status.clone()]),
+            Presentation::Record(vec!["status".into(), self.status.clone()]),
         )
     }
 }
@@ -153,12 +153,12 @@ impl ToPresentation for UnifiedReviewPlan {
         }
 
         let mut p_records = vec![
-            record!["push_ref".into(), "1".into(), self.target.clone()],
-            record!["mapping_policy".into(), "1".into(), self.policy.clone()],
+            record!["push_ref".into(), self.target.clone()],
+            record!["mapping_policy".into(), self.policy.clone()],
         ];
         for item in &self.items {
             p_records.push(Presentation::Record(vec![
-                "commit".into(), "1".into(),
+                "commit".into(),
                 item.oid.clone(),
                 item.detail.clone(),
             ]));
@@ -181,7 +181,7 @@ impl ToPresentation for UnifiedReviewUpload {
                 title: format!("{} Upload Complete:", self.provider_label),
                 children: vec![Presentation::Plain(self.summary.clone())],
             },
-            Presentation::Record(vec!["result".into(), "1".into(), self.summary.clone()]),
+            Presentation::Record(vec!["result".into(), self.summary.clone()]),
         )
     }
 }
@@ -193,7 +193,7 @@ impl ToPresentation for UnifiedReviewReconcile {
                 "{} Reconcile Status: {}",
                 self.provider_label, self.status
             )),
-            Presentation::Record(vec!["status".into(), "1".into(), "1".into(), self.status.clone()]),
+            Presentation::Record(vec!["status".into(), self.status.clone()]),
         )
     }
 }
@@ -202,7 +202,7 @@ impl ToPresentation for UnifiedReviewOpen {
     fn to_presentation(&self) -> Presentation {
         Presentation::pair(
             Presentation::Plain(format!("{} Review URL: {}", self.provider_label, self.url)),
-            Presentation::Record(vec!["url".into(), "1".into(), self.url.clone()]),
+            Presentation::Record(vec!["url".into(), self.url.clone()]),
         )
     }
 }
@@ -228,7 +228,7 @@ impl ToPresentation for UnifiedReviewMutation {
                 children: h_children,
             },
             Presentation::Record(vec![
-                self.action.clone(), "1".into(),
+                self.action.clone(),
                 self.changed.to_string(),
                 self.provider_label.clone(),
             ]),
@@ -240,7 +240,7 @@ impl ToPresentation for UnifiedProviderVerification {
     fn to_presentation(&self) -> Presentation {
         Presentation::pair(
             Presentation::Plain(format!("Provider verification status: {}", self.status)),
-            Presentation::Record(vec!["status".into(), "1".into(), "1".into(), self.status.clone()]),
+            Presentation::Record(vec!["status".into(), self.status.clone()]),
         )
     }
 }

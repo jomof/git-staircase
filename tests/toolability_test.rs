@@ -62,7 +62,7 @@ fn test_status_porcelain() {
 
     assert!(stdout.contains("auth"));
     assert!(stdout.contains("clean"));
-    assert!(stdout.contains("step	1	\"feature/auth-core\""));
+    assert!(stdout.contains("step\tfeature/auth-core"));
 }
 
 #[test]
@@ -97,7 +97,7 @@ fn test_commits_porcelain() {
         run_staircase(dir, &["commits", "feature/auth-core", "--porcelain"]);
     assert!(success, "commits --porcelain failed: {}", stderr);
 
-    assert!(stdout.contains("step\t1\t1\t\"feature/auth-core\""));
+    assert!(stdout.contains("step\t1\tfeature/auth-core"));
     assert!(stdout.contains("commit\t"));
 }
 

@@ -21,7 +21,7 @@ impl ToPresentation for Step {
     fn to_presentation(&self) -> Presentation {
         Presentation::pair(
             Presentation::Plain(format!("{} ({})", self.name, &self.cut[..7])),
-            Presentation::Record(vec!["step".into(), "1".into(), self.id.clone(), self.name.clone(), self.cut.clone()]),
+            Presentation::Record(vec![self.id.clone(), self.name.clone(), self.cut.clone()]),
         )
     }
 }
@@ -105,7 +105,7 @@ impl ToPresentation for StaircaseMetadata {
                 title: String::new(),
                 children: h_children,
             },
-            Presentation::Record(vec!["staircase".into(), "1".into(), self.name.clone(), self.id.clone()]),
+            Presentation::Record(vec![self.name.clone(), self.id.clone()]),
         )
     }
 }
@@ -148,7 +148,7 @@ impl ToPresentation for StaircaseStatus {
                         },
                     },
                     Presentation::Record(vec![
-                        "verify".to_string(), "1".into(),
+                        "verify".to_string(),
                         result.step_name.clone(),
                         if result.success {
                             "pass".to_string()
@@ -203,7 +203,6 @@ impl ToPresentation for StaircaseStatus {
             },
             Presentation::List(vec![
                 Presentation::Record(vec![
-                    "staircase".into(), "1".into(),
                     self.metadata.name.clone(),
                     self.metadata.id.clone(),
                     self.state().to_string(),
@@ -271,7 +270,6 @@ impl ToPresentation for StaircaseFamily {
                 children,
             },
             Presentation::Record(vec![
-                "staircase".into(), "1".into(),
                 self.name.clone(),
                 self.id.clone(),
                 "family".to_string(),
@@ -313,7 +311,6 @@ impl ToPresentation for VerificationResult {
                 children,
             },
             Presentation::Record(vec![
-                "verify".into(), "1".into(),
                 self.step_name.clone(),
                 if self.success {
                     "pass".to_string()
@@ -394,7 +391,7 @@ impl ToPresentation for WorktreeDraft {
                 children: get_worktree_draft_presentation_fields(self),
             },
             Presentation::Record(vec![
-                "draft".to_string(), "1".into(),
+                "draft".to_string(),
                 self.basis.clone(),
                 self.classification.to_string(),
                 self.staged_paths.len().to_string(),
@@ -430,7 +427,7 @@ impl ToPresentation for DraftAttachment {
                 }
             )),
             Presentation::Record(vec![
-                "attached".to_string(), "1".into(),
+                "attached".to_string(),
                 self.staircase_name.as_deref().unwrap_or("").to_string(),
                 self.step_name.as_deref().unwrap_or("").to_string(),
                 intent_str.to_string(),
@@ -453,7 +450,7 @@ impl ToPresentation for DraftSnapshot {
                 }
             )),
             Presentation::Record(vec![
-                "snapshot".to_string(), "1".into(),
+                "snapshot".to_string(),
                 self.id.clone(),
                 self.basis.clone(),
             ]),

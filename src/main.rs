@@ -1,5 +1,5 @@
 use anyhow::{Context, Result, anyhow};
-use clap::{Args, Parser, Subcommand, error::ErrorKind};
+use clap::{Parser, Subcommand, error::ErrorKind};
 use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
@@ -13,8 +13,14 @@ struct Cli {
     #[command(subcommand)]
     command: Commands,
 
-    #[command(flatten)]
-    format: FormatArgs,
+    #[arg(long, global = true)]
+    json: bool,
+
+    #[arg(long, global = true)]
+    porcelain: bool,
+
+    #[arg(long, global = true)]
+    format: Option<String>,
 
     #[arg(long, global = true)]
     no_bootstrap: bool,
@@ -36,49 +42,6 @@ struct Cli {
 
     #[arg(long, global = true)]
     workspace_mode: Option<String>,
-}
-
-#[derive(Args, Clone, Debug, Default)]
-struct FormatArgs {
-    #[arg(long, global = true)]
-    json: bool,
-
-    #[arg(long, global = true)]
-    porcelain: bool,
-
-    #[arg(long, global = true)]
-    format: Option<String>,
-}
-
-impl FormatArgs {
-    fn detect() -> Self {
-        let args: Vec<String> = std::env::args().collect();
-        let mut format_args = Self::default();
-        for (i, arg) in args.iter().enumerate() {
-            if arg == "--json" {
-                format_args.json = true;
-            } else if arg == "--porcelain" {
-                format_args.porcelain = true;
-            } else if arg == "--format" {
-                if let Some(val) = args.get(i + 1) {
-                    format_args.format = Some(val.clone());
-                }
-            } else if let Some(val) = arg.strip_prefix("--format=") {
-                format_args.format = Some(val.to_string());
-            }
-        }
-        format_args
-    }
-
-    fn to_format(&self) -> cli::OutputFormat {
-        if self.json || matches!(self.format.as_deref(), Some("json")) {
-            cli::OutputFormat::Json
-        } else if self.porcelain || matches!(self.format.as_deref(), Some("porcelain")) {
-            cli::OutputFormat::Porcelain
-        } else {
-            cli::OutputFormat::Human
-        }
-    }
 }
 
 #[derive(Subcommand)]
@@ -270,8 +233,15 @@ fn run(cli: Cli) -> Result<()> {
             return Err(StaircaseError::ExternalOperation { operation, owner }.into());
         }
     }
-    
-    let format = cli.format.to_format();
+    let is_json = cli.json || matches!(cli.format.as_deref(), Some("json"));
+    let is_porcelain = cli.porcelain || matches!(cli.format.as_deref(), Some("porcelain"));
+    let format = if is_json {
+        cli::OutputFormat::Json
+    } else if is_porcelain {
+        cli::OutputFormat::Porcelain
+    } else {
+        cli::OutputFormat::Human
+    };
 
     let options = BootstrapOptions {
         no_bootstrap: cli.no_bootstrap,
@@ -281,7 +251,7 @@ fn run(cli: Cli) -> Result<()> {
         review_provider: cli.review_provider,
         provider_profile: cli.provider_profile,
         workspace_mode: cli.workspace_mode,
-        is_porcelain_or_json: !matches!(format, cli::OutputFormat::Human),
+        is_porcelain_or_json: is_json || is_porcelain,
     };
 
     if !matches!(&cli.command, Commands::Provider(_)) {
@@ -296,8 +266,43 @@ fn run(cli: Cli) -> Result<()> {
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
 
+#[derive(Clone, Copy)]
+enum ErrorFormat {
+    Human,
+    Json,
+    Porcelain,
+}
 
-fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
+fn requested_error_format() -> ErrorFormat {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--json")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "json")
+        || args.iter().any(|arg| arg == "--format=json")
+    {
+        ErrorFormat::Json
+    } else if args.iter().any(|arg| arg == "--porcelain")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
+        || args.iter().any(|arg| arg == "--format=porcelain")
+    {
+        ErrorFormat::Porcelain
+    } else {
+        ErrorFormat::Human
+    }
+}
+
+fn escape_machine_field(value: &str) -> String {
+    value
+        .replace('\\', "\\\\")
+        .replace('\n', "\\n")
+        .replace('\r', "\\r")
+        .replace('\t', "\\t")
+}
+
+fn render_error(error: &anyhow::Error, format: ErrorFormat) -> i32 {
     let typed = error
         .chain()
         .find_map(|cause| cause.downcast_ref::<StaircaseError>());
@@ -307,7 +312,7 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
     let details = typed.map_or(serde_json::Value::Null, StaircaseError::details);
 
     match format {
-        cli::OutputFormat::Json => {
+        ErrorFormat::Json => {
             let diagnostic = serde_json::json!({
                 "error": {
                     "code": code,
@@ -322,13 +327,10 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
                     .unwrap_or_else(|_| r#"{"error":{"code":"serialization-error"}}"#.into())
             );
         }
-        cli::OutputFormat::Porcelain => {
-            let code_json = serde_json::to_string(code).unwrap_or_else(|_| format!("\"{}\"", code));
-            let message_json = serde_json::to_string(&message).unwrap_or_else(|_| format!("\"{}\"", message));
-            let details_json = serde_json::to_string(&details).unwrap_or_else(|_| "null".into());
-            eprintln!("error\t1\t{}\t{}\t{}\t{}\tnull\t[]", code_json, status, message_json, details_json);
+        ErrorFormat::Porcelain => {
+            eprintln!("error\t{}\t{}", code, escape_machine_field(&message));
         }
-        cli::OutputFormat::Human => {
+        ErrorFormat::Human => {
             eprintln!("error [{}]: {}", code, message);
             if !details.is_null() {
                 if let Ok(rendered) = serde_json::to_string_pretty(&details) {
@@ -341,9 +343,7 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
 }
 
 fn main() {
-    let format_args = FormatArgs::detect();
-    let format = format_args.to_format();
-
+    let format = requested_error_format();
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
         Err(error) => {
