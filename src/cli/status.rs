@@ -14,7 +14,11 @@ impl super::Command for Status {
         let rs = match self.staircase.resolve_opt(repo)? {
             Some(rs) => rs,
             None => core::resolve_staircase(repo, "HEAD", self.staircase.base.onto.as_deref())?
-                .ok_or_else(|| anyhow!("Could not infer current staircase from HEAD. Please provide a selector."))?,
+                .ok_or_else(|| {
+                    anyhow!(
+                        "Could not infer current staircase from HEAD. Please provide a selector."
+                    )
+                })?,
         };
         let status = core::get_status_metadata(repo, rs.metadata().clone(), !rs.is_managed())?;
         Ok(Box::new(status))

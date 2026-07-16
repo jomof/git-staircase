@@ -92,9 +92,9 @@ impl<'a> Restacker<'a> {
                             )));
                         }
 
-                        if !merge_output.status.success() && merge_output.status.code() != Some(1) {
+                        if !merge_output.status.success() {
                             return Err(StaircaseError::Other(format!(
-                                "merge-tree failed with unexpected status: {:?}. Stderr: {}",
+                                "merge-tree failed (likely due to conflicts): {:?}. Stderr: {}",
                                 merge_output.status.code(),
                                 String::from_utf8_lossy(&merge_output.stderr)
                             )));

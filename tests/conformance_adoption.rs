@@ -21,7 +21,11 @@ fn observation_never_adopts() {
     // ASSERT
     // Verify that 'git for-each-ref refs/staircases/' returns no results, proving no metadata was persisted.
     let refs = run_git(dir, &["for-each-ref", "refs/staircases/"]);
-    assert!(refs.is_empty(), "Observation triggered adoption! Refs found: {}", refs);
+    assert!(
+        refs.is_empty(),
+        "Observation triggered adoption! Refs found: {}",
+        refs
+    );
 
     // ACT: Run 'git-staircase status feature-2'.
     let (success, _stdout, stderr) = run_staircase(dir, &["status", "feature-2"]);
@@ -29,7 +33,11 @@ fn observation_never_adopts() {
 
     // ASSERT
     let refs = run_git(dir, &["for-each-ref", "refs/staircases/"]);
-    assert!(refs.is_empty(), "Status triggered adoption! Refs found: {}", refs);
+    assert!(
+        refs.is_empty(),
+        "Status triggered adoption! Refs found: {}",
+        refs
+    );
 
     // ACT: Run 'git-staircase list --implicit'.
     let (success, _stdout, stderr) = run_staircase(dir, &["list", "--implicit"]);
@@ -37,8 +45,12 @@ fn observation_never_adopts() {
 
     // ASSERT
     let refs = run_git(dir, &["for-each-ref", "refs/staircases/"]);
-    assert!(refs.is_empty(), "List triggered adoption! Refs found: {}", refs);
-    
+    assert!(
+        refs.is_empty(),
+        "List triggered adoption! Refs found: {}",
+        refs
+    );
+
     // ACT: Run 'git-staircase show --ids feature-2'.
     // This is the one that is expected to FAIL and trigger adoption currently.
     let (success, _stdout, stderr) = run_staircase(dir, &["show", "feature-2", "--ids"]);
@@ -46,5 +58,9 @@ fn observation_never_adopts() {
 
     // ASSERT
     let refs = run_git(dir, &["for-each-ref", "refs/staircases/"]);
-    assert!(refs.is_empty(), "Show --ids triggered adoption! Refs found: {}", refs);
+    assert!(
+        refs.is_empty(),
+        "Show --ids triggered adoption! Refs found: {}",
+        refs
+    );
 }

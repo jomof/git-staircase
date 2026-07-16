@@ -129,9 +129,15 @@ fn test_status_defaults_to_current_branch() {
     let c2 = run_git(dir, &["rev-parse", "HEAD"]);
     run_git(dir, &["branch", "step2", &c2]);
 
-    let (success, stdout, stderr) =
-        run_staircase(dir, &["adopt", "my-staircase", "--onto", &anchor, "step1", "step2"]);
-    assert!(success, "adopt command failed. Stdout: {}, Stderr: {}", stdout, stderr);
+    let (success, stdout, stderr) = run_staircase(
+        dir,
+        &["adopt", "my-staircase", "--onto", &anchor, "step1", "step2"],
+    );
+    assert!(
+        success,
+        "adopt command failed. Stdout: {}, Stderr: {}",
+        stdout, stderr
+    );
 
     run_git(dir, &["checkout", "step1"]);
 
@@ -139,7 +145,11 @@ fn test_status_defaults_to_current_branch() {
     let (success, stdout, stderr) = run_staircase(dir, &["status"]);
 
     // ASSERT: The command should successfully resolve the current staircase and display its status.
-    assert!(success, "status command failed. Stdout: {}, Stderr: {}", stdout, stderr);
+    assert!(
+        success,
+        "status command failed. Stdout: {}, Stderr: {}",
+        stdout, stderr
+    );
     assert!(
         stdout.contains("my-staircase"),
         "Output should contain staircase name. Stdout: {}",
