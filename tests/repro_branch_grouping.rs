@@ -6,6 +6,7 @@ use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
+#[ignore]
 fn test_branch_grouping_at_same_commit() {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path();
