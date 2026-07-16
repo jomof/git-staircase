@@ -1,7 +1,7 @@
 use super::{Presentation, PresentationOutput, Summary, ToPresentation};
 use crate::GitRepo;
 use crate::core;
-use crate::core::{ListFilter, ResolvedStaircase};
+use crate::core::ListFilter;
 use anyhow::Result;
 use serde::Serialize;
 
@@ -40,30 +40,15 @@ impl super::Command for List {
             onto: self.onto.clone(),
         };
 
-        let resolved_staircases = core::list(repo, filter)?;
+        let entries = core::list_with_status(repo, filter)?;
         let mut all_results = Vec::new();
 
-        // Note: strict mode detection of unresolved implicit candidates is currently simplified in core::list
-        // and doesn't explicitly return errors unless they are fatal.
-
-        let cached_draft = core::draft::get_worktree_draft(repo).ok();
-        // We re-run status if needed for presentation, but core::list already filtered if self.stale was true.
-        // Actually, we need status for the Summary presentation anyway.
-
-        for rs in resolved_staircases {
+        for rs in entries {
             match rs {
-                ResolvedStaircase::ImplicitFamily(f) => {
+                core::ListEntry::Family(f) => {
                     all_results.push(ListEntry::Family(Summary(f)));
                 }
-                _ => {
-                    let m = rs.metadata();
-                    let status = core::status::get_status_metadata_ext(
-                        repo,
-                        m.clone(),
-                        !rs.is_managed(),
-                        None, // core::list already used discoveries if needed
-                        Some(cached_draft.clone()),
-                    )?;
+                core::ListEntry::Staircase(status) => {
                     all_results.push(ListEntry::Staircase(Summary(status)));
                 }
             }
