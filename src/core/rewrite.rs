@@ -4,7 +4,7 @@ use crate::core::operation::{
 };
 use crate::core::persistence;
 use crate::core::refs::StaircaseRefs;
-use crate::core::resolved::ResolvedStaircase;
+use crate::core::resolved::{ResolvedStaircase, validate_commit_groups};
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{LifecycleState, StaircaseLifecycle, StaircaseMetadata, StaircaseUserMetadata};
@@ -45,16 +45,13 @@ pub(crate) fn replay(
             "rewrite plan has inconsistent step ranges".into(),
         ));
     }
-    for (offset, commits) in commit_groups.iter().enumerate() {
-        if commits.is_empty() {
-            return Err(StaircaseError::UnsupportedTopology {
-                operation: kind.into(),
-                reason: format!(
-                    "rewrite would leave step '{}' empty",
-                    desired.steps[start_step + offset].name
-                ),
-            });
-        }
+    let step_names: Vec<String> = desired.steps[start_step..start_step + commit_groups.len()]
+        .iter()
+        .map(|s| s.name.clone())
+        .collect();
+    validate_commit_groups(&step_names, &commit_groups, kind)?;
+
+    for commits in &commit_groups {
         for commit in commits {
             let parents = repo
                 .run(&["rev-list", "--parents", "-n", "1", commit])?

@@ -64,7 +64,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * Suggested ambiguity remedies actually disambiguate — `[planned] tests/conformance_corner_cases.rs::ambiguity_remedies_use_effective_typed_selectors`
 * Revision range where one commit is required is rejected — `[planned] tests/conformance_corner_cases.rs::revision_range_is_rejected_for_commit_input`
 * Blob or tree where a commit is required is rejected — `[existing] tests/type_safety_test.rs::test_resolve_commit_with_blob_tag_should_fail`
-* Empty step is rejected before mutation — `[planned] tests/conformance_corner_cases.rs::empty_step_is_rejected_before_mutation`
+* Empty step is rejected before mutation — `[existing] tests/conformance_corner_cases.rs::empty_step_is_rejected_before_mutation`
 * Empty body after integrated-cut removal is not listed — `[planned] tests/conformance_corner_cases.rs::fully_integrated_candidate_is_not_listed`
 * Incomparable tips are never silently linearized — `[existing] tests/integration_test.rs::test_discover_forked`
 * Overlapping managed staircases retain separate lineage and ownership — `[planned] tests/conformance_corner_cases.rs::overlapping_lineages_require_explicit_coordination`

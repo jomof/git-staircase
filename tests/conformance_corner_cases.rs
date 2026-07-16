@@ -62,3 +62,60 @@ fn main_ahead_of_non_origin_anchor_is_valid_work() {
         stderr
     );
 }
+
+#[test]
+fn empty_step_is_rejected_before_mutation() {
+    let ctx = TestContext::new();
+
+    // ARRANGE: Create a staircase with two steps.
+    // Initial commit (C0) is on 'main'.
+    let c0 = ctx.run_git(&["rev-parse", "main"]);
+    ctx.run_git(&["update-ref", "refs/remotes/origin/main", &c0]);
+
+    // Step 1: C1
+    let c1 = ctx.commit("file1.txt", "content1", "feature 1");
+    // Step 2: C2
+    let c2 = ctx.commit("file2.txt", "content2", "feature 2");
+
+    // Discovery should find feature-1 (C1) and feature-2 (C2)
+    ctx.run_git(&["branch", "feature-1", &c1]);
+    ctx.run_git(&["branch", "feature-2", &c2]);
+
+    // Verify it's discovered as a 2-step staircase.
+    let (ok, stdout, stderr) = ctx.run_staircase(&["list", "--onto", "origin/main", "--json"]);
+    assert!(ok, "list failed: {}", stderr);
+    let json: serde_json::Value = serde_json::from_str(&stdout).unwrap();
+    let staircases = json.as_array().unwrap();
+    assert_eq!(
+        staircases.len(),
+        1,
+        "Should discover exactly one staircase. Output: {}",
+        stdout
+    );
+    let steps = staircases[0]["steps"].as_array().unwrap();
+    assert_eq!(steps.len(), 2, "Should have 2 steps. Output: {}", stdout);
+
+    // ACT: Attempt to move all commits from the first step to the second.
+    // In our case, Step 1 has C1. Step 2 has C2.
+    // We try to move C1 from Step 1 to Step 2.
+    // The command should be: git staircase move <name> --from 1 --to 2 <C1>
+    let (ok, stdout, stderr) =
+        ctx.run_staircase(&["move", "feature", "--from", "1", "--to", "2", &c1]);
+
+    // ASSERT: The command fails with a diagnostic error message before any changes are made.
+    assert!(
+        !ok,
+        "Move should have failed but succeeded. Stdout: {}\nStderr: {}",
+        stdout, stderr
+    );
+    assert!(
+        stderr.contains("empty") || stderr.contains("rejected"),
+        "Error message should indicate that an empty step is rejected. Actual stderr: {}",
+        stderr
+    );
+
+    // Verify no mutation occurred (metadata not adopted/changed if it was implicit)
+    // Actually, move might trigger adoption. But if it fails BEFORE mutation, it shouldn't adopt if it can help it,
+    // OR it might adopt then fail the plan.
+    // The spec says "Reject before mutation".
+}

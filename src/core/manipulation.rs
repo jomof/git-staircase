@@ -1,5 +1,6 @@
 use super::persistence;
 use super::refs::{ARCHIVE_PREFIX, STATE_PREFIX, StaircaseRefs};
+use super::resolved::validate_commit_groups;
 use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -456,13 +457,10 @@ pub fn move_commits_with_dry_run(
         .map(|index| groups[from_step_index][*index].clone())
         .collect::<Vec<_>>();
     groups[from_step_index].retain(|commit| !selected.contains(commit));
-    if groups[from_step_index].is_empty() {
-        return Err(StaircaseError::UnsupportedTopology {
-            operation: "move".into(),
-            reason: "moving all commits would leave the source step empty; use drop/join".into(),
-        });
-    }
     groups[to_step_index].extend(moved);
+
+    let step_names: Vec<String> = metadata.steps.iter().map(|s| s.name.clone()).collect();
+    validate_commit_groups(&step_names, &groups, "move")?;
     if groups.iter().flatten().cloned().collect::<Vec<_>>() == original_order {
         for (step, commits) in metadata.steps.iter_mut().zip(&groups) {
             step.cut = commits

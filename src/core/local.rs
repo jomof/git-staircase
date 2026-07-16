@@ -1,7 +1,7 @@
 use crate::core::operation::MutationPlan;
 use crate::core::persistence;
 use crate::core::refs::StaircaseRefs;
-use crate::core::resolved::{ResolvedSelector, adopt};
+use crate::core::resolved::{ResolvedSelector, adopt, validate_structure};
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
@@ -474,6 +474,7 @@ pub(crate) fn publish_record_parts_extra(
 ) -> Result<LocalMutationResult> {
     let old = current_record(repo, selector)?;
     ensure_active(&old.metadata)?;
+    validate_structure(repo, &metadata)?;
     for step in &mut metadata.steps {
         if step.id.is_empty() {
             step.id = Uuid::new_v4().to_string();
