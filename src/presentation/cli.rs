@@ -27,7 +27,7 @@ impl ToPresentation for Summary<StaircaseStatus> {
                 s.state(),
                 implicit_marker
             )),
-            Presentation::Record(vec![m.name.clone(), m.id.clone(), s.state().to_string()]),
+            Presentation::Record(vec!["staircase".into(), "1".into(), m.name.clone(), m.id.clone(), s.state().to_string()]),
         )
     }
 }
@@ -43,6 +43,8 @@ impl ToPresentation for Summary<StaircaseFamily> {
                 f.name, f.id, path_count, paths_word
             )),
             Presentation::Record(vec![
+                "staircase".into(),
+                "1".into(),
                 f.name.clone(),
                 f.id.clone(),
                 "family".to_string(),
@@ -81,7 +83,7 @@ impl ToPresentation for StepsList {
                 rows: h_rows,
             },
             Presentation::Table {
-                name: None,
+                name: Some("step".into()),
                 rows: p_rows,
             },
         )
@@ -99,8 +101,7 @@ impl ToPresentation for StaircaseCommits {
                     "{} {}",
                     commit.hash, commit.subject
                 )));
-                p_commits.push(Presentation::Record(vec![
-                    "commit".to_string(),
+                p_commits.push(Presentation::Record(vec!["commit".into(), "1".into(),
                     commit.hash.clone(),
                     commit.subject.clone(),
                 ]));
@@ -110,10 +111,7 @@ impl ToPresentation for StaircaseCommits {
                     title: format!("Step {}: {}", step.index, step.name),
                     children: h_commits,
                 }),
-                Presentation::porcelain(Presentation::Record(vec![
-                    "step".to_string(),
-                    step.index.to_string(),
-                    step.name.clone(),
+                Presentation::porcelain(Presentation::Record(vec!["step".into(), "1".into(), step.index.to_string(), step.name.clone(),
                 ])),
                 Presentation::porcelain(Presentation::List(p_commits)),
             ]));
@@ -134,7 +132,7 @@ impl ToPresentation for LogOutput {
         let mut p_items = vec![];
         for c in &self.0 {
             h_items.push(Presentation::Plain(format!("{} {}", c.hash, c.subject)));
-            p_items.push(Presentation::Record(vec![
+            p_items.push(Presentation::Record(vec!["log".into(), "1".into(),
                 c.hash.clone(),
                 c.subject.clone(),
             ]));
@@ -203,7 +201,7 @@ impl ToPresentation for ArchiveOutput {
                 children: h_children,
             },
             Presentation::Record(vec![
-                "archived".into(),
+                "archived".into(), "1".into(),
                 self.result.canonical_name.clone(),
                 self.result.archived_staircase_id.clone(),
                 self.result.archive_event_id.clone(),
@@ -219,7 +217,7 @@ impl ToPresentation for ReleaseNameOutput {
                 "Released canonical name reservation (record OID: {})",
                 self.record_oid
             )),
-            Presentation::Record(vec!["name_released".into(), self.record_oid.clone()]),
+            Presentation::Record(vec!["name_released".into(), "1".into(), self.record_oid.clone()]),
         )
     }
 }
@@ -245,13 +243,13 @@ impl ToPresentation for DescribeOutput {
             )));
         }
 
-        let mut p_records = vec![Presentation::Record(vec!["name".into(), self.name.clone()])];
+        let mut p_records = vec![Presentation::Record(vec!["name".into(), "1".into(), self.name.clone()])];
         if let Some(ref t) = self.title {
-            p_records.push(Presentation::Record(vec!["title".into(), t.clone()]));
+            p_records.push(Presentation::Record(vec!["title".into(), "1".into(), t.clone()]));
         }
         if let Some(ref d) = self.description {
             p_records.push(Presentation::Record(vec![
-                "description".into(),
+                "description".into(), "1".into(),
                 d.replace('\n', "\n"),
             ]));
         }

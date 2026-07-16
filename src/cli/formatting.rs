@@ -85,14 +85,47 @@ pub(crate) fn render_porcelain(p: &Presentation) -> String {
                 if let Some(n) = name {
                     out.push_str(n);
                     out.push('\t');
+                    out.push('1');
+                    out.push('\t');
                 }
-                out.push_str(&row.join("\t"));
+                for (i, field) in row.iter().enumerate() {
+                    if i > 0 {
+                        out.push('\t');
+                    }
+                    if let Ok(num) = field.parse::<i64>() {
+                        out.push_str(&num.to_string());
+                    } else if field == "true" || field == "false" {
+                        out.push_str(field);
+                    } else if field == "null" {
+                        out.push_str("null");
+                    } else {
+                        out.push_str(&serde_json::to_string(field).unwrap_or_else(|_| format!("\"{}\"", field)));
+                    }
+                }
                 out.push('\n');
             }
             out
         }
         Presentation::Record(fields) => {
-            let mut out = fields.join("\t");
+            let mut out = String::new();
+            for (i, field) in fields.iter().enumerate() {
+                if i > 0 {
+                    out.push('\t');
+                }
+                if i < 2 {
+                    out.push_str(field);
+                } else {
+                    if let Ok(num) = field.parse::<i64>() {
+                        out.push_str(&num.to_string());
+                    } else if field == "true" || field == "false" {
+                        out.push_str(field);
+                    } else if field == "null" {
+                        out.push_str("null");
+                    } else {
+                        out.push_str(&serde_json::to_string(field).unwrap_or_else(|_| format!("\"{}\"", field)));
+                    }
+                }
+            }
             out.push('\n');
             out
         }
@@ -105,7 +138,6 @@ pub(crate) fn render_porcelain(p: &Presentation) -> String {
         Presentation::Porcelain(inner) => render_porcelain(inner),
     }
 }
-
 impl<T: UsePresentation> ToHuman for T {
     fn to_human(&self) -> String {
         render_human(&self.to_presentation(), 0)

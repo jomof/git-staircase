@@ -35,7 +35,7 @@ impl ToPresentation for MaterializeResult {
                 self.staircase_name
             )),
             Presentation::Record(vec![
-                "materialized".to_string(),
+                "materialized".to_string(), "1".into(),
                 self.staircase_name.clone(),
                 self.step_name.clone(),
                 self.commit_oid.clone(),
@@ -74,7 +74,7 @@ impl ToPresentation for LocalMutationResult {
                 children,
             },
             Presentation::Record(vec![
-                self.kind.clone(),
+                self.kind.clone(), "1".into(),
                 self.staircase_name.clone(),
                 self.record_oid.clone().unwrap_or_default(),
             ]),
@@ -117,7 +117,7 @@ impl ToPresentation for LayoutState {
                 ],
             },
             Presentation::Record(vec![
-                "layout".to_string(),
+                "layout".to_string(), "1".into(),
                 self.staircase_id.clone(),
                 self.state.clone(),
             ]),
@@ -127,7 +127,7 @@ impl ToPresentation for LayoutState {
 
 impl ToPresentation for DiscoveryOverride {
     fn to_presentation(&self) -> Presentation {
-        record![self.id.clone(), self.kind.clone(), self.value.clone()]
+        record!["discovery_override".into(), "1".into(), self.id.clone(), self.kind.clone(), self.value.clone()]
     }
 }
 

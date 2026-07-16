@@ -83,7 +83,7 @@ fn test_consistent_porcelain_output() {
     let (success, stdout, _stderr) = run_staircase(dir, &["list", "--porcelain"]);
     assert!(success);
     assert!(
-        stdout.contains("feature/1\timplicit@"),
+        stdout.contains("staircase	1	\"feature/1\"	\"implicit@"),
         "porcelain list should contain staircase info: {}",
         stdout
     );
@@ -92,7 +92,7 @@ fn test_consistent_porcelain_output() {
     let (success, stdout, _stderr) = run_staircase(dir, &["status", "feature/1", "--porcelain"]);
     assert!(success);
     assert!(
-        stdout.contains("feature/1\timplicit@"),
+        stdout.contains("staircase	1	\"feature/1\"	\"implicit@"),
         "porcelain status should contain staircase info: {}",
         stdout
     );

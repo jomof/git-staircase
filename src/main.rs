@@ -296,13 +296,6 @@ fn run(cli: Cli) -> Result<()> {
     cli::dispatch(format, &repo, cli.command.run(&repo))
 }
 
-fn escape_machine_field(value: &str) -> String {
-    value
-        .replace('\\', "\\\\")
-        .replace('\n', "\\n")
-        .replace('\r', "\\r")
-        .replace('\t', "\\t")
-}
 
 fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
     let typed = error
@@ -330,7 +323,10 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
             );
         }
         cli::OutputFormat::Porcelain => {
-            eprintln!("error\t{}\t{}", code, escape_machine_field(&message));
+            let code_json = serde_json::to_string(code).unwrap_or_else(|_| format!("\"{}\"", code));
+            let message_json = serde_json::to_string(&message).unwrap_or_else(|_| format!("\"{}\"", message));
+            let details_json = serde_json::to_string(&details).unwrap_or_else(|_| "null".into());
+            eprintln!("error\t1\t{}\t{}\t{}\t{}\tnull\t[]", code_json, status, message_json, details_json);
         }
         cli::OutputFormat::Human => {
             eprintln!("error [{}]: {}", code, message);
