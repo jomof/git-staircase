@@ -90,8 +90,6 @@ pub enum StaircaseError {
     ExternalOperation { operation: String, owner: String },
     #[error("Invalid staircase structure: {0}")]
     InvalidStructure(String),
-    #[error("adoption required for {operation}, but inhibited by --no-adopt: {reason}")]
-    AdoptionInhibited { operation: String, reason: String },
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -109,7 +107,6 @@ impl StaircaseError {
             Self::UnsupportedTopology { .. } => "unsupported-topology",
             Self::ExternalOperation { .. } => "external-operation-in-progress",
             Self::InvalidStructure(_) => "invalid-cut-chain",
-            Self::AdoptionInhibited { .. } => "adoption-required",
             Self::GitCommandFailed { .. } => "git-command-failed",
             Self::Io(_) => "io-error",
             Self::Serialization(_) => "serialization-error",
@@ -128,7 +125,7 @@ impl StaircaseError {
             | Self::NoActiveOperation
             | Self::ExternalOperation { .. } => ExitClass::OperationConflict,
             Self::RefCollision { .. } => ExitClass::ConcurrentState,
-            Self::UnsupportedTopology { .. } | Self::AdoptionInhibited { .. } => ExitClass::Policy,
+            Self::UnsupportedTopology { .. } => ExitClass::Policy,
             Self::InvalidStructure(_) | Self::Other(_) => ExitClass::Usage,
             Self::GitCommandFailed { .. } | Self::Io(_) | Self::Serialization(_) => {
                 ExitClass::Integrity
@@ -182,12 +179,6 @@ impl StaircaseError {
             Self::ExternalOperation { operation, owner } => serde_json::json!({
                 "operation": operation,
                 "owner": owner,
-            }),
-            Self::AdoptionInhibited { operation, reason } => serde_json::json!({
-                "adopted": false,
-                "adoption_required": true,
-                "adoption_reason": reason,
-                "operation": operation,
             }),
             Self::GitCommandFailed {
                 command,

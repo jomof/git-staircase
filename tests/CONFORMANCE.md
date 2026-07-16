@@ -8,14 +8,14 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 
 ## Core specification Appendix A
 
-* A.2.1 difficult `repo` and Gerrit starting state — `[existing] tests/conformance_core_journeys.rs::journey_1_bootstraps_repo_gerrit_and_publishes_three_reviews`
-* A.2.2 amend the bottom step and resolve two restack conflicts — `[existing] tests/conformance_core_journeys.rs::journey_1_amend_preserves_draft_and_review_identity_across_conflicts`
+* A.2.1 difficult `repo` and Gerrit starting state — `[planned] tests/conformance_core_journeys.rs::journey_1_bootstraps_repo_gerrit_and_publishes_three_reviews`
+* A.2.2 amend the bottom step and resolve two restack conflicts — `[planned] tests/conformance_core_journeys.rs::journey_1_amend_preserves_draft_and_review_identity_across_conflicts`
 * A.2.3 rebase the whole staircase with nonadjacent conflicts — `[existing] tests/local_journeys_test.rs::conflict_pause_has_recovery_refs_and_continue_is_deterministic`
 * A.2.4 externally owned `repo sync` conflict — `[existing] tests/provider_journeys_test.rs::repo_journey_3_external_sync_operation_remains_external`
 * A.2.5 split a reviewed middle step — `[existing] tests/provider_journeys_test.rs::gerrit_journey_3_split_preserves_one_identity`
 * A.3 reshape a discovered multi-branch stack without adoption — `[existing] tests/reshape_test.rs` (implicit reshape coverage)
 * A.4 metadata-only cut triggers adoption — `[existing] tests/spec_align_reshape_flags_test.rs::test_split_no_ref_triggers_adoption`
-* A.5 edit a lower step from another worktree with partial staging — `[existing] tests/conformance_core_journeys.rs::journey_4_cross_worktree_materialization_preserves_partial_staging`
+* A.5 edit a lower step from another worktree with partial staging — `[planned] tests/conformance_core_journeys.rs::journey_4_cross_worktree_materialization_preserves_partial_staging`
 * A.6 land a lower prefix and preserve conceptual identity — `[existing] tests/local_journeys_test.rs::partial_landing_keeps_surviving_ids_and_renumbers_layout`
 * A.7 archive, collide, and restore branchlessly — `[existing] tests/local_journeys_test.rs::archive_removes_active_names_and_owned_branches`
 * A.8 two implicit staircases with one human name — `[existing] tests/repro_duplicate_names.rs`
@@ -24,18 +24,18 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 
 ## Core specification Appendix B
 
-* Observation (`discover`, `list`, inspection) — `[existing] tests/conformance_adoption.rs::observation_never_adopts`
-* Revision-derived identity — `[existing] tests/conformance_adoption.rs::revision_identity_remains_implicit_but_stable_identity_adopts`
+* Observation (`discover`, `list`, inspection) — `[planned] tests/conformance_adoption.rs::observation_never_adopts`
+* Revision-derived identity — `[planned] tests/conformance_adoption.rs::revision_identity_remains_implicit_but_stable_identity_adopts`
 * Exact verification versus persistent verification history — `[planned] tests/conformance_adoption.rs::verification_adopts_only_for_lineage_relative_history`
 * `split` — `[existing] tests/spec_align_reshape_flags_test.rs::test_split_no_ref_triggers_adoption`
 * `join` — `[existing] tests/spec_align_reshape_flags_test.rs::test_join_keep_boundary_ref_triggers_adoption`
-* Append commit to tip step — `[existing] tests/conformance_adoption.rs::append_adopts_only_for_durable_association`
-* Add a new step — `[existing] tests/conformance_adoption.rs::new_step_adopts_only_for_metadata_only_cut`
-* `reorder` — `[existing] tests/conformance_adoption.rs::reorder_adopts_only_when_state_or_identity_must_survive`
+* Append commit to tip step — `[planned] tests/conformance_adoption.rs::append_adopts_only_for_durable_association`
+* Add a new step — `[planned] tests/conformance_adoption.rs::new_step_adopts_only_for_metadata_only_cut`
+* `reorder` — `[planned] tests/conformance_adoption.rs::reorder_adopts_only_when_state_or_identity_must_survive`
 * `move` changes between steps — `[planned] tests/conformance_adoption.rs::move_adopts_only_for_stable_or_intermediate_state`
 * Complete `rebase` — `[planned] tests/conformance_adoption.rs::rebase_adopts_only_for_continuity_or_stale_state`
 * Clean `restack` — `[planned] tests/conformance_adoption.rs::restack_adopts_only_to_remember_stale_relationship`
-* `archive` — `[existing] tests/conformance_adoption.rs::archive_always_adopts_implicit_selection`
+* `archive` — `[planned] tests/conformance_adoption.rs::archive_always_adopts_implicit_selection`
 * Persistent name, description, labels, and links — `[planned] tests/conformance_adoption.rs::persistent_metadata_always_adopts`
 * Persistent discovery override — `[existing] tests/local_journeys_test.rs::policy_and_discovery_are_structural_record_revisions`
 * Persistent policy — `[existing] tests/local_journeys_test.rs::policy_and_discovery_are_structural_record_revisions`
@@ -45,14 +45,14 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * Review association — `[planned] tests/conformance_adoption.rs::review_association_adopts_only_when_retained`
 * Partial landing — `[planned] tests/conformance_adoption.rs::partial_landing_adopts_only_for_continuity`
 * Delete implicit materializing refs — `[planned] tests/conformance_adoption.rs::explicit_implicit_ref_deletion_does_not_adopt`
-* Appendix-wide `--no-adopt` and structured adoption event — `[existing] tests/conformance_adoption.rs::no_adopt_fails_before_mutation_and_reports_reason`
+* Appendix-wide `--no-adopt` and structured adoption event — `[planned] tests/conformance_adoption.rs::no_adopt_fails_before_mutation_and_reports_reason`
 
 ## Core specification Appendix C
 
 ### Discovery, identity, and selection
 
 * Integration branch exactly at anchor is not an empty staircase — `[planned] tests/conformance_corner_cases.rs::integration_branch_at_anchor_is_not_discovered`
-* Branch named `main` ahead of its anchor may be work — `[existing] tests/conformance_corner_cases.rs::main_ahead_of_anchor_is_valid_work`
+* Branch named `main` ahead of its anchor may be work — `[planned] tests/conformance_corner_cases.rs::main_ahead_of_anchor_is_valid_work`
 * Equivalent discovery sources collapse and merge provenance — `[planned] tests/conformance_corner_cases.rs::equivalent_discovery_sources_collapse`
 * Same top with different lower cuts remains distinct — `[planned] tests/conformance_corner_cases.rs::same_top_different_cuts_remain_distinct`
 * Different symbolic targets resolving to one anchor collapse — `[planned] tests/conformance_corner_cases.rs::equivalent_symbolic_targets_collapse`
@@ -64,7 +64,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * Suggested ambiguity remedies actually disambiguate — `[planned] tests/conformance_corner_cases.rs::ambiguity_remedies_use_effective_typed_selectors`
 * Revision range where one commit is required is rejected — `[planned] tests/conformance_corner_cases.rs::revision_range_is_rejected_for_commit_input`
 * Blob or tree where a commit is required is rejected — `[existing] tests/type_safety_test.rs::test_resolve_commit_with_blob_tag_should_fail`
-* Empty step is rejected before mutation — `[existing] tests/conformance_corner_cases.rs::empty_step_is_rejected_before_mutation`
+* Empty step is rejected before mutation — `[planned] tests/conformance_corner_cases.rs::empty_step_is_rejected_before_mutation`
 * Empty body after integrated-cut removal is not listed — `[planned] tests/conformance_corner_cases.rs::fully_integrated_candidate_is_not_listed`
 * Incomparable tips are never silently linearized — `[existing] tests/integration_test.rs::test_discover_forked`
 * Overlapping managed staircases retain separate lineage and ownership — `[planned] tests/conformance_corner_cases.rs::overlapping_lineages_require_explicit_coordination`

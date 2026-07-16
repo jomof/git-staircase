@@ -47,28 +47,16 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
 
     // 4. Unique compatible remote-default evidence or common branch names
     if inferred.is_none() {
-        let common_names = [
+        for common in &[
             "refs/remotes/origin/main",
             "refs/remotes/origin/master",
             "main",
             "master",
             "trunk",
             "develop",
-        ];
-
-        let branches = repo.local_branches(None).unwrap_or_default();
-
-        for common in &common_names {
+        ] {
             if let Ok(Some(_)) = repo.resolve_commit_opt(common) {
                 if let Ok(full) = repo.resolve_symbolic_full_name(common) {
-                    if full.starts_with("refs/heads/") {
-                        if let Some(b) = branches.iter().find(|b| b.refname == full) {
-                            if let Some(ref u) = b.upstream {
-                                inferred = Some(u.clone());
-                                break;
-                            }
-                        }
-                    }
                     inferred = Some(full);
                     break;
                 }

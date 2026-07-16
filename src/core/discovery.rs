@@ -168,10 +168,13 @@ fn filter_active_branches(
     repo: &GitRepo,
     branches: Vec<crate::model::BranchInfo>,
     onto_oid: &str,
-    _onto_final: &str,
+    onto_final: &str,
 ) -> Result<Vec<crate::model::BranchInfo>> {
     let mut active_branches = Vec::new();
     for b in branches {
+        if b.refname == onto_final {
+            continue;
+        }
         if !repo.is_ancestor(&b.oid, onto_oid)? {
             active_branches.push(b);
         }

@@ -1,4 +1,3 @@
-use super::discovery::compute_implicit_id;
 use super::persistence;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -56,25 +55,7 @@ impl ResolvedStaircase {
         step: Step,
         no_ref: bool,
     ) -> Result<ResolvedStaircase> {
-        let needs_adoption = super::identity::needs_adoption(repo, self)? || no_ref;
-        if !needs_adoption {
-            if let Some(branch) = &step.branch {
-                let reference = if branch.starts_with("refs/") {
-                    branch.clone()
-                } else {
-                    format!("refs/heads/{}", branch)
-                };
-                let mut plan = super::operation::MutationPlan::new("split", None);
-                plan.update(reference, None, Some(step.cut.clone()));
-                plan.publish(repo, false)?;
-
-                let mut metadata = self.metadata().clone();
-                metadata.steps.insert(index, step);
-                return Ok(ResolvedStaircase::Implicit(metadata));
-            }
-        }
-
-        let managed = ensure_managed(repo, self, "split")?;
+        let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         if no_ref {
             metadata.primary_branch_layout = None;
@@ -82,17 +63,15 @@ impl ResolvedStaircase {
         }
         metadata.steps.insert(index, step.clone());
 
-        validate_structure(repo, &metadata)?;
         validate_renumbering(repo, managed.metadata(), &mut metadata)?;
         publish_managed(repo, &managed, metadata)
     }
 
     /// Remove a step at the given index and persist the change.
     pub fn remove_step(&self, repo: &GitRepo, index: usize) -> Result<ResolvedStaircase> {
-        let managed = ensure_managed(repo, self, "drop")?;
+        let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         metadata.steps.remove(index);
-        validate_structure(repo, &metadata)?;
         validate_renumbering(repo, managed.metadata(), &mut metadata)?;
         publish_managed(repo, &managed, metadata)
     }
@@ -104,10 +83,9 @@ impl ResolvedStaircase {
         index: usize,
         new_oid: String,
     ) -> Result<ResolvedStaircase> {
-        let managed = ensure_managed(repo, self, "amend")?;
+        let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         metadata.steps[index].cut = new_oid.clone();
-        validate_structure(repo, &metadata)?;
         publish_managed(repo, &managed, metadata)
     }
 
@@ -118,87 +96,18 @@ impl ResolvedStaircase {
         repo: &GitRepo,
         metadata: StaircaseMetadata,
     ) -> Result<ResolvedStaircase> {
-        let managed = ensure_managed(repo, self, "reshape")?;
+        let managed = ensure_managed(repo, self)?;
         let mut metadata = metadata;
         metadata.id = managed.metadata().id.clone();
-        validate_structure(repo, &metadata)?;
         validate_renumbering(repo, managed.metadata(), &mut metadata)?;
         publish_managed(repo, &managed, metadata)
     }
 }
 
-pub fn validate_structure(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<()> {
-    if metadata.steps.is_empty() {
-        return Err(StaircaseError::InvalidStructure(
-            "staircase has no steps".into(),
-        ));
-    }
-    let target_oid = repo.resolve_commit(&metadata.target)?;
-    let mut last_cut = target_oid;
-    for step in &metadata.steps {
-        let current_cut = repo.resolve_commit(&step.cut)?;
-        if current_cut == last_cut {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
-                step.name, step.cut
-            )));
-        }
-        last_cut = current_cut;
-    }
-    Ok(())
-}
-
-pub fn validate_lineage(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<()> {
-    let target_oid = repo.resolve_commit(&metadata.target)?;
-    let mut last_cut = target_oid;
-    for step in &metadata.steps {
-        let current_cut = repo.resolve_commit(&step.cut)?;
-        if !repo.is_ancestor(&last_cut, &current_cut)? {
-            return Err(StaircaseError::InvalidStructure(format!(
-                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
-                step.name, step.cut
-            )));
-        }
-        last_cut = current_cut;
-    }
-    Ok(())
-}
-
-pub fn validate_commit_groups(
-    step_names: &[String],
-    groups: &[Vec<String>],
-    operation: &str,
-) -> Result<()> {
-    for (name, group) in step_names.iter().zip(groups) {
-        if group.is_empty() {
-            return Err(StaircaseError::UnsupportedTopology {
-                operation: operation.into(),
-                reason: format!("operation would leave step '{}' empty", name),
-            });
-        }
-    }
-    Ok(())
-}
-
-pub(crate) fn ensure_managed(
-    repo: &GitRepo,
-    staircase: &ResolvedStaircase,
-    operation: &str,
-) -> Result<ResolvedStaircase> {
+fn ensure_managed(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<ResolvedStaircase> {
     if staircase.is_managed() {
         Ok(staircase.clone())
     } else {
-        if repo.no_adopt {
-            let reason = if super::identity::has_stable_identity(repo, staircase)? {
-                "stable identity (Change-Id) must be preserved in managed state".to_string()
-            } else {
-                "mutation requires durable state".to_string()
-            };
-            return Err(StaircaseError::AdoptionInhibited {
-                operation: operation.to_string(),
-                reason,
-            });
-        }
         Ok(ResolvedStaircase::Managed(adopt(
             repo,
             staircase.metadata(),
@@ -255,16 +164,7 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
     let target_oid = repo.resolve_commit(&staircase.target)?;
     let mut staircase = staircase.clone();
     staircase.target = target;
-    if staircase.id.is_empty() {
-        staircase.id = Uuid::new_v4().to_string();
-    } else if staircase.id.starts_with("implicit@") {
-        let current_id = compute_implicit_id(repo, &staircase.target, &staircase.steps)?;
-        if current_id != staircase.id {
-            return Err(StaircaseError::Other(format!(
-                "Implicit staircase state changed; structural key {} is now {}",
-                staircase.id, current_id
-            )));
-        }
+    if staircase.id.starts_with("implicit@") {
         staircase.id = Uuid::new_v4().to_string();
     }
     for step in &mut staircase.steps {
@@ -277,27 +177,24 @@ pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseM
         oids.push(step.cut.as_str());
     }
     let _ = repo.preload_ancestry(&oids);
+    let mut last_cut = target_oid;
     for step in &staircase.steps {
         let current_cut = repo.resolve_commit(&step.cut)?;
-        if let Some(branch) = &step.branch {
-            let full_ref = if branch.starts_with("refs/") {
-                branch.clone()
-            } else {
-                format!("refs/heads/{}", branch)
-            };
-            if let Ok(actual_oid) = repo.resolve_commit(&full_ref) {
-                if actual_oid != current_cut {
-                    return Err(StaircaseError::Other(format!(
-                        "Branch \"{}\" moved from {} to {} during adoption; structural binding failed",
-                        branch, current_cut, actual_oid
-                    )));
-                }
-            }
+        if current_cut == last_cut {
+            return Err(StaircaseError::InvalidStructure(format!(
+                "Step \"{}\" cut \"{}\" is identical to its predecessor; every step must be non-empty",
+                step.name, step.cut
+            )));
         }
+        if !repo.is_ancestor(&last_cut, &current_cut)? {
+            return Err(StaircaseError::InvalidStructure(format!(
+                "Step \"{}\" cut \"{}\" is not a descendant of its predecessor",
+                step.name, step.cut
+            )));
+        }
+        last_cut = current_cut;
     }
 
-    validate_structure(repo, &staircase)?;
-    validate_lineage(repo, &staircase)?;
     persistence::write_metadata(repo, &staircase)?;
     Ok(staircase)
 }

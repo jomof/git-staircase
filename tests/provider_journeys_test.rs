@@ -422,7 +422,7 @@ fn gerrit_black_box_create_persists_pending_associations() {
         .unwrap();
     let metadata = StaircaseMetadata {
         landing_policy: None,
-        id: String::new(),
+        id: "implicit@provider-cli".into(),
         name: "provider-cli".into(),
         target: local.oids[0].clone(),
         steps: vec![

@@ -8,6 +8,15 @@ use crate::workspace::review_provider::{
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UnifiedMutationResult<S> {
+    pub state: S,
+    pub status: String,
+    pub unknown: usize,
+    pub journal_operation_id: Option<String>,
+    pub details: HashMap<String, String>,
+}
+
 pub fn persist_provider_state<S: Serialize>(
     repo: &GitRepo,
     record: &StaircaseRecord,
@@ -167,4 +176,40 @@ where
         destination_oid: None,
         details: Vec::new(),
     })
+}
+
+pub trait ReviewStateMachine<T: ProviderTransport, S> {
+    fn transport(&self) -> &T;
+    fn provider_name(&self) -> &'static str;
+
+    fn handle_uncertain(
+        &self,
+        repo: &GitRepo,
+        operation: &str,
+        expected_record_oid: Option<String>,
+        request: TransportRequest,
+        mut state: S,
+        observations: serde_json::Value,
+    ) -> Result<UnifiedMutationResult<S>> {
+        self.mark_reconciliation_required(&mut state);
+        let unknown = self.mark_upload_unknown(&mut state);
+        let journal = OperationJournal::for_repo(repo)?;
+        let entry = journal.record(
+            self.provider_name(),
+            operation,
+            expected_record_oid,
+            request,
+            observations,
+        )?;
+        Ok(UnifiedMutationResult {
+            state,
+            status: format!("{}-unknown", operation),
+            unknown,
+            journal_operation_id: Some(entry.operation_id),
+            details: HashMap::new(),
+        })
+    }
+
+    fn mark_reconciliation_required(&self, state: &mut S);
+    fn mark_upload_unknown(&self, state: &mut S) -> usize;
 }

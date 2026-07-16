@@ -197,24 +197,3 @@ fn ambiguous_selector_has_typed_machine_diagnostics() {
             >= 2
     );
 }
-
-#[test]
-fn list_with_status_propagates_correct_metadata_and_state() {
-    let (_tmp, repo) = setup_repo();
-    run_git(&repo.workdir, &["checkout", "-b", "feature"]);
-    commit(&repo.workdir, "feature.txt", "feature", "feature");
-    let adopted = adopt_one(&repo, "managed");
-
-    let filter = core::ListFilter::default();
-    let results = core::list_with_status(&repo, filter).unwrap();
-
-    assert_eq!(results.len(), 1);
-    match &results[0] {
-        core::list::ListEntry::Staircase(status) => {
-            assert_eq!(status.metadata.id, adopted.id);
-            assert_eq!(status.metadata.name, "managed");
-            assert!(status.is_clean);
-        }
-        _ => panic!("expected staircase entry"),
-    }
-}

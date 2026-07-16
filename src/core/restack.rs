@@ -66,7 +66,6 @@ impl<'a> Restacker<'a> {
         match strategy {
             RestackStrategy::Manual => {
                 let mut current_base = new_parent.to_string();
-                let mut last_old_parent = old_parent.to_string();
                 if let Ok(commits) = self.repo.commits_between(old_parent, actual_oid) {
                     for c in commits {
                         let merge_output = self
@@ -76,7 +75,7 @@ impl<'a> Restacker<'a> {
                                 "merge-tree",
                                 "--write-tree",
                                 "--merge-base",
-                                &last_old_parent,
+                                old_parent,
                                 &current_base,
                                 &c,
                             ])
@@ -93,9 +92,9 @@ impl<'a> Restacker<'a> {
                             )));
                         }
 
-                        if !merge_output.status.success() {
+                        if !merge_output.status.success() && merge_output.status.code() != Some(1) {
                             return Err(StaircaseError::Other(format!(
-                                "merge-tree failed (likely due to conflicts): {:?}. Stderr: {}",
+                                "merge-tree failed with unexpected status: {:?}. Stderr: {}",
                                 merge_output.status.code(),
                                 String::from_utf8_lossy(&merge_output.stderr)
                             )));
@@ -149,7 +148,6 @@ impl<'a> Restacker<'a> {
                             .env("GIT_COMMITTER_DATE", committer_date)
                             .run()?;
                         current_base = new_c.trim().to_string();
-                        last_old_parent = c.clone();
                     }
                 }
                 Ok(current_base)

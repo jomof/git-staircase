@@ -24,84 +24,55 @@ pub struct Adopt {
 
 impl super::Command for Adopt {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        if repo.no_adopt {
-            return Err(crate::StaircaseError::AdoptionInhibited {
-                operation: "adopt".to_string(),
-                reason: "explicit adoption inhibited by --no-adopt".to_string(),
-            }
-            .into());
+        if self.branches.is_empty() {
+            return Err(anyhow!("At least one branch must be specified to adopt"));
         }
-        let mut staircase = if self.branches.is_empty() {
-            let resolved = core::resolve_staircase(repo, &self.name, self.onto.as_deref())?
-                .ok_or_else(|| anyhow!("Staircase selector '{}' not found", self.name))?;
-            if resolved.staircase.is_managed() {
-                return Err(anyhow!("Staircase '{}' is already managed", self.name));
-            }
-            let mut metadata = resolved.staircase.metadata().clone();
-            if !self.name.starts_with("implicit@") {
-                metadata.name = self.name.clone();
-            }
-            metadata
-        } else {
-            let mut steps = Vec::new();
-            for b in &self.branches {
-                let full_ref = if b.starts_with("refs/heads/") {
-                    b.clone()
-                } else {
-                    format!("refs/heads/{}", b)
-                };
-                let oid = repo
-                    .resolve_commit(&full_ref)
-                    .with_context(|| format!("Failed to resolve branch '{}'", b))?;
-                let short_name = b.strip_prefix("refs/heads/").unwrap_or(b).to_string();
-                steps.push(Step {
-                    id: String::new(),
-                    name: short_name.clone(),
-                    cut: oid,
-                    branch: Some(short_name),
-                });
-            }
-
-            let target = match &self.onto {
-                Some(o) => o.clone(),
-                None => core::infer_onto(repo)?,
+        let mut steps = Vec::new();
+        for b in &self.branches {
+            let full_ref = if b.starts_with("refs/heads/") {
+                b.clone()
+            } else {
+                format!("refs/heads/{}", b)
             };
-            StaircaseMetadata {
-                landing_policy: self.landing_policy,
-                id: Uuid::new_v4().to_string(),
-                name: self.name.clone(),
-                target,
-                steps,
-                verification_policy: None,
-
-                primary_branch_layout: None,
-                branch_layout_base: None,
-                user_metadata: None,
-                lifecycle: None,
-            }
-        };
-
-        if let Some(lp) = self.landing_policy {
-            staircase.landing_policy = Some(lp);
-        }
-
-        if self.build_command.is_some() || self.test_command.is_some() {
-            staircase.verification_policy = Some(VerificationPolicy {
-                build_command: self.build_command.clone().or_else(|| {
-                    staircase
-                        .verification_policy
-                        .as_ref()
-                        .and_then(|vp| vp.build_command.clone())
-                }),
-                test_command: self.test_command.clone().or_else(|| {
-                    staircase
-                        .verification_policy
-                        .as_ref()
-                        .and_then(|vp| vp.test_command.clone())
-                }),
-                verify_each_prefix: self.verify_each_prefix,
+            let oid = repo
+                .resolve_commit(&full_ref)
+                .with_context(|| format!("Failed to resolve branch '{}'", b))?;
+            let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
+            steps.push(Step {
+                id: String::new(),
+                name: short_name.clone(),
+                cut: oid,
+                branch: Some(short_name),
             });
         }
+
+        let verification_policy = if self.build_command.is_some() || self.test_command.is_some() {
+            Some(VerificationPolicy {
+                build_command: self.build_command.clone(),
+                test_command: self.test_command.clone(),
+                verify_each_prefix: self.verify_each_prefix,
+            })
+        } else {
+            None
+        };
+
+        let target = match &self.onto {
+            Some(o) => o.clone(),
+            None => core::infer_onto(repo)?,
+        };
+        let staircase = StaircaseMetadata {
+            landing_policy: self.landing_policy,
+            id: Uuid::new_v4().to_string(),
+            name: self.name.clone(),
+            target,
+            steps,
+            verification_policy,
+
+            primary_branch_layout: None,
+            branch_layout_base: None,
+            user_metadata: None,
+            lifecycle: None,
+        };
 
         let result = core::adopt(repo, &staircase)?;
         Ok(Box::new(result))

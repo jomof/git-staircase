@@ -3,14 +3,14 @@ use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::model::{Capability, ProbeDescriptor, ProviderDescriptor, WorkspaceRecord};
 use crate::workspace::parse_git_url;
-use crate::workspace::provider_base::{self, ProviderAssociation};
+use crate::workspace::provider_base::{self, ProviderAssociation, ReviewStateMachine};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
-    ReviewProviderState, SynchronizationState, TransportRequest, UnifiedProviderLanding,
-    UnifiedProviderVerification, UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen,
-    UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus,
-    UnifiedReviewUpload, handle_uncertain_mutation, prepare_review_state,
+    SynchronizationState, TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
+    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
+    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
+    prepare_review_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -602,7 +602,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
         plan: &GitHubReviewOperationPlan,
         existing: Option<GitHubProviderState>,
     ) -> Result<GitHubProviderState> {
-        let mut state = prepare_review_state(
+        prepare_review_state(
             plan,
             existing,
             |plan| self.create_state(plan),
@@ -611,7 +611,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                     || state.route.base_repository != plan.route.base_repository
                 {
                     return Err(StaircaseError::Other(
-                        "existing GitHub associations belong to a different route".into(),
+                        "GitHub route mismatch during preparation".into(),
                     ));
                 }
                 Ok(())
@@ -634,11 +634,42 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                     retired: false,
                 })
             },
-        )?;
-        state.mapping_policy = plan.mapping_policy.clone();
-        Ok(state)
+        )
+    }
+}
+
+impl<T: ProviderTransport> provider_base::ReviewStateMachine<T, GitHubProviderState>
+    for GitHubStateMachine<T>
+{
+    fn transport(&self) -> &T {
+        &self.transport
     }
 
+    fn provider_name(&self) -> &'static str {
+        "github"
+    }
+
+    fn mark_reconciliation_required(&self, state: &mut GitHubProviderState) {
+        state.reconciliation_required = true;
+    }
+
+    fn mark_upload_unknown(&self, state: &mut GitHubProviderState) -> usize {
+        for association in state
+            .associations
+            .iter_mut()
+            .filter(|association| !association.retired)
+        {
+            association.synchronization = SynchronizationState::UploadUnknown;
+        }
+        state
+            .associations
+            .iter()
+            .filter(|association| !association.retired)
+            .count()
+    }
+}
+
+impl<T: ProviderTransport> GitHubStateMachine<T> {
     pub fn attach(
         &self,
         mut state: GitHubProviderState,
@@ -717,27 +748,41 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
             let response = match self.transport.execute(repo, &request) {
                 Ok(response) => response,
                 Err(error) => {
-                    return self.github_unknown_result(
+                    let unified = self.handle_uncertain(
                         repo,
-                        state,
-                        plan,
+                        "upload",
+                        plan.expected_record_oid.clone(),
                         request,
+                        state,
+                        serde_json::json!({"error": error.to_string()}),
+                    )?;
+                    return Ok(GitHubMutationResult {
+                        state: unified.state,
+                        status: unified.status,
                         branches_published,
                         pull_requests_created,
-                        serde_json::json!({"error": error.to_string()}),
-                    );
+                        unknown: unified.unknown,
+                        journal_operation_id: unified.journal_operation_id,
+                    });
                 }
             };
             if response.uncertain {
-                return self.github_unknown_result(
+                let unified = self.handle_uncertain(
                     repo,
-                    state,
-                    plan,
+                    "upload",
+                    plan.expected_record_oid.clone(),
                     request,
+                    state,
+                    response.observations,
+                )?;
+                return Ok(GitHubMutationResult {
+                    state: unified.state,
+                    status: unified.status,
                     branches_published,
                     pull_requests_created,
-                    response.observations,
-                );
+                    unknown: unified.unknown,
+                    journal_operation_id: unified.journal_operation_id,
+                });
             }
             if !response.success {
                 return Ok(GitHubMutationResult {
@@ -781,42 +826,40 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                 let response = match self.transport.execute(repo, &request) {
                     Ok(response) => response,
                     Err(error) => {
-                        let (state, journal_operation_id) = handle_uncertain_mutation(
+                        let unified = self.handle_uncertain(
                             repo,
-                            "github",
                             "create-pull-request",
-                            plan,
-                            state,
+                            plan.expected_record_oid.clone(),
                             request,
+                            state,
                             serde_json::json!({"error": error.to_string()}),
                         )?;
                         return Ok(GitHubMutationResult {
-                            state,
-                            status: "create-unknown".into(),
+                            state: unified.state,
+                            status: unified.status,
                             branches_published,
                             pull_requests_created,
                             unknown: 1,
-                            journal_operation_id,
+                            journal_operation_id: unified.journal_operation_id,
                         });
                     }
                 };
                 if response.uncertain {
-                    let (state, journal_operation_id) = handle_uncertain_mutation(
+                    let unified = self.handle_uncertain(
                         repo,
-                        "github",
                         "create-pull-request",
-                        plan,
-                        state,
+                        plan.expected_record_oid.clone(),
                         request,
+                        state,
                         response.observations,
                     )?;
                     return Ok(GitHubMutationResult {
-                        state,
-                        status: "create-unknown".into(),
+                        state: unified.state,
+                        status: unified.status,
                         branches_published,
                         pull_requests_created,
                         unknown: 1,
-                        journal_operation_id,
+                        journal_operation_id: unified.journal_operation_id,
                     });
                 }
                 if !response.success {
@@ -865,36 +908,6 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
             pull_requests_created,
             unknown,
             journal_operation_id: None,
-        })
-    }
-
-    #[allow(clippy::too_many_arguments)]
-    fn github_unknown_result(
-        &self,
-        repo: &GitRepo,
-        state: GitHubProviderState,
-        plan: &GitHubReviewOperationPlan,
-        request: TransportRequest,
-        branches_published: usize,
-        pull_requests_created: usize,
-        details: serde_json::Value,
-    ) -> Result<GitHubMutationResult> {
-        let (state, journal_operation_id) = handle_uncertain_mutation(
-            repo,
-            "github",
-            "branch-publication",
-            plan,
-            state,
-            request,
-            details,
-        )?;
-        Ok(GitHubMutationResult {
-            unknown: state.associations.len(),
-            state,
-            status: "upload-unknown".into(),
-            branches_published,
-            pull_requests_created,
-            journal_operation_id,
         })
     }
 
@@ -1881,9 +1894,6 @@ impl ReviewAssociation for GitHubReviewAssociation {
     fn update_local_oid(&mut self, oid: String) {
         self.local_oid = oid;
     }
-    fn set_synchronization(&mut self, state: SynchronizationState) {
-        self.synchronization = state;
-    }
 }
 
 impl ReviewPlanItem for GitHubPlanItem {
@@ -1899,22 +1909,6 @@ impl ReviewOperationPlan for GitHubReviewOperationPlan {
     type Item = GitHubPlanItem;
     fn items(&self) -> &[Self::Item] {
         &self.items
-    }
-    fn expected_record_oid(&self) -> Option<String> {
-        self.expected_record_oid.clone()
-    }
-}
-
-impl ReviewProviderState for GitHubProviderState {
-    type Association = GitHubReviewAssociation;
-    fn associations_mut(&mut self) -> &mut Vec<Self::Association> {
-        &mut self.associations
-    }
-    fn reconciliation_required(&self) -> bool {
-        self.reconciliation_required
-    }
-    fn set_reconciliation_required(&mut self, required: bool) {
-        self.reconciliation_required = required;
     }
 }
 

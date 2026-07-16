@@ -30,7 +30,7 @@ pub use draft::{
 };
 pub use identity::compute_identity;
 pub use inference::infer_onto;
-pub use list::{ListEntry, ListFilter, list, list_with_status};
+pub use list::{ListFilter, list};
 pub use local::{
     DiscoveryOverride, LayoutBranch, LayoutState, LocalMutationResult, add_discovery_override,
     append, assign_step_branch, clear_discovery_override, discovery_overrides, layout_state,

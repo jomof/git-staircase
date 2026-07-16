@@ -1,6 +1,5 @@
 use super::persistence;
 use super::refs::{ARCHIVE_PREFIX, STATE_PREFIX, StaircaseRefs};
-use super::resolved::validate_commit_groups;
 use crate::core::ResolvedStaircase;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
@@ -198,22 +197,11 @@ pub fn join(
         }
     }
 
-    let needs_adoption = super::identity::needs_adoption(repo, staircase)?
-        || options.ref_action == JoinRefAction::Keep;
-
-    if !needs_adoption {
-        if let JoinRefAction::Delete = options.ref_action {
-            if let Some(branch) = &removed_step.branch {
-                let reference = format!("refs/heads/{}", branch);
-                let mut plan = super::operation::MutationPlan::new("join", None);
-                plan.update(reference, Some(removed_step.cut.clone()), None);
-                plan.publish(repo, false)?;
-            }
-        }
-        return Ok(());
-    }
-
-    let managed = super::resolved::ensure_managed(repo, staircase, "join")?;
+    let managed = if staircase.is_managed() {
+        staircase.clone()
+    } else {
+        ResolvedStaircase::Managed(crate::core::adopt(repo, staircase.metadata())?)
+    };
     let mut desired = managed.metadata().clone();
     desired.steps.remove(low);
     super::resolved::validate_renumbering(repo, managed.metadata(), &mut desired)?;
@@ -468,10 +456,13 @@ pub fn move_commits_with_dry_run(
         .map(|index| groups[from_step_index][*index].clone())
         .collect::<Vec<_>>();
     groups[from_step_index].retain(|commit| !selected.contains(commit));
+    if groups[from_step_index].is_empty() {
+        return Err(StaircaseError::UnsupportedTopology {
+            operation: "move".into(),
+            reason: "moving all commits would leave the source step empty; use drop/join".into(),
+        });
+    }
     groups[to_step_index].extend(moved);
-
-    let step_names: Vec<String> = metadata.steps.iter().map(|s| s.name.clone()).collect();
-    validate_commit_groups(&step_names, &groups, "move")?;
     if groups.iter().flatten().cloned().collect::<Vec<_>>() == original_order {
         for (step, commits) in metadata.steps.iter_mut().zip(&groups) {
             step.cut = commits
@@ -716,56 +707,17 @@ fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Strin
         .unwrap_or_else(|| repo.resolve_commit(&metadata.target))
 }
 
-pub(crate) fn adopt_implicit_for_mutation(
-    repo: &GitRepo,
-    staircase: &ResolvedStaircase,
-    operation: &str,
-) -> Result<StaircaseMetadata> {
-    if staircase.is_managed() {
-        return Ok(staircase.metadata().clone());
-    }
-    if repo.no_adopt {
-        return Err(StaircaseError::AdoptionInhibited {
-            operation: operation.to_string(),
-            reason: if super::identity::has_stable_identity(repo, staircase)? {
-                "stable identity (Change-Id) must be preserved in managed state".to_string()
-            } else {
-                "mutation requires durable state".to_string()
-            },
-        });
-    }
-    let mut to_adopt = staircase.metadata().clone();
-    if to_adopt.id.is_empty() || to_adopt.id.starts_with("implicit@") {
-        to_adopt.id = uuid::Uuid::new_v4().to_string();
-    }
-    for step in &mut to_adopt.steps {
-        if step.id.is_empty() {
-            step.id = uuid::Uuid::new_v4().to_string();
-        }
-    }
-    super::persistence::write_metadata(repo, &to_adopt)?;
-    Ok(to_adopt)
-}
-
 fn publish_metadata_common(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
     mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
-    if !super::identity::needs_adoption(repo, staircase)? {
-        let mut plan = super::operation::MutationPlan::new(kind, None);
-        for step in &metadata.steps {
-            if let Some(branch) = &step.branch {
-                let reference = format!("refs/heads/{}", branch);
-                let actual = repo.resolve_ref_opt(&reference)?;
-                plan.update(reference, actual, Some(step.cut.clone()));
-            }
-        }
-        plan.publish(repo, false)?;
-        return Ok(());
-    }
-    let managed = ResolvedStaircase::Managed(adopt_implicit_for_mutation(repo, staircase, kind)?);
+    let managed = if staircase.is_managed() {
+        staircase.clone()
+    } else {
+        ResolvedStaircase::Managed(super::resolved::adopt(repo, staircase.metadata())?)
+    };
     metadata.id = managed.metadata().id.clone();
     for step in &mut metadata.steps {
         if step.id.is_empty() {

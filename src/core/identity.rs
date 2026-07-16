@@ -13,19 +13,10 @@ pub fn compute_identity(
     staircase: &ResolvedStaircase,
     kind: IdentityKind,
 ) -> Result<String> {
-    let metadata_buf;
-    let metadata = if kind == IdentityKind::Lineage && !staircase.is_managed() {
-        if repo.no_adopt {
-            return Err(crate::error::StaircaseError::AdoptionInhibited {
-                operation: "show-id".to_string(),
-                reason: "lineage identity requires managed state".to_string(),
-            });
-        }
-        metadata_buf = super::resolved::adopt(repo, staircase.metadata())?;
-        &metadata_buf
-    } else {
-        staircase.metadata()
-    };
+    let mut metadata = staircase.metadata().clone();
+    if kind == IdentityKind::Lineage && !staircase.is_managed() {
+        metadata = super::resolved::adopt(repo, &metadata)?;
+    }
     match kind {
         IdentityKind::Lineage => Ok(metadata.id.clone()),
         IdentityKind::Nominal => Ok(metadata.name.clone()),
@@ -133,53 +124,4 @@ pub fn compute_identity(
             repo.hash_data(&data)
         }
     }
-}
-
-pub fn has_stable_identity(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<bool> {
-    let boot_res = bootstrap(
-        repo,
-        &BootstrapOptions {
-            no_bootstrap: true,
-            ..Default::default()
-        },
-    )?;
-
-    let providers: Vec<Box<dyn ReviewProvider>> =
-        vec![Box::new(GerritProvider), Box::new(GitHubProvider)];
-
-    let oids: Vec<String> = staircase
-        .metadata()
-        .steps
-        .iter()
-        .map(|s| s.cut.clone())
-        .collect();
-
-    for provider in providers {
-        if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
-            let identifiers = instance.get_stable_identifiers(repo, &oids, None)?;
-            if identifiers.iter().any(|opt| opt.is_some()) {
-                return Ok(true);
-            }
-        }
-    }
-
-    for oid in &oids {
-        let msg = repo.run(&["log", "-1", "--format=%B", oid])?;
-        match crate::workspace::gerrit_provider::parse_change_ids(&msg) {
-            crate::workspace::gerrit_provider::ChangeIdParseResult::Single(_)
-            | crate::workspace::gerrit_provider::ChangeIdParseResult::Multiple(_) => {
-                return Ok(true);
-            }
-            _ => {}
-        }
-    }
-
-    Ok(false)
-}
-
-pub fn needs_adoption(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<bool> {
-    if staircase.is_managed() {
-        return Ok(true);
-    }
-    has_stable_identity(repo, staircase)
 }

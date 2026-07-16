@@ -35,11 +35,7 @@ fn test_split_renumbers_and_adopts_implicit() {
     let ctx = TestContext::new();
 
     ctx.run_git(&["checkout", "-b", "feat-1"]);
-    let c1 = ctx.commit(
-        "1.txt",
-        "1",
-        "c1\n\nChange-Id: I1234567890abcdef1234567890abcdef12345678",
-    );
+    let c1 = ctx.commit("1.txt", "1", "c1");
     ctx.run_git(&["checkout", "-b", "feat-2"]);
     let c2_mid = ctx.commit("2_mid.txt", "2_mid", "c2_mid");
     let c2 = ctx.commit("2.txt", "2", "c2");

@@ -400,6 +400,7 @@ fn test_id_lineage_auto_adopt() {
 
     // ASSERT
     assert!(!id.is_empty());
+
     let rs_after = core::resolve_by_id(&ctx.repo, &id).expect("Should find staircase");
     assert!(rs_after.is_managed());
     assert_eq!(rs_after.metadata().id, id);

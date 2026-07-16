@@ -31,26 +31,16 @@ pub fn save_workspace_record(record: &WorkspaceRecord) -> Result<()> {
 /// `expected_generation` is required for updates made by provider commands. A
 /// newly discovered record may pass `None`; an existing record then causes a
 /// concurrent-update error instead of being overwritten.
-static STORAGE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
-
 pub fn save_workspace_record_cas(
     record: &WorkspaceRecord,
     expected_generation: Option<u64>,
 ) -> Result<()> {
-    let _guard = STORAGE_LOCK
-        .lock()
-        .map_err(|e| StaircaseError::Other(format!("Lock error: {}", e)))?;
-
     let dir = get_workspace_storage_dir();
     fs::create_dir_all(&dir)?;
 
     let filename = format!("{}.json", record.workspace_id);
     let target_path = dir.join(&filename);
-    let temp_path = dir.join(format!(
-        ".tmp_{}_{}.json",
-        record.workspace_id,
-        uuid::Uuid::new_v4()
-    ));
+    let temp_path = dir.join(format!(".tmp_{}.json", record.workspace_id));
 
     let existing = if target_path.exists() {
         let data = fs::read_to_string(&target_path)?;
@@ -62,25 +52,20 @@ pub fn save_workspace_record_cas(
     };
     match (existing.as_ref(), expected_generation) {
         (Some(current), Some(expected)) if current.generation != expected => {
-            return Err(StaircaseError::ConcurrentRecordUpdate {
-                reference: format!("workspace:{}", record.workspace_id),
-                expected: expected.to_string(),
-                actual: current.generation.to_string(),
-            });
+            return Err(StaircaseError::Other(format!(
+                "concurrent-workspace-update: expected generation {}, found {}",
+                expected, current.generation
+            )));
         }
-        (Some(current), None) if record.generation == 0 => {
-            return Err(StaircaseError::ConcurrentRecordUpdate {
-                reference: format!("workspace:{}", record.workspace_id),
-                expected: "<none>".into(),
-                actual: current.generation.to_string(),
-            });
+        (Some(_), None) if record.generation == 0 => {
+            return Err(StaircaseError::Other(
+                "concurrent-workspace-update: record already exists".into(),
+            ));
         }
-        (None, Some(expected)) => {
-            return Err(StaircaseError::ConcurrentRecordUpdate {
-                reference: format!("workspace:{}", record.workspace_id),
-                expected: expected.to_string(),
-                actual: "<missing>".into(),
-            });
+        (None, Some(_)) => {
+            return Err(StaircaseError::Other(
+                "concurrent-workspace-update: record disappeared".into(),
+            ));
         }
         _ => {}
     }

@@ -1,7 +1,7 @@
 use crate::GitRepo;
 use crate::core::{self, ResolvedStaircase, persistence};
 use crate::error::Result;
-use crate::model::{Discovery, StaircaseFamily, StaircaseStatus};
+use crate::model::Discovery;
 use std::collections::BTreeMap;
 
 #[derive(Default, Clone, Debug)]
@@ -17,47 +17,6 @@ pub struct ListFilter {
 }
 
 pub fn list(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ResolvedStaircase>> {
-    list_internal(repo, filter, false).map(|(rs, _)| rs)
-}
-
-pub enum ListEntry {
-    Staircase(StaircaseStatus),
-    Family(StaircaseFamily),
-}
-
-pub fn list_with_status(repo: &GitRepo, filter: ListFilter) -> Result<Vec<ListEntry>> {
-    let (resolved_staircases, discovered_items) = list_internal(repo, filter.clone(), true)?;
-    let mut results = Vec::new();
-
-    let cached_draft = core::draft::get_worktree_draft(repo).ok();
-
-    for rs in resolved_staircases {
-        match rs {
-            ResolvedStaircase::ImplicitFamily(f) => {
-                results.push(ListEntry::Family(f));
-            }
-            _ => {
-                let m = rs.metadata();
-                let status = core::status::get_status_metadata_ext(
-                    repo,
-                    m.clone(),
-                    !rs.is_managed(),
-                    Some(&discovered_items),
-                    Some(cached_draft.clone()),
-                )?;
-                results.push(ListEntry::Staircase(status));
-            }
-        }
-    }
-
-    Ok(results)
-}
-
-fn list_internal(
-    repo: &GitRepo,
-    filter: ListFilter,
-    include_discovered: bool,
-) -> Result<(Vec<ResolvedStaircase>, Vec<Discovery>)> {
     let show_implicit = filter.implicit || filter.discovered;
     let show_all = !filter.all
         && !filter.managed
@@ -88,7 +47,7 @@ fn list_internal(
 
     let mut discovered_items = Vec::new();
 
-    if show_implicit || filter.families || show_all || include_discovered {
+    if show_implicit || filter.families || show_all {
         match core::discover(repo, filter.onto.as_deref(), None, filter.families) {
             Ok(list) => {
                 discovered_items = list;
@@ -168,5 +127,5 @@ fn list_internal(
         }
     }
 
-    Ok((final_results, discovered_items))
+    Ok(final_results)
 }
