@@ -10,6 +10,9 @@ pub fn build_branch_graph(
     let mut parents: HashMap<String, String> = HashMap::new();
     let mut children_map: HashMap<String, Vec<String>> = HashMap::new();
 
+    let oids: Vec<&str> = active_branches.iter().map(|b| b.oid.as_str()).collect();
+    let _ = repo.preload_ancestry(&oids);
+
     for child in active_branches {
         let mut best_parent: Option<&BranchInfo> = None;
         for parent in active_branches {
