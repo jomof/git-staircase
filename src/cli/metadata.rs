@@ -312,31 +312,31 @@ impl Command for MetadataCmd {
             }
             MetadataSubcommands::SetTitle(args) => {
                 let sel = args.selector.resolve(repo)?;
-                core::set_title(repo, &sel, &args.title)?;
-                let updated = core::get_user_metadata(repo, &sel)?;
+                let record = core::set_title(repo, &sel, &args.title)?;
                 Ok(Box::new(UserMetadataOutput {
-                    name: sel.staircase.metadata().name.clone(),
-                    metadata: updated,
+                    name: record.metadata.name.clone(),
+                    metadata: record.user_metadata,
                 }))
             }
+
             MetadataSubcommands::AddLabel(args) => {
                 let sel = args.selector.resolve(repo)?;
-                core::add_label(repo, &sel, &args.label)?;
-                let updated = core::get_user_metadata(repo, &sel)?;
+                let record = core::add_label(repo, &sel, &args.label)?;
                 Ok(Box::new(UserMetadataOutput {
-                    name: sel.staircase.metadata().name.clone(),
-                    metadata: updated,
+                    name: record.metadata.name.clone(),
+                    metadata: record.user_metadata,
                 }))
             }
+
             MetadataSubcommands::RemoveLabel(args) => {
                 let sel = args.selector.resolve(repo)?;
-                core::remove_label(repo, &sel, &args.label)?;
-                let updated = core::get_user_metadata(repo, &sel)?;
+                let record = core::remove_label(repo, &sel, &args.label)?;
                 Ok(Box::new(UserMetadataOutput {
-                    name: sel.staircase.metadata().name.clone(),
-                    metadata: updated,
+                    name: record.metadata.name.clone(),
+                    metadata: record.user_metadata,
                 }))
             }
+
             MetadataSubcommands::AddLink(args) => {
                 let sel = args.selector.resolve(repo)?;
                 let link = StaircaseLink {
@@ -346,13 +346,13 @@ impl Command for MetadataCmd {
                     label: args.label.clone(),
                     description: args.description.clone(),
                 };
-                core::add_link(repo, &sel, link)?;
-                let updated = core::get_user_metadata(repo, &sel)?;
+                let record = core::add_link(repo, &sel, link)?;
                 Ok(Box::new(UserMetadataOutput {
-                    name: sel.staircase.metadata().name.clone(),
-                    metadata: updated,
+                    name: record.metadata.name.clone(),
+                    metadata: record.user_metadata,
                 }))
             }
+
             MetadataSubcommands::ShowStep(args) => {
                 let sel = args.selector.resolve(repo)?;
                 let step_key = resolve_step_arg(&sel, args.step.as_deref())?;

@@ -15,6 +15,8 @@ pub struct Append {
     #[arg(long, requires = "new_step")]
     pub branch: Option<String>,
     #[arg(long)]
+    pub title: Option<String>,
+    #[arg(long)]
     pub dry_run: bool,
 }
 
@@ -27,6 +29,7 @@ impl Command for Append {
             &self.commits,
             self.new_step,
             self.branch.as_deref(),
+            self.title.as_deref(),
             self.dry_run,
         )?;
         Ok(Box::new(result))

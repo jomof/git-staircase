@@ -205,3 +205,130 @@ fn drop_no_restack_does_not_adopt() {
         "Staircase should have remained implicit for drop --no-restack."
     );
 }
+
+#[test]
+fn append_adopts_only_for_durable_association() {
+    // ARRANGE: Setup an implicit staircase (branch ahead of main).
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "feature"]);
+    context.commit("f1.txt", "f1", "f1 commit");
+
+    // Verify it is discovered as implicit.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
+    assert!(success);
+    assert!(stdout.contains("(implicit)"));
+
+    // ACT: Append a commit using git commit.
+    context.commit("f2.txt", "f2", "f2 commit");
+
+    // ASSERT: Verify it remains implicit.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
+    assert!(success);
+    assert!(stdout.contains("(implicit)"));
+    assert_no_staircase_refs(&context);
+
+    // ACT: Append a commit using staircase append.
+    // Create a commit on top of feature, but move the branch back so we can append it.
+    context.run_git(&["checkout", "feature"]);
+    let c3 = context.commit("f3.txt", "f3", "f3 commit");
+    context.run_git(&["reset", "--hard", "HEAD^"]);
+
+    let (success, stdout, stderr) = context.run_staircase(&[
+        "append",
+        "--commits",
+        &format!("feature..{}", c3),
+        "feature",
+    ]);
+
+    if !success {
+        panic!("append failed: stdout: {}, stderr: {}", stdout, stderr);
+    }
+
+    // ASSERT: Verify it remains implicit.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
+    assert!(success);
+    assert!(stdout.contains("(implicit)"));
+    assert_no_staircase_refs(&context);
+
+    // ACT: Append with a durable association (title).
+    // Create another commit to append.
+    context.run_git(&["checkout", "feature"]);
+    let c4 = context.commit("f4.txt", "f4", "f4 commit");
+    context.run_git(&["reset", "--hard", "HEAD^"]);
+
+    let (success, stdout, stderr) = context.run_staircase(&[
+        "append",
+        "--commits",
+        &format!("feature..{}", c4),
+        "--title",
+        "New Durable Title",
+        "feature",
+    ]);
+    if !success {
+        panic!(
+            "append with title failed: stdout: {}, stderr: {}",
+            stdout, stderr
+        );
+    }
+
+    // ASSERT: Verify it is now adopted.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
+    assert!(success);
+    assert!(!stdout.contains("(implicit)"));
+    assert_has_staircase_refs(&context);
+}
+
+fn assert_no_staircase_refs(context: &TestContext) {
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    for line in refs.lines() {
+        assert!(
+            !line.starts_with("refs/staircases/"),
+            "Found unexpected staircase ref: {}",
+            line
+        );
+        assert!(
+            !line.starts_with("refs/staircase-state/"),
+            "Found unexpected staircase-state ref: {}",
+            line
+        );
+    }
+}
+
+fn assert_has_staircase_refs(context: &TestContext) {
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    let mut found = false;
+    for line in refs.lines() {
+        if line.starts_with("refs/staircases/") || line.starts_with("refs/staircase-state/") {
+            found = true;
+            break;
+        }
+    }
+    assert!(
+        found,
+        "Expected to find staircase refs, but none were found."
+    );
+}
+
+#[test]
+fn persistent_metadata_always_adopts() {
+    // ARRANGE: Setup an implicit staircase.
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "feature"]);
+    context.commit("f1.txt", "f1", "f1 commit");
+
+    // ACT: Set a title (durable association).
+    let (success, stdout, stderr) =
+        context.run_staircase(&["metadata", "set-title", "feature", "New Title"]);
+    if !success {
+        panic!(
+            "metadata set-title failed: stdout: {}, stderr: {}",
+            stdout, stderr
+        );
+    }
+
+    // ASSERT: Verify it is now adopted.
+    let (success, stdout, _) = context.run_staircase(&["list"]);
+    assert!(success);
+    assert!(!stdout.contains("(implicit)"));
+    assert_has_staircase_refs(&context);
+}

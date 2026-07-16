@@ -1,6 +1,6 @@
 use crate::core::persistence;
 use crate::core::refs::StaircaseRefs;
-use crate::core::resolved::ResolvedSelector;
+use crate::core::resolved::{ResolvedSelector, ResolvedStaircase, adopt};
 use crate::core::utils::current_timestamp;
 use crate::error::Result;
 use crate::git::GitRepo;
@@ -94,12 +94,13 @@ pub fn set_title(
     selector: &ResolvedSelector,
     title: &str,
 ) -> Result<StaircaseRecord> {
-    let mut user_meta = get_user_metadata(repo, selector)?;
+    let sel = ensure_managed(repo, selector)?;
+    let mut user_meta = get_user_metadata(repo, &sel)?;
     if user_meta.created_at.is_none() {
         user_meta.created_at = Some(current_timestamp());
     }
     user_meta.title = Some(title.to_string());
-    update_user_metadata(repo, selector, user_meta)
+    update_user_metadata(repo, &sel, user_meta)
 }
 
 pub fn set_description(
@@ -107,12 +108,13 @@ pub fn set_description(
     selector: &ResolvedSelector,
     description: &str,
 ) -> Result<StaircaseRecord> {
-    let mut user_meta = get_user_metadata(repo, selector)?;
+    let sel = ensure_managed(repo, selector)?;
+    let mut user_meta = get_user_metadata(repo, &sel)?;
     if user_meta.created_at.is_none() {
         user_meta.created_at = Some(current_timestamp());
     }
     user_meta.description = Some(description.to_string());
-    update_user_metadata(repo, selector, user_meta)
+    update_user_metadata(repo, &sel, user_meta)
 }
 
 pub fn add_label(
@@ -120,11 +122,12 @@ pub fn add_label(
     selector: &ResolvedSelector,
     label: &str,
 ) -> Result<StaircaseRecord> {
-    let mut user_meta = get_user_metadata(repo, selector)?;
+    let sel = ensure_managed(repo, selector)?;
+    let mut user_meta = get_user_metadata(repo, &sel)?;
     if !user_meta.labels.contains(&label.to_string()) {
         user_meta.labels.push(label.to_string());
     }
-    update_user_metadata(repo, selector, user_meta)
+    update_user_metadata(repo, &sel, user_meta)
 }
 
 pub fn remove_label(
@@ -132,9 +135,10 @@ pub fn remove_label(
     selector: &ResolvedSelector,
     label: &str,
 ) -> Result<StaircaseRecord> {
-    let mut user_meta = get_user_metadata(repo, selector)?;
+    let sel = ensure_managed(repo, selector)?;
+    let mut user_meta = get_user_metadata(repo, &sel)?;
     user_meta.labels.retain(|l| l != label);
-    update_user_metadata(repo, selector, user_meta)
+    update_user_metadata(repo, &sel, user_meta)
 }
 
 pub fn add_link(
@@ -142,10 +146,11 @@ pub fn add_link(
     selector: &ResolvedSelector,
     link: StaircaseLink,
 ) -> Result<StaircaseRecord> {
-    let mut user_meta = get_user_metadata(repo, selector)?;
+    let sel = ensure_managed(repo, selector)?;
+    let mut user_meta = get_user_metadata(repo, &sel)?;
     user_meta.links.retain(|l| l.id != link.id);
     user_meta.links.push(link);
-    update_user_metadata(repo, selector, user_meta)
+    update_user_metadata(repo, &sel, user_meta)
 }
 
 pub fn get_step_metadata(
@@ -203,8 +208,9 @@ pub fn update_step_metadata(
     step_key: &str,
     mut step_meta: StepMetadata,
 ) -> Result<StaircaseRecord> {
-    let mut user_meta = get_user_metadata(repo, selector)?;
-    let meta = selector.staircase.metadata();
+    let sel = ensure_managed(repo, selector)?;
+    let mut user_meta = get_user_metadata(repo, &sel)?;
+    let meta = sel.staircase.metadata();
 
     let key = resolve_step_key(meta, step_key)?;
 
@@ -212,7 +218,19 @@ pub fn update_step_metadata(
     step_meta.labels.dedup();
 
     user_meta.step_metadata.insert(key, step_meta);
-    update_user_metadata(repo, selector, user_meta)
+    update_user_metadata(repo, &sel, user_meta)
+}
+
+fn ensure_managed(repo: &GitRepo, selector: &ResolvedSelector) -> Result<ResolvedSelector> {
+    if selector.is_managed() {
+        Ok(selector.clone())
+    } else {
+        let adopted = adopt(repo, selector.metadata())?;
+        Ok(ResolvedSelector {
+            staircase: ResolvedStaircase::Managed(adopted),
+            step_index: selector.step_index,
+        })
+    }
 }
 
 fn resolve_step_key(meta: &StaircaseMetadata, step_key: &str) -> Result<String> {
