@@ -705,8 +705,9 @@ impl GitRepo {
         if dry_run {
             cmd = cmd.arg("--dry-run");
         }
-        cmd.arg(remote).args(refspecs).run()?;
-        Ok(())
+        let res = cmd.arg(remote).args(refspecs).run();
+        self.memoizer.clear();
+        res.map(|_| ())
     }
 
     pub fn fetch(&self, remote: &str, refspecs: &[&str], dry_run: bool) -> Result<()> {
@@ -714,8 +715,9 @@ impl GitRepo {
         if dry_run {
             cmd = cmd.arg("--dry-run");
         }
-        cmd.arg(remote).args(refspecs).run()?;
-        Ok(())
+        let res = cmd.arg(remote).args(refspecs).run();
+        self.memoizer.clear();
+        res.map(|_| ())
     }
 
     pub fn check_ref_format(&self, name: &str, branch: bool) -> Result<()> {
