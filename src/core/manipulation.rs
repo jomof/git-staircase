@@ -713,11 +713,15 @@ fn publish_metadata_common(
     mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
-    let managed = if staircase.is_managed() {
-        staircase.clone()
-    } else {
-        ResolvedStaircase::Managed(super::resolved::adopt(repo, staircase.metadata())?)
-    };
+    if !staircase.is_managed() {
+        let selector = super::resolved::ResolvedSelector {
+            staircase: staircase.clone(),
+            step_index: None,
+        };
+        super::local::publish_metadata(repo, &selector, metadata, kind, false)?;
+        return Ok(());
+    }
+    let managed = staircase.clone();
     metadata.id = managed.metadata().id.clone();
     for step in &mut metadata.steps {
         if step.id.is_empty() {

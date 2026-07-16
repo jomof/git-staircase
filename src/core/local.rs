@@ -448,8 +448,27 @@ pub fn publish_metadata(
     kind: &str,
     dry_run: bool,
 ) -> Result<LocalMutationResult> {
-    let old = current_record(repo, selector)?;
-    publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
+    if selector.is_managed() {
+        let old = current_record(repo, selector)?;
+        publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
+    } else {
+        let mut plan = MutationPlan::new(kind, None);
+        let overridden_refs = BTreeSet::new();
+        add_branch_permutation(
+            repo,
+            selector.metadata(),
+            &metadata,
+            &mut plan,
+            &overridden_refs,
+        )?;
+        let changed_refs = plan
+            .refs
+            .iter()
+            .map(|edit| edit.reference.clone())
+            .collect();
+        plan.publish(repo, dry_run)?;
+        Ok(result(kind, &metadata, None, dry_run, changed_refs))
+    }
 }
 
 fn publish_record_parts(
