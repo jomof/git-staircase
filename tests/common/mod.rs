@@ -112,7 +112,7 @@ pub fn get_test_binary_path() -> std::path::PathBuf {
     }
     let bin_str = env!("CARGO_BIN_EXE_git-staircase");
     let mut bin = std::path::PathBuf::from(bin_str);
-    if bin_str.contains("/shadow-") || !bin.exists() {
+    if bin_str.contains("/shadow-") || bin_str.contains("git-monorepo") || !bin.exists() {
         if let Ok(entries) = std::fs::read_dir(
             std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
                 .join("target")
