@@ -122,3 +122,23 @@ fn test_builder_error_handling() {
     // ASSERT
     assert!(result.is_err());
 }
+
+#[test]
+fn test_run_with_stdin_no_trim_for_cat_file() {
+    // ARRANGE
+    let ctx = TestContext::new();
+    let content = "data with newline\n";
+    let oid = ctx.repo.write_blob(content).unwrap();
+
+    // ACT
+    let read_back = ctx
+        .repo
+        .run_with_stdin(&["cat-file", "-p", &oid], "")
+        .unwrap();
+
+    // ASSERT
+    assert_eq!(
+        read_back, content,
+        "run_with_stdin should NOT trim the output of cat-file"
+    );
+}

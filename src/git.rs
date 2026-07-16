@@ -183,13 +183,26 @@ impl GitRepo {
         GitCommand::new(self)
     }
 
+    fn should_trim(args: &[&str]) -> bool {
+        match args.first().copied() {
+            Some("cat-file") | Some("show") | Some("diff") | Some("diff-tree") => false,
+            _ => true,
+        }
+    }
+
     pub fn run(&self, args: &[&str]) -> Result<String> {
-        let trim = !args.first().map_or(false, |&cmd| cmd == "cat-file");
-        self.command().args(args).trim(trim).run()
+        self.command()
+            .args(args)
+            .trim(Self::should_trim(args))
+            .run()
     }
 
     pub fn run_with_stdin(&self, args: &[&str], stdin: &str) -> Result<String> {
-        self.command().args(args).stdin(stdin).run()
+        self.command()
+            .args(args)
+            .stdin(stdin)
+            .trim(Self::should_trim(args))
+            .run()
     }
 
     pub fn run_interactive(&self, args: &[&str]) -> Result<()> {
