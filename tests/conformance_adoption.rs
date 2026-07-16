@@ -155,7 +155,8 @@ fn reorder_no_restack_does_not_adopt() {
     context.commit("f2.txt", "f2", "f2");
 
     // ACT: Reorder without restack.
-    let (success, stdout, stderr) = context.run_staircase(&["reorder", "f2", "--steps", "2,1", "--no-restack"]);
+    let (success, stdout, stderr) =
+        context.run_staircase(&["reorder", "f2", "--steps", "2,1", "--no-restack"]);
     if !success {
         panic!("reorder failed: stdout: {}, stderr: {}", stdout, stderr);
     }
@@ -168,7 +169,10 @@ fn reorder_no_restack_does_not_adopt() {
             adopted = true;
         }
     }
-    assert!(!adopted, "Staircase should have remained implicit for reorder --no-restack.");
+    assert!(
+        !adopted,
+        "Staircase should have remained implicit for reorder --no-restack."
+    );
 }
 
 #[test]
@@ -182,7 +186,8 @@ fn drop_no_restack_does_not_adopt() {
     // ACT: Drop without restack.
     // wait, drop: selector, step_index (optional).
     // drop f2:1 --leave-descendants-stale
-    let (success, stdout, stderr) = context.run_staircase(&["drop", "f2:1", "--leave-descendants-stale"]);
+    let (success, stdout, stderr) =
+        context.run_staircase(&["drop", "f2:1", "--leave-descendants-stale"]);
     if !success {
         panic!("drop failed: stdout: {}, stderr: {}", stdout, stderr);
     }
@@ -195,5 +200,8 @@ fn drop_no_restack_does_not_adopt() {
             adopted = true;
         }
     }
-    assert!(!adopted, "Staircase should have remained implicit for drop --no-restack.");
+    assert!(
+        !adopted,
+        "Staircase should have remained implicit for drop --no-restack."
+    );
 }

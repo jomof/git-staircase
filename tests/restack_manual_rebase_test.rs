@@ -69,7 +69,8 @@ fn test_restack_manual_rebase_of_multiple_steps() {
     };
 
     git_staircase::core::persistence::write_metadata(&repo, &metadata).unwrap();
-    let staircase = git_staircase::core::resolution::resolve_by_name(&repo, &metadata.name).unwrap();
+    let staircase =
+        git_staircase::core::resolution::resolve_by_name(&repo, &metadata.name).unwrap();
 
     // 4. Update the branches to point to different commits (simulating local manual rebase)
     let a1 = repo

@@ -41,7 +41,9 @@ impl super::Command for Reorder {
                 repo,
                 &rs,
                 &zero_based_steps,
-                core::ReorderOptions { no_restack: self.no_restack },
+                core::ReorderOptions {
+                    no_restack: self.no_restack,
+                },
             )?;
             return Ok(Box::new(super::Success::new(format!(
                 "Planned reorder of staircase '{}'",
@@ -52,7 +54,9 @@ impl super::Command for Reorder {
                 repo,
                 &rs,
                 &zero_based_steps,
-                core::ReorderOptions { no_restack: self.no_restack },
+                core::ReorderOptions {
+                    no_restack: self.no_restack,
+                },
             )?;
         }
 
