@@ -189,3 +189,120 @@ fn journey_1_amend_preserves_draft_and_review_identity_across_conflicts() {
     let final_content = fs::read_to_string(root.join("file1.txt")).unwrap();
     assert_eq!(final_content, "Z\n");
 }
+
+#[test]
+fn journey_4_cross_worktree_materialization_preserves_partial_staging() {
+    // ARRANGE: Setup a repository with two linked worktrees.
+    let context = TestContext::new();
+    let root = context.path();
+
+    // Create a 3-step managed staircase
+    context.run_git(&["checkout", "--detach", "main"]);
+
+    let mut oids = Vec::new();
+    oids.push(context.commit("file1.txt", "step 1\n", "Step 1\n\nChange-Id: I1"));
+    oids.push(context.commit("file2.txt", "step 2\n", "Step 2\n\nChange-Id: I2"));
+    oids.push(context.commit("file3.txt", "step 3\n", "Step 3\n\nChange-Id: I3"));
+
+    context.run_git(&["branch", "feature-1", &oids[0]]);
+    context.run_git(&["branch", "feature-2", &oids[1]]);
+    context.run_git(&["branch", "feature", &oids[2]]);
+
+    let (success, stdout, stderr) = context.run_staircase(&[
+        "adopt",
+        "managed",
+        "--onto",
+        "main",
+        "feature-1",
+        "feature-2",
+        "feature",
+    ]);
+    assert!(
+        success,
+        "adopt failed: stdout: {}, stderr: {}",
+        stdout, stderr
+    );
+
+    // Checkout 'feature' (Step 3) in main worktree
+    context.run_git(&["checkout", "feature"]);
+
+    // Setup another worktree 'wt2'
+    let wt2_path = root.parent().unwrap().join("wt2");
+    context.run_git(&["worktree", "add", &wt2_path.to_string_lossy(), "feature-1"]);
+
+    // In the main worktree, we are on 'feature' (Step 3).
+    // ACT: In main worktree, stage some changes to init.txt and leave others unstaged.
+    fs::write(
+        root.join("init.txt"),
+        "initial\nstaged change\nunstaged change\n",
+    )
+    .unwrap();
+
+    let staged_content = "initial\nstaged change\n";
+    fs::write(root.join("init.txt"), staged_content).unwrap();
+    context.run_git(&["add", "init.txt"]);
+    fs::write(
+        root.join("init.txt"),
+        "initial\nstaged change\nunstaged change\n",
+    )
+    .unwrap();
+
+    // Also add an untracked file
+    fs::write(root.join("untracked.txt"), "untracked content\n").unwrap();
+
+    // Verify state
+    let status = context.run_git(&["status", "--porcelain"]);
+    assert!(
+        status.contains("MM init.txt")
+            || (status.contains("M  init.txt") && status.contains(" M init.txt"))
+    );
+    assert!(status.contains("?? untracked.txt"));
+
+    // ACT: Materialize to feature-1 (Step 1) which is checked out in wt2.
+    let (success, stdout, stderr) = context.run_staircase(&[
+        "draft",
+        "materialize",
+        "managed",
+        "--fold-into",
+        "feature-1",
+        "--message",
+        "Folded into Step 1",
+    ]);
+
+    // ASSERT: Verify it succeeded
+    assert!(
+        success,
+        "materialize failed: stdout: {}, stderr: {}",
+        stdout, stderr
+    );
+
+    // ASSERT: Verify Step 1 commit contains the staged change
+    let metadata = core::persistence::read_metadata(&context.repo, "managed").unwrap();
+    let step1_oid = &metadata.steps[0].cut;
+    let file_content = context.run_git(&["show", &format!("{}:init.txt", step1_oid)]);
+    assert_eq!(file_content, "initial\nstaged change");
+
+    // ASSERT: Verify main worktree still has unstaged and untracked changes
+    let status_after = context.run_git(&["status", "--porcelain"]);
+    assert!(
+        status_after.contains("M init.txt"),
+        "Unstaged change lost: {}",
+        status_after
+    );
+    assert!(
+        !status_after.contains("M  init.txt"),
+        "Staged change still staged: {}",
+        status_after
+    );
+    assert!(
+        status_after.contains("?? untracked.txt"),
+        "Untracked file lost: {}",
+        status_after
+    );
+
+    let final_file_content = fs::read_to_string(root.join("init.txt")).unwrap();
+    assert_eq!(
+        final_file_content,
+        "initial\nstaged change\nunstaged change\n"
+    );
+}

@@ -15,7 +15,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * A.2.5 split a reviewed middle step — `[existing] tests/provider_journeys_test.rs::gerrit_journey_3_split_preserves_one_identity`
 * A.3 reshape a discovered multi-branch stack without adoption — `[existing] tests/reshape_test.rs` (implicit reshape coverage)
 * A.4 metadata-only cut triggers adoption — `[existing] tests/spec_align_reshape_flags_test.rs::test_split_no_ref_triggers_adoption`
-* A.5 edit a lower step from another worktree with partial staging — `[planned] tests/conformance_core_journeys.rs::journey_4_cross_worktree_materialization_preserves_partial_staging`
+* A.5 edit a lower step from another worktree with partial staging — `[existing] tests/conformance_core_journeys.rs::journey_4_cross_worktree_materialization_preserves_partial_staging`
 * A.6 land a lower prefix and preserve conceptual identity — `[existing] tests/local_journeys_test.rs::partial_landing_keeps_surviving_ids_and_renumbers_layout`
 * A.7 archive, collide, and restore branchlessly — `[existing] tests/local_journeys_test.rs::archive_removes_active_names_and_owned_branches`
 * A.8 two implicit staircases with one human name — `[existing] tests/repro_duplicate_names.rs`

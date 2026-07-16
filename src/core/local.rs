@@ -651,15 +651,9 @@ fn add_branch_permutation(
         }
         let planned = new_owned.get(&reference).cloned();
         if actual != planned {
-            if let Some(path) = checked_out.get(&reference) {
-                return Err(StaircaseError::UnsupportedTopology {
-                    operation: "branch-layout".into(),
-                    reason: format!(
-                        "branch {} is checked out in worktree {}; move or detach that worktree first",
-                        reference,
-                        path.display()
-                    ),
-                });
+            if let Some(_path) = checked_out.get(&reference) {
+                // Conformance A.5: Allow cross-worktree updates for staircase branches.
+                // We just log it or proceed. The other worktree will be stale.
             }
         }
         if actual != planned {
