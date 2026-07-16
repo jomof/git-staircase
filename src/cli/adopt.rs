@@ -24,6 +24,13 @@ pub struct Adopt {
 
 impl super::Command for Adopt {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        if repo.no_adopt {
+            return Err(crate::StaircaseError::AdoptionInhibited {
+                operation: "adopt".to_string(),
+                reason: "explicit adoption inhibited by --no-adopt".to_string(),
+            }
+            .into());
+        }
         let mut staircase = if self.branches.is_empty() {
             let resolved = core::resolve_staircase(repo, &self.name, self.onto.as_deref())?
                 .ok_or_else(|| anyhow!("Staircase selector '{}' not found", self.name))?;

@@ -24,6 +24,8 @@ use std::process::Command;
 pub struct GitRepo {
     pub workdir: PathBuf,
     pub memoizer: Memoizer,
+    pub adopt: bool,
+    pub no_adopt: bool,
 }
 
 impl GitRepo {
@@ -31,11 +33,18 @@ impl GitRepo {
         GitRepo {
             workdir,
             memoizer: Memoizer::new(),
+            adopt: false,
+            no_adopt: false,
         }
     }
 
     pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
-        GitRepo { workdir, memoizer }
+        GitRepo {
+            workdir,
+            memoizer,
+            adopt: false,
+            no_adopt: false,
+        }
     }
 
     pub fn git_cmd(&self) -> Command {

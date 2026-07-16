@@ -75,7 +75,7 @@ pub(crate) fn replay(
 
     let mut desired = desired;
     let managed = ResolvedStaircase::Managed(
-        crate::core::manipulation::adopt_implicit_for_mutation(repo, staircase)?,
+        crate::core::manipulation::adopt_implicit_for_mutation(repo, staircase, kind)?,
     );
     desired.id = managed.metadata().id.clone();
     desired.name = managed.metadata().name.clone();

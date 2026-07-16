@@ -76,7 +76,7 @@ impl ResolvedStaircase {
             }
         }
 
-        let managed = ensure_managed(repo, self)?;
+        let managed = ensure_managed(repo, self, "split")?;
         let mut metadata = managed.metadata().clone();
         if no_ref {
             metadata.primary_branch_layout = None;
@@ -91,7 +91,7 @@ impl ResolvedStaircase {
 
     /// Remove a step at the given index and persist the change.
     pub fn remove_step(&self, repo: &GitRepo, index: usize) -> Result<ResolvedStaircase> {
-        let managed = ensure_managed(repo, self)?;
+        let managed = ensure_managed(repo, self, "drop")?;
         let mut metadata = managed.metadata().clone();
         metadata.steps.remove(index);
         validate_structure(repo, &metadata)?;
@@ -106,7 +106,7 @@ impl ResolvedStaircase {
         index: usize,
         new_oid: String,
     ) -> Result<ResolvedStaircase> {
-        let managed = ensure_managed(repo, self)?;
+        let managed = ensure_managed(repo, self, "amend")?;
         let mut metadata = managed.metadata().clone();
         metadata.steps[index].cut = new_oid.clone();
         validate_structure(repo, &metadata)?;
@@ -120,7 +120,7 @@ impl ResolvedStaircase {
         repo: &GitRepo,
         metadata: StaircaseMetadata,
     ) -> Result<ResolvedStaircase> {
-        let managed = ensure_managed(repo, self)?;
+        let managed = ensure_managed(repo, self, "reshape")?;
         let mut metadata = metadata;
         metadata.id = managed.metadata().id.clone();
         validate_structure(repo, &metadata)?;
@@ -182,10 +182,25 @@ pub fn validate_commit_groups(
     Ok(())
 }
 
-fn ensure_managed(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<ResolvedStaircase> {
+pub(crate) fn ensure_managed(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+    operation: &str,
+) -> Result<ResolvedStaircase> {
     if staircase.is_managed() {
         Ok(staircase.clone())
     } else {
+        if repo.no_adopt {
+            let reason = if super::identity::has_stable_identity(repo, staircase)? {
+                "stable identity (Change-Id) must be preserved in managed state".to_string()
+            } else {
+                "mutation requires durable state".to_string()
+            };
+            return Err(StaircaseError::AdoptionInhibited {
+                operation: operation.to_string(),
+                reason,
+            });
+        }
         Ok(ResolvedStaircase::Managed(adopt(
             repo,
             staircase.metadata(),

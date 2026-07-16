@@ -214,11 +214,7 @@ pub fn join(
         return Ok(());
     }
 
-    let managed = if staircase.is_managed() {
-        staircase.clone()
-    } else {
-        ResolvedStaircase::Managed(crate::core::adopt(repo, staircase.metadata())?)
-    };
+    let managed = super::resolved::ensure_managed(repo, staircase, "join")?;
     let mut desired = managed.metadata().clone();
     desired.steps.remove(low);
     super::resolved::validate_renumbering(repo, managed.metadata(), &mut desired)?;
@@ -724,9 +720,20 @@ fn recorded_target(repo: &GitRepo, metadata: &StaircaseMetadata) -> Result<Strin
 pub(crate) fn adopt_implicit_for_mutation(
     repo: &GitRepo,
     staircase: &ResolvedStaircase,
+    operation: &str,
 ) -> Result<StaircaseMetadata> {
     if staircase.is_managed() {
         return Ok(staircase.metadata().clone());
+    }
+    if repo.no_adopt {
+        return Err(StaircaseError::AdoptionInhibited {
+            operation: operation.to_string(),
+            reason: if super::identity::has_stable_identity(repo, staircase)? {
+                "stable identity (Change-Id) must be preserved in managed state".to_string()
+            } else {
+                "mutation requires durable state".to_string()
+            },
+        });
     }
     let mut to_adopt = staircase.metadata().clone();
     if to_adopt.id.is_empty() || to_adopt.id.starts_with("implicit@") {
@@ -747,7 +754,7 @@ fn publish_metadata_common(
     mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
-    let managed = ResolvedStaircase::Managed(adopt_implicit_for_mutation(repo, staircase)?);
+    let managed = ResolvedStaircase::Managed(adopt_implicit_for_mutation(repo, staircase, kind)?);
     metadata.id = managed.metadata().id.clone();
     for step in &mut metadata.steps {
         if step.id.is_empty() {

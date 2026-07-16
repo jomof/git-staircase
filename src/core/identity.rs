@@ -15,6 +15,12 @@ pub fn compute_identity(
 ) -> Result<String> {
     let metadata_buf;
     let metadata = if kind == IdentityKind::Lineage && !staircase.is_managed() {
+        if repo.no_adopt {
+            return Err(crate::error::StaircaseError::AdoptionInhibited {
+                operation: "show-id".to_string(),
+                reason: "lineage identity requires managed state".to_string(),
+            });
+        }
         metadata_buf = super::resolved::adopt(repo, staircase.metadata())?;
         &metadata_buf
     } else {

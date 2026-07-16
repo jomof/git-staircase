@@ -216,3 +216,63 @@ fn new_step_adopts_only_for_metadata_only_cut() {
         "Metadata-only cut (split) should trigger adoption."
     );
 }
+
+#[test]
+fn no_adopt_fails_before_mutation_and_reports_reason() {
+    // 1. ARRANGE: Create an implicit staircase with a Change-Id (which would trigger adoption upon mutation).
+    let (tmp, _repo) = setup_repo();
+    let dir = tmp.path();
+    let anchor = run_git(dir, &["rev-parse", "main"]);
+
+    run_git(dir, &["checkout", "-b", "feat"]);
+    commit(
+        dir,
+        "f1.txt",
+        "1",
+        "commit 1\n\nChange-Id: I1111111111111111111111111111111111111111",
+    );
+    run_git(dir, &["branch", "feat-1", "HEAD"]);
+    commit(
+        dir,
+        "f2.txt",
+        "2",
+        "commit 2\n\nChange-Id: I2222222222222222222222222222222222222222",
+    );
+    run_git(dir, &["branch", "feat-2", "HEAD"]);
+
+    // 2. ACT: Attempt a mutating operation (e.g., 'join') with the '--no-adopt' flag.
+    let (success, stdout, stderr) = run_staircase(
+        dir,
+        &[
+            "join",
+            "feat-2",
+            "--step",
+            "2",
+            "--step2",
+            "1",
+            "--onto",
+            &anchor,
+            "--no-adopt",
+        ],
+    );
+
+    // 3. ASSERT: Verify the command fails with an error message indicating that adoption is required and was inhibited by the flag.
+    assert!(
+        !success,
+        "Command should have failed due to --no-adopt. Stdout: {}, Stderr: {}",
+        stdout, stderr
+    );
+    assert!(
+        stderr.contains("adoption required") || stderr.contains("inhibited by --no-adopt"),
+        "Error message should explain that adoption was required but inhibited. Stderr: {}",
+        stderr
+    );
+
+    // Also verify no adoption occurred.
+    let refs = run_git(dir, &["for-each-ref", "refs/staircases/"]);
+    assert!(
+        refs.is_empty(),
+        "Adoption occurred despite --no-adopt! Refs found: {}",
+        refs
+    );
+}
