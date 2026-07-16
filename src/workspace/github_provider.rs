@@ -7,10 +7,10 @@ use crate::workspace::provider_base::{self, ProviderAssociation};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
-    SynchronizationState, TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
-    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
-    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
-    prepare_review_state,
+    ReviewProviderState, SynchronizationState, TransportRequest, UnifiedProviderLanding,
+    UnifiedProviderVerification, UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen,
+    UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus,
+    UnifiedReviewUpload, handle_uncertain_mutation, prepare_review_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -781,13 +781,12 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                 let response = match self.transport.execute(repo, &request) {
                     Ok(response) => response,
                     Err(error) => {
-                        state.reconciliation_required = true;
-                        association.synchronization = SynchronizationState::UploadUnknown;
-                        let journal = OperationJournal::for_repo(repo)?;
-                        let entry = journal.record(
+                        let (state, journal_operation_id) = handle_uncertain_mutation(
+                            repo,
                             "github",
                             "create-pull-request",
-                            plan.expected_record_oid.clone(),
+                            plan,
+                            state,
                             request,
                             serde_json::json!({"error": error.to_string()}),
                         )?;
@@ -797,18 +796,17 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                             branches_published,
                             pull_requests_created,
                             unknown: 1,
-                            journal_operation_id: Some(entry.operation_id),
+                            journal_operation_id,
                         });
                     }
                 };
                 if response.uncertain {
-                    state.reconciliation_required = true;
-                    association.synchronization = SynchronizationState::UploadUnknown;
-                    let journal = OperationJournal::for_repo(repo)?;
-                    let entry = journal.record(
+                    let (state, journal_operation_id) = handle_uncertain_mutation(
+                        repo,
                         "github",
                         "create-pull-request",
-                        plan.expected_record_oid.clone(),
+                        plan,
+                        state,
                         request,
                         response.observations,
                     )?;
@@ -818,7 +816,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
                         branches_published,
                         pull_requests_created,
                         unknown: 1,
-                        journal_operation_id: Some(entry.operation_id),
+                        journal_operation_id,
                     });
                 }
                 if !response.success {
@@ -874,22 +872,19 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
     fn github_unknown_result(
         &self,
         repo: &GitRepo,
-        mut state: GitHubProviderState,
+        state: GitHubProviderState,
         plan: &GitHubReviewOperationPlan,
         request: TransportRequest,
         branches_published: usize,
         pull_requests_created: usize,
         details: serde_json::Value,
     ) -> Result<GitHubMutationResult> {
-        state.reconciliation_required = true;
-        for association in &mut state.associations {
-            association.synchronization = SynchronizationState::UploadUnknown;
-        }
-        let journal = OperationJournal::for_repo(repo)?;
-        let entry = journal.record(
+        let (state, journal_operation_id) = handle_uncertain_mutation(
+            repo,
             "github",
             "branch-publication",
-            plan.expected_record_oid.clone(),
+            plan,
+            state,
             request,
             details,
         )?;
@@ -899,7 +894,7 @@ impl<T: ProviderTransport> GitHubStateMachine<T> {
             status: "upload-unknown".into(),
             branches_published,
             pull_requests_created,
-            journal_operation_id: Some(entry.operation_id),
+            journal_operation_id,
         })
     }
 
@@ -1886,6 +1881,9 @@ impl ReviewAssociation for GitHubReviewAssociation {
     fn update_local_oid(&mut self, oid: String) {
         self.local_oid = oid;
     }
+    fn set_synchronization(&mut self, state: SynchronizationState) {
+        self.synchronization = state;
+    }
 }
 
 impl ReviewPlanItem for GitHubPlanItem {
@@ -1901,6 +1899,22 @@ impl ReviewOperationPlan for GitHubReviewOperationPlan {
     type Item = GitHubPlanItem;
     fn items(&self) -> &[Self::Item] {
         &self.items
+    }
+    fn expected_record_oid(&self) -> Option<String> {
+        self.expected_record_oid.clone()
+    }
+}
+
+impl ReviewProviderState for GitHubProviderState {
+    type Association = GitHubReviewAssociation;
+    fn associations_mut(&mut self) -> &mut Vec<Self::Association> {
+        &mut self.associations
+    }
+    fn reconciliation_required(&self) -> bool {
+        self.reconciliation_required
+    }
+    fn set_reconciliation_required(&mut self, required: bool) {
+        self.reconciliation_required = required;
     }
 }
 

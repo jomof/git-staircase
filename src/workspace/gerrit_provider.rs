@@ -7,10 +7,10 @@ use crate::workspace::provider_base::{self, ProviderAssociation};
 use crate::workspace::review_provider::{
     OperationJournal, ProductionTransport, ProviderTransport, ReviewAssociation,
     ReviewOperationPlan, ReviewPlanItem, ReviewProvider, ReviewProviderInstance,
-    SynchronizationState, TransportRequest, UnifiedProviderLanding, UnifiedProviderVerification,
-    UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen, UnifiedReviewPlan,
-    UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus, UnifiedReviewUpload,
-    prepare_review_state,
+    ReviewProviderState, SynchronizationState, TransportRequest, UnifiedProviderLanding,
+    UnifiedProviderVerification, UnifiedReviewItem, UnifiedReviewMutation, UnifiedReviewOpen,
+    UnifiedReviewPlan, UnifiedReviewReconcile, UnifiedReviewShow, UnifiedReviewStatus,
+    UnifiedReviewUpload, handle_uncertain_mutation, prepare_review_state,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
@@ -782,23 +782,15 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
             force_with_lease: None,
             push_options: plan.push_options.clone(),
         };
-        let response = self.transport.execute(repo, &request);
-        let response = match response {
+        let response = match self.transport.execute(repo, &request) {
             Ok(response) => response,
             Err(error) => {
-                state.reconciliation_required = true;
-                for association in state
-                    .associations
-                    .iter_mut()
-                    .filter(|association| !association.retired)
-                {
-                    association.synchronization = SynchronizationState::UploadUnknown;
-                }
-                let journal = OperationJournal::for_repo(repo)?;
-                let entry = journal.record(
+                let (state, journal_operation_id) = handle_uncertain_mutation(
+                    repo,
                     "gerrit",
                     "upload",
-                    plan.expected_record_oid.clone(),
+                    plan,
+                    state,
                     request,
                     serde_json::json!({"error": error.to_string()}),
                 )?;
@@ -812,24 +804,17 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                     status: "upload-unknown".into(),
                     accepted: 0,
                     rejected: 0,
-                    journal_operation_id: Some(entry.operation_id),
+                    journal_operation_id,
                 });
             }
         };
         if response.uncertain {
-            state.reconciliation_required = true;
-            for association in state
-                .associations
-                .iter_mut()
-                .filter(|association| !association.retired)
-            {
-                association.synchronization = SynchronizationState::UploadUnknown;
-            }
-            let journal = OperationJournal::for_repo(repo)?;
-            let entry = journal.record(
+            let (state, journal_operation_id) = handle_uncertain_mutation(
+                repo,
                 "gerrit",
                 "upload",
-                plan.expected_record_oid.clone(),
+                plan,
+                state,
                 request,
                 response.observations,
             )?;
@@ -843,7 +828,7 @@ impl<T: ProviderTransport> GerritStateMachine<T> {
                 status: "upload-unknown".into(),
                 accepted: 0,
                 rejected: 0,
-                journal_operation_id: Some(entry.operation_id),
+                journal_operation_id,
             });
         }
         if !response.success {
@@ -1848,6 +1833,9 @@ impl ReviewAssociation for GerritReviewAssociation {
     fn update_local_oid(&mut self, oid: String) {
         self.local_commit_oid = oid;
     }
+    fn set_synchronization(&mut self, state: SynchronizationState) {
+        self.synchronization = state;
+    }
 }
 
 impl ReviewPlanItem for GerritPlanItem {
@@ -1863,6 +1851,22 @@ impl ReviewOperationPlan for GerritReviewOperationPlan {
     type Item = GerritPlanItem;
     fn items(&self) -> &[Self::Item] {
         &self.items
+    }
+    fn expected_record_oid(&self) -> Option<String> {
+        self.expected_record_oid.clone()
+    }
+}
+
+impl ReviewProviderState for GerritProviderState {
+    type Association = GerritReviewAssociation;
+    fn associations_mut(&mut self) -> &mut Vec<Self::Association> {
+        &mut self.associations
+    }
+    fn reconciliation_required(&self) -> bool {
+        self.reconciliation_required
+    }
+    fn set_reconciliation_required(&mut self, required: bool) {
+        self.reconciliation_required = required;
     }
 }
 

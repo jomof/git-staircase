@@ -1,7 +1,8 @@
 #[cfg(test)]
 mod tests {
     use crate::workspace::review_provider::{
-        ReviewAssociation, ReviewOperationPlan, ReviewPlanItem, prepare_review_state,
+        ReviewAssociation, ReviewOperationPlan, ReviewPlanItem, SynchronizationState,
+        prepare_review_state,
     };
     use serde::{Deserialize, Serialize};
 
@@ -10,6 +11,7 @@ mod tests {
         subject_id: String,
         local_oid: String,
         retired: bool,
+        synchronization: SynchronizationState,
     }
 
     impl ReviewAssociation for MockAssociation {
@@ -24,6 +26,9 @@ mod tests {
         }
         fn update_local_oid(&mut self, oid: String) {
             self.local_oid = oid;
+        }
+        fn set_synchronization(&mut self, state: SynchronizationState) {
+            self.synchronization = state;
         }
     }
 
@@ -51,6 +56,9 @@ mod tests {
         type Item = MockPlanItem;
         fn items(&self) -> &[Self::Item] {
             &self.items
+        }
+        fn expected_record_oid(&self) -> Option<String> {
+            None
         }
     }
 
@@ -80,6 +88,7 @@ mod tests {
                             subject_id: i.subject_id().into(),
                             local_oid: i.local_oid().into(),
                             retired: false,
+                            synchronization: SynchronizationState::NotCreated,
                         })
                         .collect(),
                 })
@@ -91,6 +100,7 @@ mod tests {
                     subject_id: i.subject_id().into(),
                     local_oid: i.local_oid().into(),
                     retired: false,
+                    synchronization: SynchronizationState::NotCreated,
                 })
             },
         )
@@ -109,11 +119,13 @@ mod tests {
                     subject_id: "s1".into(),
                     local_oid: "old_oid1".into(),
                     retired: false,
+                    synchronization: SynchronizationState::Current,
                 },
                 MockAssociation {
                     subject_id: "s2".into(),
                     local_oid: "oid2".into(),
                     retired: false,
+                    synchronization: SynchronizationState::Current,
                 },
             ],
         };
@@ -142,6 +154,7 @@ mod tests {
                     subject_id: i.subject_id().into(),
                     local_oid: i.local_oid().into(),
                     retired: false,
+                    synchronization: SynchronizationState::NotCreated,
                 })
             },
         )

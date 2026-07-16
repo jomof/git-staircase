@@ -532,6 +532,7 @@ pub trait ReviewAssociation: Serialize + for<'de> Deserialize<'de> + Clone + Sen
     fn is_retired(&self) -> bool;
     fn set_retired(&mut self, retired: bool);
     fn update_local_oid(&mut self, oid: String);
+    fn set_synchronization(&mut self, state: SynchronizationState);
 }
 
 pub trait ReviewPlanItem: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
@@ -542,6 +543,14 @@ pub trait ReviewPlanItem: Serialize + for<'de> Deserialize<'de> + Clone + Send +
 pub trait ReviewOperationPlan: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
     type Item: ReviewPlanItem;
     fn items(&self) -> &[Self::Item];
+    fn expected_record_oid(&self) -> Option<String>;
+}
+
+pub trait ReviewProviderState: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync {
+    type Association: ReviewAssociation;
+    fn associations_mut(&mut self) -> &mut Vec<Self::Association>;
+    fn reconciliation_required(&self) -> bool;
+    fn set_reconciliation_required(&mut self, required: bool);
 }
 
 pub fn prepare_review_state<S, P, A, I>(
@@ -587,4 +596,34 @@ where
     }
 
     Ok(state)
+}
+
+pub fn handle_uncertain_mutation<P, S>(
+    repo: &GitRepo,
+    provider: &str,
+    operation: &str,
+    plan: &P,
+    mut state: S,
+    request: TransportRequest,
+    observations: Value,
+) -> Result<(S, Option<String>)>
+where
+    P: ReviewOperationPlan,
+    S: ReviewProviderState,
+{
+    state.set_reconciliation_required(true);
+    for association in state.associations_mut().iter_mut() {
+        if !association.is_retired() {
+            association.set_synchronization(SynchronizationState::UploadUnknown);
+        }
+    }
+    let journal = OperationJournal::for_repo(repo)?;
+    let entry = journal.record(
+        provider,
+        operation,
+        plan.expected_record_oid(),
+        request,
+        observations,
+    )?;
+    Ok((state, Some(entry.operation_id)))
 }
