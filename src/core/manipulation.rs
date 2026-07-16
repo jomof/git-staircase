@@ -290,7 +290,12 @@ fn reorder_internal(
     }
 
     metadata.steps = new_steps;
-    super::resolved::validate_renumbering(repo, staircase.metadata(), &mut metadata, options.no_restack)?;
+    super::resolved::validate_renumbering(
+        repo,
+        staircase.metadata(),
+        &mut metadata,
+        options.no_restack,
+    )?;
     if options.no_restack {
         if dry_run {
             Ok(())
@@ -353,7 +358,12 @@ pub fn drop_with_dry_run(
 
     let mut desired = metadata.clone();
     desired.steps.remove(step_index);
-    super::resolved::validate_renumbering(repo, &metadata, &mut desired, !options.restack || options.leave_descendants_stale)?;
+    super::resolved::validate_renumbering(
+        repo,
+        &metadata,
+        &mut desired,
+        !options.restack || options.leave_descendants_stale,
+    )?;
     if !options.restack || options.leave_descendants_stale {
         return if dry_run {
             Ok(())

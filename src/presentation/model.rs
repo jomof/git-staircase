@@ -479,6 +479,70 @@ impl ToPresentation for ActiveOperationStatus {
         }
     }
 }
+impl ToPresentation for StaircaseRecord {
+    fn to_presentation(&self) -> Presentation {
+        let mut children = vec![
+            Presentation::Field {
+                label: "record revision".to_string(),
+                value: self.record_oid.clone(),
+            },
+            Presentation::Field {
+                label: "structure revision".to_string(),
+                value: self.structure_oid.clone(),
+            },
+            Presentation::Field {
+                label: "metadata revision".to_string(),
+                value: self.metadata_oid.clone(),
+            },
+            Presentation::Field {
+                label: "lifecycle revision".to_string(),
+                value: self.lifecycle_oid.clone(),
+            },
+        ];
+        if let Some(ref oid) = self.archive_manifest_oid {
+            children.push(Presentation::Field {
+                label: "archive manifest revision".to_string(),
+                value: oid.clone(),
+            });
+        }
+
+        let metadata_presentation = self.metadata.to_presentation();
+        match &metadata_presentation {
+            Presentation::Section {
+                children: meta_children,
+                ..
+            } => {
+                children.extend(meta_children.iter().cloned());
+            }
+            Presentation::List(items) => {
+                if let Some(Presentation::Human(h)) = items.first() {
+                    if let Presentation::Section {
+                        children: meta_children,
+                        ..
+                    } = &**h
+                    {
+                        children.extend(meta_children.iter().cloned());
+                    }
+                }
+            }
+            _ => {}
+        }
+        Presentation::pair(
+            Presentation::Section {
+                title: format!("Record {}", self.record_oid),
+                children,
+            },
+            Presentation::Record(vec![
+                self.record_oid.clone(),
+                self.structure_oid.clone(),
+                self.metadata_oid.clone(),
+                self.lifecycle_oid.clone(),
+            ]),
+        )
+    }
+}
+
+impl UsePresentation for StaircaseRecord {}
 
 impl UsePresentation for Step {}
 impl UsePresentation for StaircaseMetadata {}

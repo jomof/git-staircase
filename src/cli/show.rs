@@ -1,5 +1,6 @@
 use super::{PresentationOutput, StaircaseSelectorArgs};
 use crate::GitRepo;
+use crate::core::{persistence, refs::StaircaseRefs};
 use anyhow::Result;
 
 #[derive(clap::Args, Clone, Debug)]
@@ -63,6 +64,12 @@ impl super::Command for Show {
         }
 
         let rs = self.staircase.resolve(repo)?;
-        Ok(Box::new(rs.metadata().clone()))
+        if rs.is_managed() {
+            let reference = StaircaseRefs::state_record(&rs.metadata().id);
+            let record = persistence::read_record(repo, &reference)?;
+            Ok(Box::new(record))
+        } else {
+            Ok(Box::new(rs.metadata().clone()))
+        }
     }
 }
