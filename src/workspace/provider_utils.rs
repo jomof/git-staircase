@@ -25,6 +25,10 @@ pub fn parse_git_url(url: &str) -> Option<GitUrlInfo> {
                 .split(':')
                 .next()?;
 
+            if host.is_empty() {
+                return None;
+            }
+
             let mut owner = None;
             let mut repository = None;
 

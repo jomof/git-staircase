@@ -84,10 +84,16 @@ pub fn resolve_gerrit_route(
         .strip_prefix("refs/heads/")
         .unwrap_or(&destination);
     let upload_ref = format!("refs/for/{}", branch);
+    let final_server_id = extract_host_from_git_url(&server)
+        .unwrap_or(server)
+        .to_ascii_lowercase();
+
+    if final_server_id.is_empty() || final_server_id.contains("://") || final_server_id.contains('@') {
+        return Err(StaircaseError::Other(format!("gerrit.route-malformed: invalid server id '{}'", final_server_id)));
+    }
+
     Ok(GerritRoute {
-        server_id: extract_host_from_git_url(&server)
-            .unwrap_or(server)
-            .to_ascii_lowercase(),
+        server_id: final_server_id,
         project: project.trim_matches('/').into(),
         destination_branch: destination,
         upload_ref,
