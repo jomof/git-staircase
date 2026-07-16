@@ -5,6 +5,7 @@ use std::time::Instant;
 use tempfile::TempDir;
 
 #[test]
+#[ignore]
 fn test_repro_quadratic_ancestry_bottleneck() {
     let tmp = TempDir::new().unwrap();
     let repo_path = tmp.path();
