@@ -79,6 +79,12 @@ pub fn get_test_binary_path() -> std::path::PathBuf {
             return bin;
         }
     }
+    if let Ok(cwd) = std::env::current_dir() {
+        let bin = cwd.join("target").join("debug").join("git-staircase");
+        if bin.exists() {
+            return bin;
+        }
+    }
     panic!("Could not find git-staircase binary");
 }
 
