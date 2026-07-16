@@ -29,6 +29,7 @@ pub mod normalize;
 pub mod operation;
 pub mod policy;
 pub mod provider;
+pub mod publish;
 pub mod rebase;
 pub mod reorder;
 pub mod restack;

@@ -138,6 +138,8 @@ enum Commands {
     Describe(cli::describe::Describe),
     /// User-facing metadata management
     Metadata(cli::metadata::MetadataCmd),
+    /// Adopt and upload a staircase to the review provider
+    Publish(cli::publish::Publish),
     /// Manage persistent typed policy
     Policy(cli::policy::PolicyCmd),
     /// Inspect or repair primary branch layout
@@ -196,8 +198,8 @@ macro_rules! impl_command_dispatch {
 impl_command_dispatch!(
     Workspace, Provider, Land, Append, Reorder, Move, Drop, Discover, Discovery, Adopt, List, Show,
     Status, Split, Join, Rebase, Restack, Verify, Id, Delete, Log, Diff, Graph, Steps, Review,
-    Commits, Draft, Describe, Metadata, Policy, Layout, Normalize, Continue, Abort, Operation,
-    Name, Rename, Unname, Tag, RevParse, Push, Fetch, Archive, Unarchive
+    Commits, Draft, Describe, Metadata, Publish, Policy, Layout, Normalize, Continue, Abort,
+    Operation, Name, Rename, Unname, Tag, RevParse, Push, Fetch, Archive, Unarchive
 );
 
 fn find_repo_root() -> Result<PathBuf> {

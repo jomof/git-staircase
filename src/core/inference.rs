@@ -11,6 +11,10 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
         if let Some(proj_id) = ws.current_project_id {
             if let Ok(Some(oid)) = repo.resolve_commit_opt(&proj_id) {
                 inferred = Some(oid);
+            } else if let Some(rev) = ws.discovery_fingerprint.get("revision") {
+                if let Ok(Some(oid)) = repo.resolve_commit_opt(rev) {
+                    inferred = Some(oid);
+                }
             }
         }
     }
@@ -48,6 +52,7 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
     // 4. Unique compatible remote-default evidence or common branch names
     if inferred.is_none() {
         for common in &[
+            "refs/remotes/m/main",
             "refs/remotes/origin/main",
             "refs/remotes/origin/master",
             "main",

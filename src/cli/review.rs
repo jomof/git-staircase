@@ -229,7 +229,7 @@ impl ReviewCmd {
     }
 }
 
-fn managed_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
+pub fn managed_record(repo: &GitRepo, selector: &ResolvedSelector) -> Result<StaircaseRecord> {
     let reference = format!("refs/staircase-state/{}/record", selector.metadata().id);
     Ok(read_record(repo, &reference)?)
 }
