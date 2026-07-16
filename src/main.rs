@@ -57,28 +57,24 @@ impl Cli {
     }
 }
 
-#[derive(Parser)]
-#[command(ignore_errors = true)]
-struct PreCli {
-    #[arg(long)]
-    json: bool,
-
-    #[arg(long)]
-    porcelain: bool,
-
-    #[arg(long)]
-    format: Option<String>,
-}
-
-impl PreCli {
-    fn output_format(&self) -> cli::OutputFormat {
-        if self.json || self.format.as_deref() == Some("json") {
-            cli::OutputFormat::Json
-        } else if self.porcelain || self.format.as_deref() == Some("porcelain") {
-            cli::OutputFormat::Porcelain
-        } else {
-            cli::OutputFormat::Human
-        }
+fn requested_error_format() -> cli::OutputFormat {
+    let args: Vec<String> = std::env::args().collect();
+    if args.iter().any(|arg| arg == "--json")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "json")
+        || args.iter().any(|arg| arg == "--format=json")
+    {
+        cli::OutputFormat::Json
+    } else if args.iter().any(|arg| arg == "--porcelain")
+        || args
+            .windows(2)
+            .any(|pair| pair[0] == "--format" && pair[1] == "porcelain")
+        || args.iter().any(|arg| arg == "--format=porcelain")
+    {
+        cli::OutputFormat::Porcelain
+    } else {
+        cli::OutputFormat::Human
     }
 }
 
@@ -348,12 +344,7 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
 }
 
 fn main() {
-    let pre_cli = PreCli::try_parse().unwrap_or_else(|_| PreCli {
-        json: false,
-        porcelain: false,
-        format: None,
-    });
-    let format = pre_cli.output_format();
+    let format = requested_error_format();
 
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
