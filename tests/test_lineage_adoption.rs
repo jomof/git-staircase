@@ -31,7 +31,7 @@ fn test_lineage_id_adoption() {
     // Porcelain output format: name \t id \t state
     let id_line = status.lines().next().unwrap();
     let parts: Vec<&str> = id_line.split('\t').collect();
-    let implicit_id = parts[1];
+    let implicit_id = parts[3].trim_matches('"');
     assert!(
         implicit_id.starts_with("implicit@"),
         "Expected implicit ID, got {}",

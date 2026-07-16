@@ -30,6 +30,8 @@ fn test_step_presentation() {
                     assert_eq!(
                         inner.as_ref(),
                         &Presentation::Record(vec![
+                            "step".to_string(),
+                            "1".to_string(),
                             "step1".to_string(),
                             "First Step".to_string(),
                             "abcdef1234567890".to_string(),
