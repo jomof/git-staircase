@@ -92,7 +92,14 @@ impl<'a> Restacker<'a> {
                             )));
                         }
 
-                        if !merge_output.status.success() && merge_output.status.code() != Some(1) {
+                        if merge_output.status.code() == Some(1) {
+                            return Err(StaircaseError::Other(format!(
+                                "Merge conflict detected during restack of commit {}",
+                                c
+                            )));
+                        }
+
+                        if !merge_output.status.success() {
                             return Err(StaircaseError::Other(format!(
                                 "merge-tree failed with unexpected status: {:?}. Stderr: {}",
                                 merge_output.status.code(),

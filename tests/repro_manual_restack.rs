@@ -41,22 +41,10 @@ fn test_manual_restack_silently_creates_conflict_markers() {
         all_tracked: true,
         ..Default::default()
     };
-    let result = materialize_draft(&ctx.repo, Some("my-staircase"), None, &options).unwrap();
+    let result = materialize_draft(&ctx.repo, Some("my-staircase"), None, &options);
     
-    // ASSERT: Step 2 should have been updated.
-    assert_eq!(result.updated_steps_count, 2);
-    
-    // Check the content of the new Step 2
-    let updated_rs = resolve_staircase(&ctx.repo, "my-staircase", None).unwrap().unwrap();
-    let step2_new_oid = &updated_rs.metadata().steps[1].cut;
-    
-    // Get the OID of file.txt in the new commit
-    let ls_tree = ctx.repo.run(&["ls-tree", step2_new_oid, "file.txt"]).unwrap();
-    let sha = ls_tree.split_whitespace().nth(2).unwrap();
-    let content = ctx.repo.cat_file(sha).unwrap();
-    
-    println!("File content in New Step 2:\n{}", content);
-    
-    // If the bug exists, the content will contain conflict markers
-    assert!(content.contains("<<<<<<<"), "Content should contain conflict markers but it doesn't. Bug not reproduced?");
+    // ASSERT: Should return an error because it's a conflict
+    assert!(result.is_err(), "materialize_draft should fail on conflict");
+    let err_msg = format!("{:?}", result.err().unwrap());
+    assert!(err_msg.contains("Merge conflict detected"), "Expected merge conflict error, got: {}", err_msg);
 }
