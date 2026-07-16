@@ -91,7 +91,7 @@ impl ToPresentation for LayoutState {
                         ("base", self.base.clone().unwrap_or("none".into())),
                         ("state", self.state.clone()),
                     ]);
-                    children.push(Presentation::table(Some("branches"), branches));
+                    children.push(Presentation::table(Some("branches".to_string()), branches));
                     children
                 },
             ),

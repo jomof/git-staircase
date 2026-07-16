@@ -314,7 +314,7 @@ pub fn resolve_explicit_staircase(
     } else {
         (None, None)
     };
-    Ok(ResolvedStaircase::Implicit(StaircaseMetadata {
+    let metadata = StaircaseMetadata {
         landing_policy: None,
         id,
         name: steps
@@ -328,7 +328,9 @@ pub fn resolve_explicit_staircase(
         branch_layout_base: layout_base,
         user_metadata: None,
         lifecycle: None,
-    }))
+    };
+    super::resolved::validate_structure(repo, &metadata, true)?;
+    Ok(ResolvedStaircase::Implicit(metadata))
 }
 
 pub fn resolve_by_id(repo: &GitRepo, id: &str) -> Result<ResolvedStaircase> {

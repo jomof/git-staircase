@@ -290,6 +290,7 @@ fn reorder_internal(
     }
 
     metadata.steps = new_steps;
+    super::resolved::validate_structure(repo, &metadata, false)?;
     super::resolved::validate_renumbering(repo, staircase.metadata(), &mut metadata)?;
     if options.no_restack {
         if dry_run {
@@ -635,6 +636,7 @@ pub fn rebase_with_dry_run(
     metadata.target = repo
         .resolve_symbolic_full_name(onto)
         .unwrap_or_else(|_| onto.to_string());
+    super::resolved::validate_structure(repo, &metadata, false)?;
     let groups = if options.leave_upper_steps_stale {
         groups.into_iter().take(1).collect()
     } else {

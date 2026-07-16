@@ -448,6 +448,7 @@ pub fn publish_metadata(
     kind: &str,
     dry_run: bool,
 ) -> Result<LocalMutationResult> {
+    crate::core::resolved::validate_structure(repo, &metadata, false)?;
     if selector.is_managed() {
         let old = current_record(repo, selector)?;
         publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
