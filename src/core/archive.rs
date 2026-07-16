@@ -112,8 +112,9 @@ pub fn archive_staircase(
         });
     }
 
+    let mut worktree_detach_plan = Vec::new();
     for worktree in repo.worktrees()? {
-        let Some(branch) = worktree.branch else {
+        let Some(branch) = worktree.branch.clone() else {
             continue;
         };
         if !owned_branches.contains(&branch) {
@@ -139,9 +140,6 @@ pub fn archive_staircase(
                 branch
             )));
         }
-        if options.snapshot_drafts && !options.dry_run {
-            crate::core::draft::create_snapshot(&worktree_repo, Some("archive"))?;
-        }
         let step_cut = meta
             .steps
             .iter()
@@ -157,8 +155,18 @@ pub fn archive_staircase(
                     branch
                 ))
             })?;
+        worktree_detach_plan.push((worktree, step_cut));
+    }
+
+    let mut detached_worktrees = Vec::new();
+    for (worktree, step_cut) in &worktree_detach_plan {
         if !options.dry_run {
-            worktree_repo.run(&["checkout", "--detach", &step_cut])?;
+            let worktree_repo = GitRepo::new(worktree.path.clone());
+            if options.snapshot_drafts {
+                crate::core::draft::create_snapshot(&worktree_repo, Some("archive"))?;
+            }
+            worktree_repo.run(&["checkout", "--detach", step_cut])?;
+            detached_worktrees.push(worktree.clone());
         }
     }
 
@@ -346,7 +354,18 @@ pub fn archive_staircase(
             );
         }
     }
-    plan.publish(repo, false)?;
+    if let Err(e) = plan.publish(repo, false) {
+        for worktree in detached_worktrees {
+            let worktree_repo = GitRepo::new(worktree.path.clone());
+            if let Some(branch_ref) = worktree.branch {
+                let branch_name = branch_ref
+                    .strip_prefix("refs/heads/")
+                    .unwrap_or(&branch_ref);
+                let _ = worktree_repo.run(&["checkout", branch_name]);
+            }
+        }
+        return Err(e);
+    }
 
     for full_ref in &owned_branches {
         let b_name = full_ref.strip_prefix("refs/heads/").unwrap_or(full_ref);
