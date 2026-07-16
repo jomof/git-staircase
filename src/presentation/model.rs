@@ -100,14 +100,30 @@ impl ToPresentation for StaircaseMetadata {
             children: steps_children,
         });
 
+        let mut p_children = vec![
+            Presentation::Record(vec!["name".to_string(), self.name.clone()]),
+            Presentation::Record(vec!["id".to_string(), self.id.clone()]),
+            Presentation::Record(vec!["target".to_string(), self.target.clone()]),
+        ];
+        for (i, step) in self.steps.iter().enumerate() {
+            p_children.push(Presentation::Record(vec![
+                "step".to_string(),
+                (i + 1).to_string(),
+                step.name.clone(),
+                step.cut.clone(),
+                step.id.clone(),
+                step.branch.clone().unwrap_or_default(),
+            ]));
+        }
+
         Presentation::pair(
             Presentation::Section {
                 title: String::new(),
                 children: h_children,
             },
-            Presentation::Record(vec![self.name.clone(), self.id.clone()]),
+            Presentation::List(p_children),
         )
-    }
+}
 }
 
 impl ToPresentation for StaircaseStatus {

@@ -1,0 +1,39 @@
+--- metadata.rs
++++ metadata.rs
+@@ -151,14 +151,33 @@
+             h_children.push(Presentation::Section {
+                 title: "Links:".to_string(),
+                 children: links_children,
+             });
+         }
+ 
++        let mut p_children = vec![
++            Presentation::Record(vec!["name".to_string(), self.name.clone()]),
++        ];
++        if let Some(ref title) = self.metadata.title {
++            p_children.push(Presentation::Record(vec!["title".to_string(), title.clone()]));
++        }
++        if let Some(ref desc) = self.metadata.description {
++            p_children.push(Presentation::Record(vec!["description".to_string(), desc.clone()]));
++        }
++        for label in &self.metadata.labels {
++            p_children.push(Presentation::Record(vec!["label".to_string(), label.clone()]));
++        }
++        for link in &self.metadata.links {
++            p_children.push(Presentation::Record(vec![
++                "link".to_string(),
++                link.relationship.clone(),
++                link.url.clone(),
++                link.label.clone().unwrap_or_default(),
++            ]));
++        }
++
+         Presentation::List(vec![
+             Presentation::Human(Box::new(Presentation::Section {
+                 title: format!("Staircase: {}", self.name),
+                 children: h_children,
+             })),
+-            Presentation::Porcelain(Box::new(Presentation::Plain(
+-                serde_json::to_string_pretty(&self.metadata).unwrap_or_default(),
+-            ))),
++            Presentation::Porcelain(Box::new(Presentation::List(p_children))),
