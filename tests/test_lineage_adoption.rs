@@ -38,23 +38,36 @@ fn test_lineage_id_adoption() {
         implicit_id
     );
 
-    // ACT: Run git staircase id --kind=lineage to trigger adoption
+    // ACT: Run git staircase id --kind=lineage. It should NOT trigger adoption.
     let (success, lineage_id, stderr) = run_staircase(
         repo_path,
         &["id", "feature/ui", "--kind=lineage", "--porcelain"],
     );
     assert!(success, "id failed: {}", stderr);
 
-    // ASSERT: Verify the returned ID is a UUID (not implicit@...)
-    assert!(
-        !lineage_id.starts_with("implicit@"),
-        "Expected UUID, still got implicit ID: {}",
+    // ASSERT: Verify the returned ID is still the implicit ID
+    assert_eq!(
+        lineage_id, implicit_id,
+        "Expected implicit ID to be returned, got {}",
         lineage_id
     );
-    // Basic UUID check: 8-4-4-4-12 hex chars
+
+    // ACT: Explicitly adopt to get a stable UUID
+    let (success, _, stderr) = run_staircase(
+        repo_path,
+        &["adopt", "feature", "feature/core", "feature/ui", "--onto", "main"],
+    );
+    assert!(success, "adopt failed: {}", stderr);
+
+    // Get the new stable lineage ID
+    let (success, lineage_id, stderr) = run_staircase(
+        repo_path,
+        &["id", "feature", "--kind=lineage", "--porcelain"],
+    );
+    assert!(success, "id failed: {}", stderr);
     assert!(
-        uuid::Uuid::parse_str(&lineage_id).is_ok(),
-        "Returned ID is not a valid UUID: {}",
+        !lineage_id.starts_with("implicit@"),
+        "Expected UUID after adopt, got {}",
         lineage_id
     );
 

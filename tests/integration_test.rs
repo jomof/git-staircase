@@ -377,7 +377,7 @@ fn test_split_implicit_staircase() {
 }
 
 #[test]
-fn test_id_lineage_auto_adopt() {
+fn test_id_lineage_remains_implicit() {
     // ARRANGE
     let ctx = TestContext::new();
 
@@ -400,9 +400,12 @@ fn test_id_lineage_auto_adopt() {
 
     // ASSERT
     assert!(!id.is_empty());
+    assert!(id.starts_with("implicit@"));
 
-    let rs_after = core::resolve_by_id(&ctx.repo, &id).expect("Should find staircase");
-    assert!(rs_after.is_managed());
+    let rs_after = core::resolve_staircase(&ctx.repo, &id, None)
+        .unwrap()
+        .expect("Should find staircase");
+    assert!(!rs_after.is_managed());
     assert_eq!(rs_after.metadata().id, id);
 }
 
