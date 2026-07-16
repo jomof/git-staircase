@@ -227,7 +227,8 @@ fn journey_4_cross_worktree_materialization_preserves_partial_staging() {
     context.run_git(&["checkout", "feature"]);
 
     // Setup another worktree 'wt2'
-    let wt2_path = root.parent().unwrap().join("wt2");
+    let wt2_temp = tempfile::TempDir::new().unwrap();
+    let wt2_path = wt2_temp.path().join("wt2");
     context.run_git(&["worktree", "add", &wt2_path.to_string_lossy(), "feature-1"]);
 
     // In the main worktree, we are on 'feature' (Step 3).

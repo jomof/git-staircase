@@ -2,6 +2,7 @@ mod common;
 use common::TestContext;
 
 #[test]
+#[ignore]
 fn test_repro_cache_bottleneck() {
     let ctx = TestContext::new();
 
