@@ -90,6 +90,8 @@ pub enum StaircaseError {
     ExternalOperation { operation: String, owner: String },
     #[error("Invalid staircase structure: {0}")]
     InvalidStructure(String),
+    #[error("adoption required but forbidden by --no-adopt")]
+    AdoptionRequired,
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -97,6 +99,7 @@ pub enum StaircaseError {
 impl StaircaseError {
     pub const fn code(&self) -> &'static str {
         match self {
+            Self::AdoptionRequired => "adoption-required",
             Self::NotFound(_) => "selector-not-found",
             Self::Ambiguous(_) | Self::SelectorAmbiguous { .. } => "selector-ambiguous",
             Self::ConcurrentRecordUpdate { .. } => "concurrent-record-update",
@@ -126,7 +129,9 @@ impl StaircaseError {
             | Self::ExternalOperation { .. } => ExitClass::OperationConflict,
             Self::RefCollision { .. } => ExitClass::ConcurrentState,
             Self::UnsupportedTopology { .. } => ExitClass::Policy,
-            Self::InvalidStructure(_) | Self::Other(_) => ExitClass::Usage,
+            Self::InvalidStructure(_) | Self::Other(_) | Self::AdoptionRequired => {
+                ExitClass::Usage
+            }
             Self::GitCommandFailed { .. } | Self::Io(_) | Self::Serialization(_) => {
                 ExitClass::Integrity
             }
@@ -188,6 +193,10 @@ impl StaircaseError {
                 "command": command,
                 "stdout": stdout,
                 "stderr": stderr,
+            }),
+            Self::AdoptionRequired => serde_json::json!({
+                "adopted": false,
+                "no_adopt": true,
             }),
             _ => serde_json::Value::Null,
         }

@@ -223,3 +223,43 @@ fn persistent_metadata_always_adopts() {
         "Adoption should create managed records in refs/staircase-state/"
     );
 }
+
+#[test]
+fn no_adopt_fails_before_mutation_and_reports_reason() {
+    // ARRANGE: Create a repository with an implicit staircase (e.g., a local branch ahead of its anchor).
+    let ctx = TestContext::new();
+    ctx.run_git(&["checkout", "-b", "feature"]);
+    ctx.commit("feature.txt", "feature content", "feature commit");
+
+    // Verify it is discovered as implicit initially.
+    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
+    assert!(success);
+    assert!(
+        stdout.contains("\"is_implicit\": true"),
+        "Initially should be implicit"
+    );
+
+    // ACT: Attempt to set metadata (e.g., `git staircase metadata set-title feature "My Title"`) with the `--no-adopt` flag.
+    let (set_ok, _stdout_set, stderr_set) =
+        ctx.run_staircase(&["--no-adopt", "metadata", "set-title", "feature", "My Title"]);
+
+    // ASSERT: Verify the command fails with a non-zero exit code and a message indicating adoption was required but forbidden.
+    assert!(!set_ok, "Command should have failed with --no-adopt");
+    assert!(
+        stderr_set.contains("adoption required") || stderr_set.contains("forbidden"),
+        "Error message should mention adoption requirement/forbidden. Stderr: {}",
+        stderr_set
+    );
+
+    // Verify that no managed refs (in `refs/staircase-state/`) were created.
+    let refs = ctx.run_git(&[
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/staircase-state/",
+    ]);
+    assert!(
+        refs.is_empty(),
+        "No managed refs should be created, but found: {}",
+        refs
+    );
+}

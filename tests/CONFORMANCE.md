@@ -45,7 +45,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * Review association — `[planned] tests/conformance_adoption.rs::review_association_adopts_only_when_retained`
 * Partial landing — `[planned] tests/conformance_adoption.rs::partial_landing_adopts_only_for_continuity`
 * Delete implicit materializing refs — `[planned] tests/conformance_adoption.rs::explicit_implicit_ref_deletion_does_not_adopt`
-* Appendix-wide `--no-adopt` and structured adoption event — `[planned] tests/conformance_adoption.rs::no_adopt_fails_before_mutation_and_reports_reason`
+* Appendix-wide `--no-adopt` and structured adoption event — `[existing] tests/conformance_adoption.rs::no_adopt_fails_before_mutation_and_reports_reason`
 
 ## Core specification Appendix C
 

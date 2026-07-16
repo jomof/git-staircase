@@ -160,6 +160,9 @@ pub fn is_clean(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<bool> {
 }
 
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
+    if repo.no_adopt {
+        return Err(StaircaseError::AdoptionRequired.into());
+    }
     let target = match repo.resolve_symbolic_full_name(&staircase.target) {
         Ok(t) => t,
         Err(_) => repo.resolve_commit(&staircase.target)?,
