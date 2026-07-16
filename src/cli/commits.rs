@@ -1,7 +1,4 @@
-use super::{
-    CommitInfo, PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseCommits,
-    StaircaseSelectorArgs, StepCommits,
-};
+use super::{CommitInfo, PresentationOutput, StaircaseCommits, StaircaseSelectorArgs, StepCommits};
 use crate::GitRepo;
 use anyhow::Result;
 
@@ -13,20 +10,7 @@ pub struct Commits {
 
 impl super::Command for Commits {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        super::run_staircase(self, repo)
-    }
-}
-
-impl StaircaseCommand for Commits {
-    fn selector(&self) -> &StaircaseSelectorArgs {
-        &self.staircase
-    }
-
-    fn run_resolved(
-        &self,
-        repo: &GitRepo,
-        rs: &ResolvedSelector,
-    ) -> Result<Box<dyn PresentationOutput>> {
+        let rs = self.staircase.resolve(repo)?;
         let target_oid = repo.resolve_commit(&rs.metadata().target)?;
         let mut current_base = target_oid;
         let mut steps = Vec::new();

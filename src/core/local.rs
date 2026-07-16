@@ -1,7 +1,7 @@
 use crate::core::operation::MutationPlan;
 use crate::core::persistence;
 use crate::core::refs::StaircaseRefs;
-use crate::core::resolved::{ResolvedSelector, ResolvedStaircase, adopt};
+use crate::core::resolved::{ResolvedSelector, adopt};
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{
@@ -57,7 +57,6 @@ pub fn append(
     revision_range: &str,
     new_step: bool,
     branch: Option<&str>,
-    title: Option<&str>,
     dry_run: bool,
 ) -> Result<LocalMutationResult> {
     let mut metadata = selector.metadata().clone();
@@ -82,7 +81,7 @@ pub fn append(
         metadata.steps.push(Step {
             id: Uuid::new_v4().to_string(),
             name: branch.to_string(),
-            cut: new_top.clone(),
+            cut: new_top,
             branch: Some(branch.to_string()),
         });
     } else {
@@ -91,51 +90,11 @@ pub fn append(
                 "--branch is valid only with --new-step".into(),
             ));
         }
-        metadata.steps.last_mut().expect("top was checked").cut = new_top.clone();
+        metadata.steps.last_mut().expect("top was checked").cut = new_top;
     }
 
-    if title.is_some() || selector.is_managed() {
-        let (managed_selector, mut managed_metadata) = if !selector.is_managed() {
-            let adopted = adopt(repo, selector.metadata())?;
-            (
-                ResolvedSelector {
-                    staircase: ResolvedStaircase::Managed(adopted.clone()),
-                    step_index: selector.step_index,
-                },
-                adopted,
-            )
-        } else {
-            (selector.clone(), selector.metadata().clone())
-        };
-
-        if new_step {
-            let branch = branch.expect("--new-step requires --branch");
-            managed_metadata.steps.push(Step {
-                id: Uuid::new_v4().to_string(),
-                name: branch.to_string(),
-                cut: new_top.clone(),
-                branch: Some(branch.to_string()),
-            });
-        } else {
-            managed_metadata
-                .steps
-                .last_mut()
-                .expect("top was checked")
-                .cut = new_top.clone();
-        }
-
-        let mut user_metadata = current_record(repo, &managed_selector)?.user_metadata;
-        if let Some(t) = title {
-            user_metadata.title = Some(t.to_string());
-        }
-        publish_record_parts(
-            repo,
-            &managed_selector,
-            managed_metadata,
-            user_metadata,
-            "append",
-            dry_run,
-        )
+    if selector.is_managed() {
+        publish_metadata(repo, selector, metadata, "append", dry_run)
     } else {
         let mut refs = Vec::new();
         let tip = metadata.steps.last().expect("nonempty");
@@ -489,27 +448,8 @@ pub fn publish_metadata(
     kind: &str,
     dry_run: bool,
 ) -> Result<LocalMutationResult> {
-    if selector.is_managed() {
-        let old = current_record(repo, selector)?;
-        publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
-    } else {
-        let mut plan = MutationPlan::new(kind, None);
-        let overridden_refs = BTreeSet::new();
-        add_branch_permutation(
-            repo,
-            selector.metadata(),
-            &metadata,
-            &mut plan,
-            &overridden_refs,
-        )?;
-        let changed_refs = plan
-            .refs
-            .iter()
-            .map(|edit| edit.reference.clone())
-            .collect();
-        plan.publish(repo, dry_run)?;
-        Ok(result(kind, &metadata, None, dry_run, changed_refs))
-    }
+    let old = current_record(repo, selector)?;
+    publish_record_parts(repo, selector, metadata, old.user_metadata, kind, dry_run)
 }
 
 fn publish_record_parts(

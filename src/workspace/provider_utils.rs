@@ -18,16 +18,12 @@ pub fn parse_git_url(url: &str) -> Option<GitUrlInfo> {
                 None => (stripped, None),
             };
 
-            let user_host = host_part.split('@').last().unwrap_or(host_part);
-            let host = if user_host.starts_with('[') {
-                if let Some(end) = user_host.find(']') {
-                    &user_host[..=end]
-                } else {
-                    user_host.split(':').next()?
-                }
-            } else {
-                user_host.split(':').next()?
-            };
+            let host = host_part
+                .split('@')
+                .last()
+                .unwrap_or(host_part)
+                .split(':')
+                .next()?;
 
             let mut owner = None;
             let mut repository = None;

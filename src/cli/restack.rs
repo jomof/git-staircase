@@ -1,6 +1,4 @@
-use super::{
-    PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs, Success,
-};
+use super::{PresentationOutput, StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 use anyhow::Result;
@@ -17,20 +15,7 @@ pub struct Restack {
 
 impl super::Command for Restack {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        super::run_staircase(self, repo)
-    }
-}
-
-impl StaircaseCommand for Restack {
-    fn selector(&self) -> &StaircaseSelectorArgs {
-        &self.staircase
-    }
-
-    fn run_resolved(
-        &self,
-        repo: &GitRepo,
-        rs: &ResolvedSelector,
-    ) -> Result<Box<dyn PresentationOutput>> {
+        let rs = self.staircase.resolve(repo)?;
         if let Some(from) = &self.from {
             let token = from.rsplit_once(':').map(|(_, step)| step).unwrap_or(from);
             let index = token
@@ -44,17 +29,17 @@ impl StaircaseCommand for Restack {
                         .position(|step| step.id == token || step.name == token)
                 })
                 .ok_or_else(|| crate::StaircaseError::NotFound(from.clone()))?;
-            core::restack_from(repo, rs, index, self.dry_run)?;
+            core::restack_from(repo, &rs, index, self.dry_run)?;
         } else if !self.dry_run {
             core::restack(
                 repo,
-                rs,
+                &rs,
                 core::RebaseOptions {
                     leave_upper_steps_stale: false,
                 },
             )?;
         } else {
-            core::restack_from(repo, rs, 0, true)?;
+            core::restack_from(repo, &rs, 0, true)?;
         }
         Ok(Box::new(Success::new(format!(
             "Restacked staircase '{}'",

@@ -1,6 +1,4 @@
-use super::{
-    PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs, Success,
-};
+use super::{PresentationOutput, StaircaseSelectorArgs, Success};
 use crate::GitRepo;
 use crate::core;
 use anyhow::Result;
@@ -17,20 +15,7 @@ pub struct Rebase {
 
 impl super::Command for Rebase {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        super::run_staircase(self, repo)
-    }
-}
-
-impl StaircaseCommand for Rebase {
-    fn selector(&self) -> &StaircaseSelectorArgs {
-        &self.staircase
-    }
-
-    fn run_resolved(
-        &self,
-        repo: &GitRepo,
-        rs: &ResolvedSelector,
-    ) -> Result<Box<dyn PresentationOutput>> {
+        let rs = self.staircase.resolve(repo)?;
         let target = self
             .staircase
             .base
@@ -40,7 +25,7 @@ impl StaircaseCommand for Rebase {
         repo.resolve_commit(target)?;
         core::rebase_with_dry_run(
             repo,
-            rs,
+            &rs,
             target,
             core::RebaseOptions {
                 leave_upper_steps_stale: self.leave_upper_steps_stale,

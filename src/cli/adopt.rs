@@ -24,77 +24,55 @@ pub struct Adopt {
 
 impl super::Command for Adopt {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let mut staircase = if self.branches.is_empty() {
-            match core::resolve_staircase(repo, &self.name, self.onto.as_deref())? {
-                Some(selector) => match selector.staircase {
-                    core::ResolvedStaircase::Implicit(m) => m,
-                    core::ResolvedStaircase::Managed(_) => {
-                        return Err(anyhow!("Staircase '{}' is already adopted", self.name));
-                    }
-                    _ => {
-                        return Err(anyhow!(
-                            "'{}' is not a valid implicit staircase to adopt",
-                            self.name
-                        ));
-                    }
-                },
-                None => {
-                    return Err(anyhow!(
-                        "At least one branch must be specified to adopt, or '{}' must be an implicit staircase",
-                        self.name
-                    ));
-                }
-            }
-        } else {
-            let mut steps = Vec::new();
-            for b in &self.branches {
-                let full_ref = if b.starts_with("refs/heads/") {
-                    b.clone()
-                } else {
-                    format!("refs/heads/{}", b)
-                };
-                let oid = repo
-                    .resolve_commit(&full_ref)
-                    .with_context(|| format!("Failed to resolve branch '{}'", b))?;
-                let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
-                steps.push(Step {
-                    id: String::new(),
-                    name: short_name.clone(),
-                    cut: oid,
-                    branch: Some(short_name),
-                });
-            }
-            let target = match &self.onto {
-                Some(o) => o.clone(),
-                None => core::infer_onto(repo)?,
+        if self.branches.is_empty() {
+            return Err(anyhow!("At least one branch must be specified to adopt"));
+        }
+        let mut steps = Vec::new();
+        for b in &self.branches {
+            let full_ref = if b.starts_with("refs/heads/") {
+                b.clone()
+            } else {
+                format!("refs/heads/{}", b)
             };
-            StaircaseMetadata {
-                landing_policy: self.landing_policy,
-                id: Uuid::new_v4().to_string(),
-                name: self.name.clone(),
-                target,
-                steps,
-                verification_policy: None,
-                primary_branch_layout: None,
-                branch_layout_base: None,
-                user_metadata: None,
-                lifecycle: None,
-            }
-        };
+            let oid = repo
+                .resolve_commit(&full_ref)
+                .with_context(|| format!("Failed to resolve branch '{}'", b))?;
+            let short_name = b.strip_prefix("refs/heads/").unwrap_or(&b).to_string();
+            steps.push(Step {
+                id: String::new(),
+                name: short_name.clone(),
+                cut: oid,
+                branch: Some(short_name),
+            });
+        }
 
-        if let Some(onto) = &self.onto {
-            staircase.target = onto.clone();
-        }
-        if let Some(landing_policy) = self.landing_policy {
-            staircase.landing_policy = Some(landing_policy);
-        }
-        if self.build_command.is_some() || self.test_command.is_some() {
-            staircase.verification_policy = Some(VerificationPolicy {
+        let verification_policy = if self.build_command.is_some() || self.test_command.is_some() {
+            Some(VerificationPolicy {
                 build_command: self.build_command.clone(),
                 test_command: self.test_command.clone(),
                 verify_each_prefix: self.verify_each_prefix,
-            });
-        }
+            })
+        } else {
+            None
+        };
+
+        let target = match &self.onto {
+            Some(o) => o.clone(),
+            None => core::infer_onto(repo)?,
+        };
+        let staircase = StaircaseMetadata {
+            landing_policy: self.landing_policy,
+            id: Uuid::new_v4().to_string(),
+            name: self.name.clone(),
+            target,
+            steps,
+            verification_policy,
+
+            primary_branch_layout: None,
+            branch_layout_base: None,
+            user_metadata: None,
+            lifecycle: None,
+        };
 
         let result = core::adopt(repo, &staircase)?;
         Ok(Box::new(result))

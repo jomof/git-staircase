@@ -1,4 +1,4 @@
-use crate::cli::{PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs};
+use crate::cli::{Command, PresentationOutput, StaircaseSelectorArgs};
 use crate::core;
 use crate::git::GitRepo;
 use anyhow::{Result, anyhow};
@@ -24,24 +24,11 @@ pub struct DescribeOutput {
     pub description: Option<String>,
 }
 
-impl crate::cli::Command for Describe {
+impl Command for Describe {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        crate::cli::run_staircase(self, repo)
-    }
-}
-
-impl StaircaseCommand for Describe {
-    fn selector(&self) -> &StaircaseSelectorArgs {
-        &self.selector
-    }
-
-    fn run_resolved(
-        &self,
-        repo: &GitRepo,
-        rs: &ResolvedSelector,
-    ) -> Result<Box<dyn PresentationOutput>> {
+        let sel = self.selector.resolve(repo)?;
         if self.edit {
-            let user_meta = core::get_user_metadata(repo, rs)?;
+            let user_meta = core::get_user_metadata(repo, &sel)?;
             let init_content = format!(
                 "# Title: {}\n# Enter title above, description below.\n\n{}",
                 user_meta.title.as_deref().unwrap_or(""),
@@ -95,25 +82,25 @@ impl StaircaseCommand for Describe {
                 if t.len() > 4096 {
                     return Err(anyhow!("Title exceeds limit of 4 KiB"));
                 }
-                core::set_title(repo, rs, t)?;
+                core::set_title(repo, &sel, t)?;
             }
             if let Some(ref d) = description {
                 if d.len() > 1048576 {
                     return Err(anyhow!("Description exceeds limit of 1 MiB"));
                 }
-                core::set_description(repo, rs, d)?;
+                core::set_description(repo, &sel, d)?;
             }
 
-            let updated_user_meta = core::get_user_metadata(repo, rs)?;
+            let updated_user_meta = core::get_user_metadata(repo, &sel)?;
             Ok(Box::new(DescribeOutput {
-                name: rs.staircase.metadata().name.clone(),
+                name: sel.staircase.metadata().name.clone(),
                 title: updated_user_meta.title,
                 description: updated_user_meta.description,
             }))
         } else {
-            let user_meta = core::get_user_metadata(repo, rs)?;
+            let user_meta = core::get_user_metadata(repo, &sel)?;
             Ok(Box::new(DescribeOutput {
-                name: rs.staircase.metadata().name.clone(),
+                name: sel.staircase.metadata().name.clone(),
                 title: user_meta.title,
                 description: user_meta.description,
             }))

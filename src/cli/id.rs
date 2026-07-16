@@ -1,4 +1,4 @@
-use super::{PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs};
+use super::{PresentationOutput, StaircaseSelectorArgs};
 use crate::GitRepo;
 use crate::IdentityKind;
 use crate::core;
@@ -15,22 +15,9 @@ pub struct Id {
 
 impl super::Command for Id {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        super::run_staircase(self, repo)
-    }
-}
-
-impl StaircaseCommand for Id {
-    fn selector(&self) -> &StaircaseSelectorArgs {
-        &self.staircase
-    }
-
-    fn run_resolved(
-        &self,
-        repo: &GitRepo,
-        rs: &ResolvedSelector,
-    ) -> Result<Box<dyn PresentationOutput>> {
+        let rs = self.staircase.resolve(repo)?;
         let was_implicit = !rs.is_managed();
-        let id = core::compute_identity(repo, rs, self.kind)?;
+        let id = core::compute_identity(repo, &rs, self.kind)?;
 
         Ok(Box::new(IdResult {
             id,

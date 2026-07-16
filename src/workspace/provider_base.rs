@@ -1,22 +1,13 @@
-use crate::error::Result;
+use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
 use crate::workspace::review_provider::{
     OperationJournal, ProviderTransport, SynchronizationState, TransportRequest, TransportResponse,
-    UnifiedProviderLanding, UnifiedProviderVerification, publish_provider_extension_cas,
+    UnifiedProviderLanding, UnifiedProviderVerification, UnifiedReviewMutation,
+    publish_provider_extension_cas,
 };
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UnifiedMutationResult<S> {
-    pub state: S,
-    pub status: String,
-    pub changed: usize,
-    pub unknown: usize,
-    pub journal_operation_id: Option<String>,
-    pub details: HashMap<String, String>,
-}
 
 pub fn persist_provider_state<S: Serialize>(
     repo: &GitRepo,
@@ -179,39 +170,284 @@ where
     })
 }
 
-pub trait ReviewStateMachine<T: ProviderTransport, S> {
-    fn transport(&self) -> &T;
-    fn provider_name(&self) -> &'static str;
+pub trait ReviewStateMachine {
+    type State: Serialize + for<'de> Deserialize<'de> + Clone + Send + Sync;
+    type Plan: crate::workspace::review_provider::ReviewOperationPlan;
+    type Route: Clone + Send + Sync;
 
-    fn handle_uncertain(
+    fn plan(
         &self,
         repo: &GitRepo,
-        operation: &str,
-        expected_record_oid: Option<String>,
-        request: TransportRequest,
-        mut state: S,
-        observations: serde_json::Value,
-    ) -> Result<UnifiedMutationResult<S>> {
-        self.mark_reconciliation_required(&mut state);
-        let unknown = self.mark_upload_unknown(&mut state);
-        let journal = OperationJournal::for_repo(repo)?;
-        let entry = journal.record(
-            self.provider_name(),
-            operation,
-            expected_record_oid,
-            request,
-            observations,
+        route: &Self::Route,
+        lineage_id: &str,
+        oids: &[String],
+        subjects: &[String],
+        mapping: Option<&str>,
+        existing: Option<&Self::State>,
+        record_revision: Option<(&str, &str)>,
+    ) -> Result<Self::Plan>;
+
+    fn prepare(&self, plan: &Self::Plan, existing: Option<Self::State>) -> Result<Self::State>;
+
+    fn perform_mutation(
+        &self,
+        repo: &GitRepo,
+        plan: &Self::Plan,
+        state: Self::State,
+        existing: Option<Self::State>,
+    ) -> Result<(Self::State, usize, Vec<String>)>;
+
+    fn attach(
+        &self,
+        repo: &GitRepo,
+        state: Self::State,
+        subject_id: &str,
+        review: &str,
+    ) -> Result<Self::State>;
+
+    fn detach(&self, repo: &GitRepo, state: Self::State, subject_id: &str) -> Result<Self::State>;
+
+    fn persist(
+        &self,
+        repo: &GitRepo,
+        record: &StaircaseRecord,
+        state: &Self::State,
+    ) -> Result<StaircaseRecord>;
+}
+
+pub fn create_mutation_common<T>(
+    repo: &GitRepo,
+    oids: &[String],
+    mapping: Option<&str>,
+    record: Option<&StaircaseRecord>,
+    provider_label: &str,
+    extension_key: &str,
+    probe_route: impl FnOnce(
+        &GitRepo,
+        Option<&crate::workspace::model::WorkspaceRecord>,
+    ) -> Result<Option<T::Route>>,
+    machine: T,
+) -> Result<UnifiedReviewMutation>
+where
+    T: ReviewStateMachine,
+{
+    if let Some(record) = record {
+        let metadata = &record.metadata;
+        let subjects = metadata
+            .steps
+            .iter()
+            .map(|step| step.id.clone())
+            .collect::<Vec<_>>();
+        let workspace = crate::workspace::bootstrap::bootstrap(
+            repo,
+            &crate::workspace::bootstrap::BootstrapOptions::default(),
         )?;
-        Ok(UnifiedMutationResult {
-            state,
-            status: format!("{}-unknown", operation),
-            changed: 0,
-            unknown,
-            journal_operation_id: Some(entry.operation_id),
-            details: HashMap::new(),
-        })
+        let route = probe_route(repo, Some(&workspace.record))?.ok_or_else(|| {
+            StaircaseError::Other(format!("{} route is incomplete", provider_label))
+        })?;
+        let existing = record
+            .user_metadata
+            .extensions
+            .get(extension_key)
+            .cloned()
+            .map(serde_json::from_value::<T::State>)
+            .transpose()?;
+        let plan = machine.plan(
+            repo,
+            &route,
+            &metadata.id,
+            oids,
+            &subjects,
+            mapping,
+            existing.as_ref(),
+            Some((&record.record_oid, &record.structure_oid)),
+        )?;
+        let state = machine.prepare(&plan, existing.clone())?;
+        let (state, changed, details) = machine.perform_mutation(repo, &plan, state, existing)?;
+        let next = machine.persist(repo, &record, &state)?;
+        return Ok(UnifiedReviewMutation {
+            provider_label: provider_label.into(),
+            action: "create".into(),
+            changed,
+            record_before: Some(record.record_oid.clone()),
+            record_after: Some(next.record_oid),
+            details,
+        });
     }
 
-    fn mark_reconciliation_required(&self, state: &mut S);
-    fn mark_upload_unknown(&self, state: &mut S) -> usize;
+    let subject_ids: Vec<String> = (0..oids.len())
+        .map(|index| format!("commit-{}", index + 1))
+        .collect();
+    let route = probe_route(repo, None)?
+        .ok_or_else(|| StaircaseError::Other(format!("{} route is incomplete", provider_label)))?;
+    let plan = machine.plan(
+        repo,
+        &route,
+        "implicit",
+        oids,
+        &subject_ids,
+        mapping,
+        None,
+        None,
+    )?;
+    let state = machine.prepare(&plan, None)?;
+    let (_state, changed, details) = machine.perform_mutation(repo, &plan, state, None)?;
+    Ok(UnifiedReviewMutation {
+        provider_label: provider_label.into(),
+        action: "create".into(),
+        changed,
+        record_before: None,
+        record_after: None,
+        details,
+    })
+}
+
+pub fn attach_mutation_common<T>(
+    repo: &GitRepo,
+    oids: &[String],
+    review: &str,
+    record: Option<&StaircaseRecord>,
+    selected_index: Option<usize>,
+    provider_label: &str,
+    extension_key: &str,
+    probe_route: impl FnOnce(
+        &GitRepo,
+        Option<&crate::workspace::model::WorkspaceRecord>,
+    ) -> Result<Option<T::Route>>,
+    machine: T,
+) -> Result<UnifiedReviewMutation>
+where
+    T: ReviewStateMachine,
+{
+    if let Some(record) = record {
+        let selected_index = selected_index.ok_or_else(|| {
+            StaircaseError::Other(format!(
+                "{} attach-to-review requires an explicit step selection",
+                provider_label
+            ))
+        })?;
+        let metadata = &record.metadata;
+        let subjects = metadata
+            .steps
+            .iter()
+            .map(|step| step.id.clone())
+            .collect::<Vec<_>>();
+        let workspace = crate::workspace::bootstrap::bootstrap(
+            repo,
+            &crate::workspace::bootstrap::BootstrapOptions::default(),
+        )?;
+        let route = probe_route(repo, Some(&workspace.record))?.ok_or_else(|| {
+            StaircaseError::Other(format!("{} route is incomplete", provider_label))
+        })?;
+        let existing = record
+            .user_metadata
+            .extensions
+            .get(extension_key)
+            .cloned()
+            .map(serde_json::from_value::<T::State>)
+            .transpose()?;
+        let plan = machine.plan(
+            repo,
+            &route,
+            &metadata.id,
+            oids,
+            &subjects,
+            None,
+            existing.as_ref(),
+            Some((&record.record_oid, &record.structure_oid)),
+        )?;
+        let state = machine.prepare(&plan, existing)?;
+        let state = machine.attach(repo, state, &subjects[selected_index], review)?;
+        let next = machine.persist(repo, &record, &state)?;
+        return Ok(UnifiedReviewMutation {
+            provider_label: provider_label.into(),
+            action: "attach".into(),
+            changed: 1,
+            record_before: Some(record.record_oid.clone()),
+            record_after: Some(next.record_oid),
+            details: vec![format!(
+                "attached subject {} to review {}",
+                subjects[selected_index], review
+            )],
+        });
+    }
+    Err(StaircaseError::Other(format!(
+        "{} attach-to-review is only supported for managed staircases",
+        provider_label
+    )))
+}
+
+pub fn detach_mutation_common<T>(
+    repo: &GitRepo,
+    oids: &[String],
+    review: &str,
+    record: Option<&StaircaseRecord>,
+    selected_index: Option<usize>,
+    provider_label: &str,
+    extension_key: &str,
+    probe_route: impl FnOnce(
+        &GitRepo,
+        Option<&crate::workspace::model::WorkspaceRecord>,
+    ) -> Result<Option<T::Route>>,
+    machine: T,
+) -> Result<UnifiedReviewMutation>
+where
+    T: ReviewStateMachine,
+{
+    if let Some(record) = record {
+        let selected_index = selected_index.ok_or_else(|| {
+            StaircaseError::Other(format!(
+                "{} detach-from-review requires an explicit step selection",
+                provider_label
+            ))
+        })?;
+        let metadata = &record.metadata;
+        let subjects = metadata
+            .steps
+            .iter()
+            .map(|step| step.id.clone())
+            .collect::<Vec<_>>();
+        let workspace = crate::workspace::bootstrap::bootstrap(
+            repo,
+            &crate::workspace::bootstrap::BootstrapOptions::default(),
+        )?;
+        let route = probe_route(repo, Some(&workspace.record))?.ok_or_else(|| {
+            StaircaseError::Other(format!("{} route is incomplete", provider_label))
+        })?;
+        let existing = record
+            .user_metadata
+            .extensions
+            .get(extension_key)
+            .cloned()
+            .map(serde_json::from_value::<T::State>)
+            .transpose()?;
+        let plan = machine.plan(
+            repo,
+            &route,
+            &metadata.id,
+            oids,
+            &subjects,
+            None,
+            existing.as_ref(),
+            Some((&record.record_oid, &record.structure_oid)),
+        )?;
+        let state = machine.prepare(&plan, existing)?;
+        let state = machine.detach(repo, state, &subjects[selected_index])?;
+        let next = machine.persist(repo, &record, &state)?;
+        return Ok(UnifiedReviewMutation {
+            provider_label: provider_label.into(),
+            action: "detach".into(),
+            changed: 1,
+            record_before: Some(record.record_oid.clone()),
+            record_after: Some(next.record_oid),
+            details: vec![format!(
+                "detached subject {} from review {}",
+                subjects[selected_index], review
+            )],
+        });
+    }
+    Err(StaircaseError::Other(format!(
+        "{} detach-from-review is only supported for managed staircases",
+        provider_label
+    )))
 }
