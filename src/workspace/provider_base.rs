@@ -12,6 +12,7 @@ use std::collections::HashMap;
 pub struct UnifiedMutationResult<S> {
     pub state: S,
     pub status: String,
+    pub changed: usize,
     pub unknown: usize,
     pub journal_operation_id: Option<String>,
     pub details: HashMap<String, String>,
@@ -204,6 +205,7 @@ pub trait ReviewStateMachine<T: ProviderTransport, S> {
         Ok(UnifiedMutationResult {
             state,
             status: format!("{}-unknown", operation),
+            changed: 0,
             unknown,
             journal_operation_id: Some(entry.operation_id),
             details: HashMap::new(),
