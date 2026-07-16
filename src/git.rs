@@ -731,8 +731,13 @@ impl GitRepo {
         Ok(self.run(&["cat-file", "-t", oid])?.trim().to_string())
     }
 
-    pub fn cat_file(&self, oid: &str) -> Result<String> {
-        self.run(&["cat-file", "-p", oid])
+    pub fn cat_file(&self, oid: &str) -> Result<Vec<u8>> {
+        let output = self.command().args(&["cat-file", "-p", oid]).trim(false).run_output()?;
+        if output.status.success() {
+            Ok(output.stdout)
+        } else {
+            Err(StaircaseError::Other(format!("cat-file failed: {}", String::from_utf8_lossy(&output.stderr))))
+        }
     }
 
     pub fn ls_tree(&self, oid: &str) -> Result<Vec<TreeEntry>> {
@@ -806,7 +811,8 @@ impl GitRepo {
     }
 
     pub fn read_tree_file(&self, rev: &str, path: &str) -> Result<String> {
-        self.cat_file(&format!("{}:{}", rev, path))
+        let bytes = self.cat_file(&format!("{}:{}", rev, path))?;
+        String::from_utf8(bytes).map_err(|e| StaircaseError::Other(e.to_string()))
     }
 }
 

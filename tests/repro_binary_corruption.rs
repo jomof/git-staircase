@@ -31,5 +31,5 @@ fn test_binary_blob_corruption() {
     let read_back = repo.cat_file(&oid).unwrap();
     
     // String::from_utf8_lossy will have replaced invalid bytes
-    assert_eq!(read_back.as_bytes(), &binary_data, "Binary data corrupted! Expected {:?}, got {:?}", binary_data, read_back.as_bytes());
+    assert_eq!(read_back, binary_data, "Binary data corrupted! Expected {:?}, got {:?}", binary_data, read_back);
 }

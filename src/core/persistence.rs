@@ -338,7 +338,8 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
     let lifecycle_oid = required_entry(&entries, "lifecycle", &target_oid)?;
     let manifest_oid = entries.get("archive-manifest").cloned();
 
-    let structure = repo.cat_file(&structure_oid)?;
+    let structure_bytes = repo.cat_file(&structure_oid)?;
+    let structure = String::from_utf8(structure_bytes).map_err(|e| StaircaseError::Other(e.to_string()))?;
     let (mut metadata, structural_extensions) = parse_structure(&structure)?;
     let mut user_metadata: StaircaseUserMetadata =
         read_versioned_json(repo, &metadata_oid, "git-staircase-metadata 1")?;
@@ -396,7 +397,8 @@ fn read_versioned_json<T: serde::de::DeserializeOwned>(
     oid: &str,
     expected_header: &str,
 ) -> Result<T> {
-    let content = repo.cat_file(oid)?;
+    let bytes = repo.cat_file(oid)?;
+    let content = String::from_utf8(bytes).map_err(|e| StaircaseError::Other(e.to_string()))?;
     let (header, json) = content
         .split_once('\n')
         .ok_or_else(|| StaircaseError::Other(format!("versioned blob {} has no header", oid)))?;
