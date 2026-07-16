@@ -1,3 +1,4 @@
+use crate::core::manipulation::adopt_implicit_for_mutation;
 use crate::core::persistence;
 use crate::core::refs::StaircaseRefs;
 use crate::core::resolved::ResolvedSelector;
@@ -47,15 +48,21 @@ pub fn archive_staircase(
         ));
     }
 
-    let meta = selector.staircase.metadata();
-    let current_ref = StaircaseRefs::record(
-        &meta.id,
-        meta.lifecycle
-            .as_ref()
-            .map(|l| l.state)
-            .unwrap_or(LifecycleState::Active),
-    );
-    let current_record = persistence::read_record(repo, &current_ref)?;
+    let (meta, current_record) = if selector.is_managed() {
+        let meta = selector.metadata();
+        let current_ref = StaircaseRefs::record(
+            &meta.id,
+            meta.lifecycle
+                .as_ref()
+                .map(|l| l.state)
+                .unwrap_or(LifecycleState::Active),
+        );
+        (meta.clone(), persistence::read_record(repo, &current_ref)?)
+    } else {
+        let adopted_meta = adopt_implicit_for_mutation(repo, selector, "archive")?;
+        let current_ref = StaircaseRefs::record(&adopted_meta.id, LifecycleState::Active);
+        (adopted_meta, persistence::read_record(repo, &current_ref)?)
+    };
 
     if current_record.lifecycle.state == LifecycleState::Archived {
         return Ok(ArchiveResult {
@@ -286,7 +293,7 @@ pub fn archive_staircase(
 
     let record = persistence::write_record(
         repo,
-        meta,
+        &meta,
         &current_record.user_metadata,
         &updated_lifecycle,
         Some(&archive_manifest),

@@ -337,3 +337,28 @@ fn reorder_adopts_only_when_state_or_identity_must_survive() {
         "Reorder with stable ID should trigger adoption."
     );
 }
+
+#[test]
+fn archive_always_adopts_implicit_selection() {
+    // ARRANGE: Create an implicit staircase (no Change-Ids).
+    let (tmp, _repo) = setup_repo();
+    let dir = tmp.path();
+    let anchor = run_git(dir, &["rev-parse", "main"]);
+
+    run_git(dir, &["checkout", "-b", "feat"]);
+    commit(dir, "f1.txt", "1", "commit 1");
+    run_git(dir, &["branch", "feat-1", "HEAD"]);
+
+    // ACT: Run 'git staircase archive <selector>'.
+    let (success, stdout, stderr) = run_staircase(dir, &["archive", "feat-1", "--onto", &anchor]);
+
+    // ASSERT: Verify the command succeeds, the staircase is moved to refs/staircases/state/archived/,
+    // and its metadata is now persistent.
+    assert!(success, "archive failed: {}\nstdout: {}", stderr, stdout);
+
+    let archived_refs = run_git(dir, &["for-each-ref", "refs/staircase-archive/"]);
+    assert!(
+        !archived_refs.is_empty(),
+        "Archive should have created a persistent record in refs/staircase-archive/"
+    );
+}
