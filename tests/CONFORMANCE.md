@@ -31,7 +31,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * `join` — `[existing] tests/spec_align_reshape_flags_test.rs::test_join_keep_boundary_ref_triggers_adoption`
 * Append commit to tip step — `[existing] tests/conformance_adoption.rs::append_adopts_only_for_durable_association`
 * Add a new step — `[existing] tests/conformance_adoption.rs::new_step_adopts_only_for_metadata_only_cut`
-* `reorder` — `[planned] tests/conformance_adoption.rs::reorder_adopts_only_when_state_or_identity_must_survive`
+* `reorder` — `[existing] tests/conformance_adoption.rs::reorder_adopts_only_when_state_or_identity_must_survive`
 * `move` changes between steps — `[planned] tests/conformance_adoption.rs::move_adopts_only_for_stable_or_intermediate_state`
 * Complete `rebase` — `[planned] tests/conformance_adoption.rs::rebase_adopts_only_for_continuity_or_stale_state`
 * Clean `restack` — `[planned] tests/conformance_adoption.rs::restack_adopts_only_to_remember_stale_relationship`

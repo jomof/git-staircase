@@ -28,6 +28,7 @@ struct RewriteContinuation {
     next_commit: usize,
     current_base: String,
     pending_cherry_pick: bool,
+    was_managed: bool,
 }
 
 pub(crate) fn replay(
@@ -74,29 +75,51 @@ pub(crate) fn replay(
     }
 
     let mut desired = desired;
-    let managed = ResolvedStaircase::Managed(
-        crate::core::manipulation::adopt_implicit_for_mutation(repo, staircase, kind)?,
-    );
-    desired.id = managed.metadata().id.clone();
-    desired.name = managed.metadata().name.clone();
-    for (old, new) in managed
-        .metadata()
-        .steps
-        .iter()
-        .zip(desired.steps.iter_mut())
-    {
+    let needs_adoption = crate::core::identity::needs_adoption(repo, staircase)?;
+    let (managed_metadata, actually_managed) = if needs_adoption {
+        (
+            crate::core::manipulation::adopt_implicit_for_mutation(repo, staircase, kind)?,
+            true,
+        )
+    } else {
+        (staircase.metadata().clone(), false)
+    };
+
+    desired.id = managed_metadata.id.clone();
+    desired.name = managed_metadata.name.clone();
+    for (old, new) in managed_metadata.steps.iter().zip(desired.steps.iter_mut()) {
         if new.id.is_empty() {
             new.id = old.id.clone();
         }
     }
-    let record_ref = StaircaseRefs::record(&desired.id, LifecycleState::Active);
-    let old_record_oid = repo.resolve_ref(&record_ref)?;
-    let mut old_record = persistence::read_record(repo, &old_record_oid)?;
-    old_record.metadata.name = managed.metadata().name.clone();
-    ensure_worktree_safety(repo, &old_record.metadata, &desired)?;
-    let lease_plan = lease_plan(repo, &old_record.metadata, &desired, &old_record_oid, kind)?;
+
+    let old_record_oid = if actually_managed {
+        let record_ref = StaircaseRefs::record(&desired.id, LifecycleState::Active);
+        Some(repo.resolve_ref(&record_ref)?)
+    } else {
+        None
+    };
+
+    let mut old_record_metadata = managed_metadata.clone();
+    let mut user_metadata = managed_metadata.user_metadata.clone().unwrap_or_default();
+    let mut lifecycle = managed_metadata.lifecycle.clone().unwrap_or_default();
+
+    if let Some(oid) = &old_record_oid {
+        let record = persistence::read_record(repo, oid)?;
+        old_record_metadata = record.metadata;
+        user_metadata = record.user_metadata;
+        lifecycle = record.lifecycle;
+    }
+
+    ensure_worktree_safety(repo, &old_record_metadata, &desired)?;
+    let lease_plan = lease_plan(
+        repo,
+        &old_record_metadata,
+        &desired,
+        old_record_oid.as_deref(),
+        kind,
+    )?;
     let end_step = start_step + commit_groups.len();
-    let mut user_metadata = old_record.user_metadata;
     if start_step == 0 && matches!(kind, "rebase" | "restack") {
         user_metadata.extensions.insert(
             "git-staircase.internal.integration-anchor".into(),
@@ -107,11 +130,11 @@ pub(crate) fn replay(
         schema: "git-staircase/rewrite-continuation".into(),
         version: 1,
         kind: kind.into(),
-        old_record_oid,
-        original: old_record.metadata,
+        old_record_oid: old_record_oid.unwrap_or_default(),
+        original: old_record_metadata,
         desired,
         user_metadata,
-        lifecycle: old_record.lifecycle,
+        lifecycle,
         commit_groups,
         start_step,
         end_step,
@@ -119,6 +142,7 @@ pub(crate) fn replay(
         next_commit: 0,
         current_base: base_oid,
         pending_cherry_pick: false,
+        was_managed: actually_managed,
     };
     let mut journal = begin_resumable(repo, &lease_plan, serde_json::to_value(&continuation)?)?;
     repo.run(&["reset", "--hard", "HEAD"])?;
@@ -210,7 +234,7 @@ fn finalize(
         &state.user_metadata,
         &state.lifecycle,
         None,
-        Some(&state.old_record_oid),
+        (!state.old_record_oid.is_empty()).then(|| state.old_record_oid.as_str()),
         false,
     )?;
     let plan = publication_plan(repo, state, &record.record_oid, journal)?;
@@ -259,31 +283,38 @@ fn lease_plan(
     repo: &GitRepo,
     old: &StaircaseMetadata,
     new: &StaircaseMetadata,
-    old_record_oid: &str,
+    old_record_oid: Option<&str>,
     kind: &str,
 ) -> Result<MutationPlan> {
-    let mut plan =
-        MutationPlan::new(kind, Some(old.id.clone())).expected_record(Some(old_record_oid.into()));
-    lease(
-        repo,
-        &mut plan,
-        StaircaseRefs::record(&old.id, LifecycleState::Active),
-        Some(old_record_oid.into()),
-    )?;
-    let public = StaircaseRefs::public(&old.name);
-    if repo.resolve_ref_opt(&public)?.as_deref() == Some(old_record_oid) {
-        lease(repo, &mut plan, public, Some(old_record_oid.into()))?;
+    let mut plan = MutationPlan::new(kind, Some(old.id.clone()))
+        .expected_record(old_record_oid.map(str::to_string));
+    if let Some(oid) = old_record_oid {
+        lease(
+            repo,
+            &mut plan,
+            StaircaseRefs::record(&old.id, LifecycleState::Active),
+            Some(oid.into()),
+        )?;
+        let public = StaircaseRefs::public(&old.name);
+        if repo.resolve_ref_opt(&public)?.as_deref() == Some(oid) {
+            lease(repo, &mut plan, public, Some(oid.into()))?;
+        }
     }
-    let step_ids: BTreeSet<_> = old
-        .steps
-        .iter()
-        .chain(new.steps.iter())
-        .map(|step| step.id.clone())
-        .collect();
-    for id in step_ids {
-        let reference = StaircaseRefs::step(&old.id, &id, LifecycleState::Active);
-        let actual = repo.resolve_ref_opt(&reference)?;
-        plan.update(reference, actual.clone(), actual);
+    if old_record_oid.is_some() {
+        let step_ids: BTreeSet<_> = old
+            .steps
+            .iter()
+            .chain(new.steps.iter())
+            .map(|step| step.id.clone())
+            .collect();
+        for id in step_ids {
+            if id.is_empty() {
+                continue;
+            }
+            let reference = StaircaseRefs::step(&old.id, &id, LifecycleState::Active);
+            let actual = repo.resolve_ref_opt(&reference)?;
+            plan.update(reference, actual.clone(), actual);
+        }
     }
     let old_owned = owned_branches(old);
     let new_owned = owned_branches(new);
@@ -340,7 +371,7 @@ fn publication_plan(
     journal: &OperationJournal,
 ) -> Result<MutationPlan> {
     let mut plan = MutationPlan::new(&state.kind, Some(state.desired.id.clone()))
-        .expected_record(Some(state.old_record_oid.clone()));
+        .expected_record((!state.old_record_oid.is_empty()).then(|| state.old_record_oid.clone()));
     let mut update = |reference: String, planned: Option<String>| -> Result<()> {
         let expected = journal
             .expected_refs
@@ -360,13 +391,15 @@ fn publication_plan(
         plan.update(reference, expected, planned);
         Ok(())
     };
-    update(
-        StaircaseRefs::record(&state.desired.id, LifecycleState::Active),
-        Some(new_record_oid.into()),
-    )?;
-    let public = StaircaseRefs::public(&state.original.name);
-    if journal.expected_refs.contains_key(&public) {
-        update(public, Some(new_record_oid.into()))?;
+    if state.was_managed {
+        update(
+            StaircaseRefs::record(&state.desired.id, LifecycleState::Active),
+            Some(new_record_oid.into()),
+        )?;
+        let public = StaircaseRefs::public(&state.original.name);
+        if journal.expected_refs.contains_key(&public) {
+            update(public, Some(new_record_oid.into()))?;
+        }
     }
     let old_steps: BTreeMap<_, _> = state
         .original
@@ -385,10 +418,10 @@ fn publication_plan(
         .chain(new_steps.keys())
         .collect::<BTreeSet<_>>()
     {
-        update(
-            StaircaseRefs::step(&state.desired.id, id, LifecycleState::Active),
-            new_steps.get(id).map(|step| step.cut.clone()),
-        )?;
+        let reference = StaircaseRefs::step(&state.desired.id, id, LifecycleState::Active);
+        if state.was_managed || journal.expected_refs.contains_key(&reference) {
+            update(reference, new_steps.get(id).map(|step| step.cut.clone()))?;
+        }
     }
     let old_owned = owned_branches(&state.original);
     let new_owned = owned_branches(&state.desired);

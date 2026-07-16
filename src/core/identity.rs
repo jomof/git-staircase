@@ -176,3 +176,10 @@ pub fn has_stable_identity(repo: &GitRepo, staircase: &ResolvedStaircase) -> Res
 
     Ok(false)
 }
+
+pub fn needs_adoption(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<bool> {
+    if staircase.is_managed() {
+        return Ok(true);
+    }
+    has_stable_identity(repo, staircase)
+}

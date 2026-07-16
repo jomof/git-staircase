@@ -276,3 +276,64 @@ fn no_adopt_fails_before_mutation_and_reports_reason() {
         refs
     );
 }
+
+#[test]
+fn reorder_adopts_only_when_state_or_identity_must_survive() {
+    // 1. ARRANGE: Create an implicit staircase with multiple steps but no stable identifiers (no Change-Ids).
+    let (tmp1, _repo1) = setup_repo();
+    let dir1 = tmp1.path();
+    let anchor1 = run_git(dir1, &["rev-parse", "main"]);
+
+    run_git(dir1, &["checkout", "-b", "feat-1", &anchor1]);
+    commit(dir1, "f1.txt", "1", "commit 1");
+    run_git(dir1, &["checkout", "-b", "feat-2", "HEAD"]);
+    commit(dir1, "f2.txt", "2", "commit 2");
+
+    // Detach HEAD so we don't block branch updates
+    run_git(dir1, &["checkout", "--detach"]);
+
+    // 2. ACT: Perform a `reorder` operation.
+    let (ok1, _, stderr1) = run_staircase(
+        dir1,
+        &["reorder", "feat-2", "--steps", "2,1", "--onto", &anchor1],
+    );
+    assert!(ok1, "first reorder failed: {}", stderr1);
+
+    // 3. ASSERT: Verify that no `refs/staircases/` were created.
+    let refs1 = run_git(dir1, &["for-each-ref", "refs/staircases/"]);
+    assert!(
+        refs1.is_empty(),
+        "Reorder without stable ID should not trigger adoption. Found refs: {}",
+        refs1
+    );
+
+    // 4. ACT: Repeat with a Change-Id to trigger adoption.
+    let (tmp2, _repo2) = setup_repo();
+    let dir2 = tmp2.path();
+    let anchor2 = run_git(dir2, &["rev-parse", "main"]);
+
+    run_git(dir2, &["checkout", "-b", "feat-1", &anchor2]);
+    commit(
+        dir2,
+        "f1.txt",
+        "1",
+        "commit 1\n\nChange-Id: I1111111111111111111111111111111111111111",
+    );
+    run_git(dir2, &["checkout", "-b", "feat-2", "HEAD"]);
+    commit(dir2, "f2.txt", "2", "commit 2");
+
+    run_git(dir2, &["checkout", "--detach"]);
+
+    let (ok2, _, stderr2) = run_staircase(
+        dir2,
+        &["reorder", "feat-2", "--steps", "2,1", "--onto", &anchor2],
+    );
+    assert!(ok2, "second reorder failed: {}", stderr2);
+
+    // 5. ASSERT: Verify that adoption occurred and `refs/staircases/` now exists.
+    let refs2 = run_git(dir2, &["for-each-ref", "refs/staircases/"]);
+    assert!(
+        !refs2.is_empty(),
+        "Reorder with stable ID should trigger adoption."
+    );
+}

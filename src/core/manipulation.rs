@@ -198,9 +198,8 @@ pub fn join(
         }
     }
 
-    let needs_adoption = staircase.is_managed()
-        || options.ref_action == JoinRefAction::Keep
-        || super::identity::has_stable_identity(repo, staircase)?;
+    let needs_adoption = super::identity::needs_adoption(repo, staircase)?
+        || options.ref_action == JoinRefAction::Keep;
 
     if !needs_adoption {
         if let JoinRefAction::Delete = options.ref_action {
@@ -754,6 +753,18 @@ fn publish_metadata_common(
     mut metadata: StaircaseMetadata,
     kind: &str,
 ) -> Result<()> {
+    if !super::identity::needs_adoption(repo, staircase)? {
+        let mut plan = super::operation::MutationPlan::new(kind, None);
+        for step in &metadata.steps {
+            if let Some(branch) = &step.branch {
+                let reference = format!("refs/heads/{}", branch);
+                let actual = repo.resolve_ref_opt(&reference)?;
+                plan.update(reference, actual, Some(step.cut.clone()));
+            }
+        }
+        plan.publish(repo, false)?;
+        return Ok(());
+    }
     let managed = ResolvedStaircase::Managed(adopt_implicit_for_mutation(repo, staircase, kind)?);
     metadata.id = managed.metadata().id.clone();
     for step in &mut metadata.steps {

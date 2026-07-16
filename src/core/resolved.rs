@@ -56,9 +56,7 @@ impl ResolvedStaircase {
         step: Step,
         no_ref: bool,
     ) -> Result<ResolvedStaircase> {
-        let needs_adoption =
-            self.is_managed() || no_ref || super::identity::has_stable_identity(repo, self)?;
-
+        let needs_adoption = super::identity::needs_adoption(repo, self)? || no_ref;
         if !needs_adoption {
             if let Some(branch) = &step.branch {
                 let reference = if branch.starts_with("refs/") {
