@@ -56,9 +56,21 @@ fn test_git_repo_resolution_memoization() {
     run_git(path, &["branch", "feat", &c1]);
 
     // Initially, memoizer should be empty for "feat"
-    assert!(ctx.repo.memoizer.get_resolve_commit("feat").is_none());
-    assert!(ctx.repo.memoizer.get_resolve_ref("feat").is_none());
-    assert!(ctx.repo.memoizer.get_symbolic_name("feat").is_none());
+    assert!(
+        ctx.repo
+            .memoizer
+            .ResolveCommit("feat".into())
+            .get()
+            .is_none()
+    );
+    assert!(ctx.repo.memoizer.ResolveRef("feat".into()).get().is_none());
+    assert!(
+        ctx.repo
+            .memoizer
+            .ResolveSymbolic("feat".into())
+            .get()
+            .is_none()
+    );
 
     // ACT: Resolve commit
     let res = ctx.repo.resolve_commit("feat").unwrap();
@@ -66,17 +78,16 @@ fn test_git_repo_resolution_memoization() {
 
     // ASSERT: Memoized after resolve_commit
     assert_eq!(
-        ctx.repo.memoizer.get_resolve_commit("feat"),
+        ctx.repo.memoizer.ResolveCommit("feat".into()).get(),
         Some(c1.clone())
     );
 
     // ACT: Resolve ref
-    let res_ref = ctx.repo.resolve_ref_opt("feat").unwrap();
-    assert_eq!(res_ref, Some(c1.clone()));
+    let _ = ctx.repo.resolve_ref_opt("feat").unwrap();
 
     // ASSERT: Memoized after resolve_ref_opt
     assert_eq!(
-        ctx.repo.memoizer.get_resolve_ref("feat"),
+        ctx.repo.memoizer.ResolveRef("feat".into()).get(),
         Some(Some(c1.clone()))
     );
 
@@ -86,7 +97,7 @@ fn test_git_repo_resolution_memoization() {
 
     // ASSERT: Memoized after resolve_symbolic_full_name
     assert_eq!(
-        ctx.repo.memoizer.get_symbolic_name("feat"),
+        ctx.repo.memoizer.ResolveSymbolic("feat".into()).get(),
         Some("refs/heads/feat".to_string())
     );
 }

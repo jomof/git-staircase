@@ -226,12 +226,15 @@ impl GitRepo {
     }
 
     pub fn resolve_commit(&self, rev: &str) -> Result<String> {
-        if rev != "HEAD" {
-            if let Some(oid) = self.memoizer.get_resolve_commit(rev) {
-                return Ok(oid);
-            }
+        if rev == "HEAD" {
+            return self.resolve_commit_internal(rev);
         }
+        self.memoizer
+            .ResolveCommit(rev.to_string())
+            .get_or_compute(|| self.resolve_commit_internal(rev))
+    }
 
+    fn resolve_commit_internal(&self, rev: &str) -> Result<String> {
         let oid = if !rev.starts_with("refs/") {
             if let Ok(sha) = self
                 .command()
@@ -242,9 +245,6 @@ impl GitRepo {
                 ])
                 .run()
             {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
-                }
                 return Ok(sha);
             }
             if let Ok(sha) = self
@@ -256,9 +256,6 @@ impl GitRepo {
                 ])
                 .run()
             {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
-                }
                 return Ok(sha);
             }
             self.command()
@@ -270,18 +267,19 @@ impl GitRepo {
                 .run()?
         };
 
-        if rev != "HEAD" {
-            self.memoizer.set_resolve_commit(rev, &oid);
-        }
         Ok(oid)
     }
 
     pub fn resolve_symbolic_full_name(&self, name: &str) -> Result<String> {
-        if name != "HEAD" {
-            if let Some(res) = self.memoizer.get_symbolic_name(name) {
-                return Ok(res);
-            }
+        if name == "HEAD" {
+            return self.resolve_symbolic_full_name_internal(name);
         }
+        self.memoizer
+            .ResolveSymbolic(name.to_string())
+            .get_or_compute(|| self.resolve_symbolic_full_name_internal(name))
+    }
+
+    fn resolve_symbolic_full_name_internal(&self, name: &str) -> Result<String> {
         let full_name = self
             .command()
             .args(&["rev-parse", "--symbolic-full-name", name])
@@ -291,9 +289,6 @@ impl GitRepo {
                 "Could not resolve \"{}\" to a full refname",
                 name
             )));
-        }
-        if name != "HEAD" {
-            self.memoizer.set_symbolic_name(name, &full_name);
         }
         Ok(full_name)
     }
@@ -306,26 +301,28 @@ impl GitRepo {
     }
 
     pub fn resolve_ref_opt(&self, rev: &str) -> Result<Option<String>> {
-        if rev != "HEAD" {
-            if let Some(res) = self.memoizer.get_resolve_ref(rev) {
-                return Ok(res);
-            }
+        if rev == "HEAD" {
+            return self.resolve_ref_opt_internal(rev);
         }
+        self.memoizer
+            .ResolveRef(rev.to_string())
+            .get_or_compute(|| self.resolve_ref_opt_internal(rev))
+    }
+
+    fn resolve_ref_opt_internal(&self, rev: &str) -> Result<Option<String>> {
         let result = self
             .command()
             .args(&["rev-parse", "--verify", rev])
             .check_status(false)
             .run_output()?;
 
-        let res = if result.status.success() {
-            Some(String::from_utf8_lossy(&result.stdout).trim().to_string())
+        if result.status.success() {
+            Ok(Some(
+                String::from_utf8_lossy(&result.stdout).trim().to_string(),
+            ))
         } else {
-            None
-        };
-        if rev != "HEAD" {
-            self.memoizer.set_resolve_ref(rev, res.as_deref());
+            Ok(None)
         }
-        Ok(res)
     }
 
     pub fn preload_ancestry(&self, oids: &[&str]) -> Result<()> {
@@ -417,7 +414,9 @@ impl GitRepo {
             for other_oid in &all_target_oids {
                 let is_anc = reachable.contains(other_oid);
                 if is_anc || exclude_oids.is_empty() {
-                    self.memoizer.set_ancestry(other_oid, start_oid, is_anc);
+                    self.memoizer
+                        .Ancestry(other_oid.clone(), start_oid.clone())
+                        .put(is_anc);
                 }
             }
         }
@@ -431,44 +430,41 @@ impl GitRepo {
         if anc_oid == desc_oid {
             return Ok(true);
         }
-        if let Some(res) = self.memoizer.get_ancestry(&anc_oid, &desc_oid) {
-            return Ok(res);
-        }
+        self.memoizer
+            .Ancestry(anc_oid.clone(), desc_oid.clone())
+            .get_or_compute(|| {
+                let output = self
+                    .command()
+                    .args(&["merge-base", "--is-ancestor", &anc_oid, &desc_oid])
+                    .check_status(false)
+                    .run_output()?;
 
-        let output = self
-            .command()
-            .args(&["merge-base", "--is-ancestor", &anc_oid, &desc_oid])
-            .check_status(false)
-            .run_output()?;
-
-        let res = match output.status.code() {
-            Some(0) => true,
-            Some(1) => false,
-            _ => {
-                if !output.status.success() {
-                    return Err(StaircaseError::GitCommandFailed {
-                        command: format!("git merge-base --is-ancestor {} {}", anc_oid, desc_oid),
-                        stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
-                        stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
-                    });
+                match output.status.code() {
+                    Some(0) => Ok(true),
+                    Some(1) => Ok(false),
+                    _ => {
+                        if !output.status.success() {
+                            return Err(StaircaseError::GitCommandFailed {
+                                command: format!(
+                                    "git merge-base --is-ancestor {} {}",
+                                    anc_oid, desc_oid
+                                ),
+                                stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
+                                stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
+                            });
+                        }
+                        Ok(false)
+                    }
                 }
-                false
-            }
-        };
-
-        self.memoizer.set_ancestry(&anc_oid, &desc_oid, res);
-        Ok(res)
+            })
     }
 
     pub fn merge_base(&self, a: &str, b: &str) -> Result<String> {
         let a_oid = self.resolve_commit(a)?;
         let b_oid = self.resolve_commit(b)?;
-        if let Some(mb) = self.memoizer.get_merge_base(&a_oid, &b_oid) {
-            return Ok(mb);
-        }
-        let mb = self.command().args(&["merge-base", &a_oid, &b_oid]).run()?;
-        self.memoizer.set_merge_base(&a_oid, &b_oid, &mb);
-        Ok(mb)
+        self.memoizer
+            .MergeBase(a_oid.clone(), b_oid.clone())
+            .get_or_compute(|| self.command().args(&["merge-base", &a_oid, &b_oid]).run())
     }
 
     pub fn commits_between(&self, base: &str, tip: &str) -> Result<Vec<String>> {
@@ -503,15 +499,11 @@ impl GitRepo {
     }
 
     pub fn get_object_format(&self) -> Result<String> {
-        if let Some(fmt) = self.memoizer.get_object_format() {
-            return Ok(fmt);
-        }
-        let fmt = self
-            .command()
-            .args(&["rev-parse", "--show-object-format"])
-            .run()?;
-        self.memoizer.set_object_format(&fmt);
-        Ok(fmt)
+        self.memoizer.ObjectFormat().get_or_compute(|| {
+            self.command()
+                .args(&["rev-parse", "--show-object-format"])
+                .run()
+        })
     }
 
     pub fn repository_identity(&self) -> Result<String> {
@@ -554,15 +546,11 @@ impl GitRepo {
 
     pub fn get_tree_id(&self, rev: &str) -> Result<String> {
         let commit_oid = self.resolve_commit(rev)?;
-        if let Some(tree) = self.memoizer.get_tree_id(&commit_oid) {
-            return Ok(tree);
-        }
-        let tree = self
-            .command()
-            .args(&["rev-parse", &format!("{}^{{tree}}", commit_oid)])
-            .run()?;
-        self.memoizer.set_tree_id(&commit_oid, &tree);
-        Ok(tree)
+        self.memoizer.TreeId(commit_oid.clone()).get_or_compute(|| {
+            self.command()
+                .args(&["rev-parse", &format!("{}^{{tree}}", commit_oid)])
+                .run()
+        })
     }
 
     pub fn write_blob(&self, content: &str) -> Result<String> {
@@ -589,27 +577,22 @@ impl GitRepo {
     }
 
     pub fn hash_data(&self, data: &str) -> Result<String> {
-        if let Some(hash) = self.memoizer.get_hash_data(data) {
-            return Ok(hash);
-        }
-        let hash = self
-            .command()
-            .args(&["hash-object", "--stdin"])
-            .stdin(data)
-            .run()?;
-        self.memoizer.set_hash_data(data, &hash);
-        Ok(hash)
+        self.memoizer.hash_data(data).get_or_compute(|| {
+            self.command()
+                .args(&["hash-object", "--stdin"])
+                .stdin(data)
+                .run()
+        })
     }
 
     pub fn get_patch_id(&self, base: &str, tip: &str) -> Result<String> {
-        if let Some(pid) = self.memoizer.get_patch_id(base, tip) {
-            return Ok(pid);
-        }
-        let diff = self.command().args(&["diff-tree", "-p", base, tip]).run()?;
-        let stdout = self.command().args(&["patch-id"]).stdin(diff).run()?;
-        let pid = stdout.split_whitespace().next().unwrap_or("").to_string();
-        self.memoizer.set_patch_id(base, tip, &pid);
-        Ok(pid)
+        self.memoizer
+            .PatchId(base.to_string(), tip.to_string())
+            .get_or_compute(|| {
+                let diff = self.command().args(&["diff-tree", "-p", base, tip]).run()?;
+                let stdout = self.command().args(&["patch-id"]).stdin(diff).run()?;
+                Ok(stdout.split_whitespace().next().unwrap_or("").to_string())
+            })
     }
 
     pub fn current_branch(&self) -> Result<Option<String>> {

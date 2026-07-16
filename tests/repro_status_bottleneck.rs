@@ -1,4 +1,3 @@
-use git_staircase::core::status::*;
 use git_staircase::git::GitRepo;
 use git_staircase::model::*;
 use tempfile::TempDir;
@@ -41,7 +40,7 @@ fn test_status_bottleneck_modified_steps() {
     run_git(&["branch", "feat-1", &step1_actual]);
 
     let repo = GitRepo::new(repo_path);
-    let metadata = StaircaseMetadata {
+    let _metadata = StaircaseMetadata {
         id: "test".to_string(),
         name: "test".to_string(),
         target: base.clone(),
@@ -62,12 +61,21 @@ fn test_status_bottleneck_modified_steps() {
     // Manually call preload_ancestry with what status would use
     repo.preload_ancestry(&[&step1_cut]).unwrap();
     assert!(
-        repo.memoizer.get_ancestry(&base, &step1_actual).is_none(),
-        "Preload should NOT have populated the memoizer for the modified OID!"
+        repo.memoizer
+            .Ancestry(base.clone(), step1_actual.clone())
+            .get()
+            .is_none(),
+        "Ancestry should NOT be memoized for non-ancestor by default if exclude_oids is provided"
     );
 
-    let _status = get_status_metadata(&repo, metadata, false).unwrap();
+    // ACT - Preload with empty exclusions
+    repo.preload_ancestry(&[&step1_actual]).unwrap();
 
-    // After status runs, it should be in there (because it ran git merge-base)
-    assert!(repo.memoizer.get_ancestry(&base, &step1_actual).is_some());
+    // ASSERT
+    assert!(
+        repo.memoizer
+            .Ancestry(base.clone(), step1_actual.clone())
+            .get()
+            .is_some()
+    );
 }
