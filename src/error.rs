@@ -129,9 +129,7 @@ impl StaircaseError {
             | Self::ExternalOperation { .. } => ExitClass::OperationConflict,
             Self::RefCollision { .. } => ExitClass::ConcurrentState,
             Self::UnsupportedTopology { .. } => ExitClass::Policy,
-            Self::InvalidStructure(_) | Self::Other(_) | Self::AdoptionRequired => {
-                ExitClass::Usage
-            }
+            Self::InvalidStructure(_) | Self::Other(_) | Self::AdoptionRequired => ExitClass::Usage,
             Self::GitCommandFailed { .. } | Self::Io(_) | Self::Serialization(_) => {
                 ExitClass::Integrity
             }
