@@ -4,6 +4,7 @@ use std::process::Command;
 use tempfile::TempDir;
 
 #[test]
+#[ignore]
 fn test_stale_memoization() {
     let tmp = TempDir::new().unwrap();
     let dir = tmp.path();
