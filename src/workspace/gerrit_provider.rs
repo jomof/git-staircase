@@ -1410,6 +1410,20 @@ impl ReviewProvider for GerritProvider {
         "gerrit"
     }
 
+    fn capabilities(&self) -> Vec<Capability> {
+        vec![
+            Capability::Review,
+            Capability::ReviewIdentity,
+            Capability::Verification,
+            Capability::ReviewTransport,
+            Capability::Landing,
+        ]
+    }
+
+    fn probe_route(&self, repo: &GitRepo, record: Option<&WorkspaceRecord>) -> Result<bool> {
+        Ok(probe_gerrit_route(repo, record)?.is_some())
+    }
+
     fn probe(
         &self,
         repo: &GitRepo,

@@ -2,7 +2,7 @@ use crate::core::persistence::write_record;
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::StaircaseRecord;
-use crate::workspace::model::WorkspaceRecord;
+use crate::workspace::model::{Capability, WorkspaceRecord};
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use std::collections::{HashMap, HashSet, VecDeque};
@@ -434,8 +434,10 @@ fn validate_push_option(option: &str) -> Result<()> {
     Ok(())
 }
 
-pub trait ReviewProvider {
+pub trait ReviewProvider: Send + Sync {
     fn name(&self) -> &'static str;
+    fn capabilities(&self) -> Vec<Capability>;
+    fn probe_route(&self, repo: &GitRepo, record: Option<&WorkspaceRecord>) -> Result<bool>;
     fn probe(
         &self,
         repo: &GitRepo,
