@@ -111,6 +111,20 @@ pub fn discover(
         } else {
             let paths = extract_all_linear_paths(&root, &children_map, &active_branches);
             for steps in paths {
+                // Validate that every step contains at least one commit
+                let mut prev_cut = onto_oid.clone();
+                let mut valid = true;
+                for step in &steps {
+                    if step.cut == prev_cut {
+                        valid = false;
+                        break;
+                    }
+                    prev_cut = step.cut.clone();
+                }
+                if !valid {
+                    continue;
+                }
+
                 let branch_names: Vec<&str> = steps.iter().map(|s| s.name.as_str()).collect();
                 let name = common_prefix(&branch_names)
                     .unwrap_or_else(|| steps.last().unwrap().name.clone());
