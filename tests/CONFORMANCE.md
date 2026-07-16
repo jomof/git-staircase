@@ -36,7 +36,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 * Complete `rebase` — `[planned] tests/conformance_adoption.rs::rebase_adopts_only_for_continuity_or_stale_state`
 * Clean `restack` — `[planned] tests/conformance_adoption.rs::restack_adopts_only_to_remember_stale_relationship`
 * `archive` — `[existing] tests/conformance_adoption.rs::archive_always_adopts_implicit_selection`
-* Persistent name, description, labels, and links — `[planned] tests/conformance_adoption.rs::persistent_metadata_always_adopts`
+* Persistent name, description, labels, and links — `[existing] tests/conformance_adoption.rs::persistent_metadata_always_adopts`
 * Persistent discovery override — `[existing] tests/local_journeys_test.rs::policy_and_discovery_are_structural_record_revisions`
 * Persistent policy — `[existing] tests/local_journeys_test.rs::policy_and_discovery_are_structural_record_revisions`
 * Immutable snapshot tag — `[existing] tests/local_journeys_test.rs::annotated_snapshot_tag_supports_configured_openpgp_signer`

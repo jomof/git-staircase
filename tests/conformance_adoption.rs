@@ -174,3 +174,52 @@ fn archive_always_adopts_implicit_selection() {
         "Archive records should exist in refs/staircase-archive/"
     );
 }
+
+#[test]
+fn persistent_metadata_always_adopts() {
+    // ARRANGE: Create a repository with an implicit staircase (local branch ahead of its anchor).
+    let ctx = TestContext::new();
+    ctx.run_git(&["checkout", "-b", "feature"]);
+    ctx.commit("feature.txt", "feature content", "feature commit");
+
+    // Verify it is discovered as implicit initially.
+    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
+    assert!(success);
+    assert!(
+        stdout.contains("\"is_implicit\": true"),
+        "Initially should be implicit"
+    );
+
+    // ACT: Use git staircase metadata set-title to set a title.
+    let (set_ok, stdout_set, stderr_set) =
+        ctx.run_staircase(&["metadata", "set-title", "feature", "My Feature"]);
+    assert!(
+        set_ok,
+        "Metadata set-title command failed:\nSTDOUT: {}\nSTDERR: {}",
+        stdout_set, stderr_set
+    );
+
+    // ASSERT: Verify that git staircase status --json now reports is_implicit: false.
+    let (success2, stdout2, stderr2) = ctx.run_staircase(&["status", "feature", "--json"]);
+    assert!(
+        success2,
+        "Status command failed:\nSTDOUT: {}\nSTDERR: {}",
+        stdout2, stderr2
+    );
+    assert!(
+        stdout2.contains("\"is_implicit\": false"),
+        "Should be adopted after setting metadata. Output: {}",
+        stdout2
+    );
+
+    // Verify that a record exists in refs/staircase-state/.
+    let refs = ctx.run_git(&[
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/staircase-state/",
+    ]);
+    assert!(
+        !refs.is_empty(),
+        "Adoption should create managed records in refs/staircase-state/"
+    );
+}
