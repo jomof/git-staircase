@@ -205,3 +205,39 @@ fn drop_no_restack_does_not_adopt() {
         "Staircase should have remained implicit for drop --no-restack."
     );
 }
+
+#[test]
+fn no_adopt_fails_before_mutation_and_reports_reason() {
+    // ARRANGE: Setup a repository with an implicit staircase.
+    let context = TestContext::new();
+    context.run_git(&["checkout", "-b", "feature"]);
+    context.commit("feature.txt", "feature content", "feature commit");
+
+    // Prepare a command that requires adoption.
+    // Adding a description to an implicit staircase requires adoption because it's persistent metadata.
+    // ACT: Execute the command with --no-adopt.
+    let (success, _stdout, stderr) = context.run_staircase(&[
+        "--no-adopt",
+        "metadata",
+        "set-title",
+        "feature",
+        "New Title",
+    ]);
+
+    // ASSERT: Verify the command fails, reports the reason, and NO refs/staircases/ refs are created.
+    assert!(!success, "Command should have failed with --no-adopt");
+    assert!(
+        stderr.contains("adoption required") || stderr.contains("adoption-required"),
+        "Error message should mention adoption was required. Stderr: {}",
+        stderr
+    );
+
+    let refs = context.run_git(&["for-each-ref", "--format=%(refname)"]);
+    for line in refs.lines() {
+        assert!(
+            !line.starts_with("refs/staircases/"),
+            "Found unexpected staircase ref after failed --no-adopt: {}",
+            line
+        );
+    }
+}

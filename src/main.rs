@@ -43,6 +43,9 @@ struct Cli {
 
     #[arg(long, global = true)]
     workspace_mode: Option<String>,
+
+    #[arg(long, global = true)]
+    no_adopt: bool,
 }
 
 impl Cli {
@@ -219,7 +222,8 @@ fn find_repo_root() -> Result<PathBuf> {
 
 fn run(cli: Cli) -> Result<()> {
     let repo_root = find_repo_root()?;
-    let repo = GitRepo::new(repo_root);
+    let mut repo = GitRepo::new(repo_root);
+    repo.set_no_adopt(cli.no_adopt);
     if cli.command.requires_clear_operation() {
         core::ensure_no_active(&repo)?;
         if let Some((operation, owner)) = core::external_git_operation(&repo)? {

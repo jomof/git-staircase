@@ -15,6 +15,20 @@ pub enum ResolvedStaircase {
     ImplicitFamily(StaircaseFamily),
 }
 
+impl ResolvedStaircase {
+    pub fn is_implicit(&self) -> bool {
+        matches!(self, Self::Implicit(_) | Self::ImplicitFamily(_))
+    }
+
+    pub fn metadata(&self) -> &StaircaseMetadata {
+        match self {
+            Self::Managed(m) => m,
+            Self::Implicit(m) => m,
+            Self::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
+        }
+    }
+}
+
 #[derive(Serialize, Deserialize, Debug, Clone, PartialEq, Eq)]
 pub struct ResolvedSelector {
     pub staircase: ResolvedStaircase,
@@ -36,14 +50,6 @@ impl ResolvedSelector {
 }
 
 impl ResolvedStaircase {
-    pub fn metadata(&self) -> &StaircaseMetadata {
-        match self {
-            ResolvedStaircase::Managed(s) => s,
-            ResolvedStaircase::Implicit(s) => s,
-            ResolvedStaircase::ImplicitFamily(_) => panic!("Family does not have linear metadata"),
-        }
-    }
-
     pub fn is_managed(&self) -> bool {
         matches!(self, ResolvedStaircase::Managed(_))
     }
@@ -192,6 +198,9 @@ pub fn validate_structure(
 }
 
 pub fn adopt(repo: &GitRepo, staircase: &StaircaseMetadata) -> Result<StaircaseMetadata> {
+    if repo.no_adopt {
+        return Err(StaircaseError::AdoptionRequired);
+    }
     let target = match repo.resolve_symbolic_full_name(&staircase.target) {
         Ok(t) => t,
         Err(_) => repo.resolve_commit(&staircase.target)?,

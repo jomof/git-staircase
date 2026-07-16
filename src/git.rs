@@ -12,6 +12,7 @@ use std::thread;
 pub struct GitRepo {
     pub workdir: PathBuf,
     pub memoizer: Memoizer,
+    pub no_adopt: bool,
 }
 
 pub struct GitCommand<'a> {
@@ -162,11 +163,20 @@ impl GitRepo {
         GitRepo {
             workdir,
             memoizer: Memoizer::new(),
+            no_adopt: false,
         }
     }
 
     pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
-        GitRepo { workdir, memoizer }
+        GitRepo {
+            workdir,
+            memoizer,
+            no_adopt: false,
+        }
+    }
+
+    pub fn set_no_adopt(&mut self, no_adopt: bool) {
+        self.no_adopt = no_adopt;
     }
 
     pub fn git_cmd(&self) -> Command {

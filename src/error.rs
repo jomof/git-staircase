@@ -90,6 +90,8 @@ pub enum StaircaseError {
     ExternalOperation { operation: String, owner: String },
     #[error("Invalid staircase structure: {0}")]
     InvalidStructure(String),
+    #[error("adoption required")]
+    AdoptionRequired,
     #[error("Other error: {0}")]
     Other(String),
 }
@@ -107,6 +109,7 @@ impl StaircaseError {
             Self::UnsupportedTopology { .. } => "unsupported-topology",
             Self::ExternalOperation { .. } => "external-operation-in-progress",
             Self::InvalidStructure(_) => "invalid-cut-chain",
+            Self::AdoptionRequired => "adoption-required",
             Self::GitCommandFailed { .. } => "git-command-failed",
             Self::Io(_) => "io-error",
             Self::Serialization(_) => "serialization-error",
@@ -126,7 +129,7 @@ impl StaircaseError {
             | Self::ExternalOperation { .. } => ExitClass::OperationConflict,
             Self::RefCollision { .. } => ExitClass::ConcurrentState,
             Self::UnsupportedTopology { .. } => ExitClass::Policy,
-            Self::InvalidStructure(_) | Self::Other(_) => ExitClass::Usage,
+            Self::InvalidStructure(_) | Self::Other(_) | Self::AdoptionRequired => ExitClass::Usage,
             Self::GitCommandFailed { .. } | Self::Io(_) | Self::Serialization(_) => {
                 ExitClass::Integrity
             }
