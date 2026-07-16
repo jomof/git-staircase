@@ -1,5 +1,5 @@
 use crate::{GitRepo, ResolvedSelector, StaircaseError, core};
-use anyhow::{Result, anyhow};
+use anyhow::Result;
 use clap::Args;
 use serde::Serialize;
 
@@ -80,69 +80,17 @@ pub struct BaseStaircaseSelectorArgs {
 
 impl BaseStaircaseSelectorArgs {
     pub fn resolve(&self, repo: &GitRepo, steps: Option<&[String]>) -> Result<ResolvedSelector> {
-        let selector_count = [
-            self.id.is_some(),
-            self.record.is_some(),
-            self.explicit_name.is_some(),
-            self.r#ref.is_some(),
-            self.structural_key.is_some(),
-            steps.as_ref().is_some_and(|steps| !steps.is_empty()),
-            self.name.is_some(),
-        ]
-        .into_iter()
-        .filter(|selected| *selected)
-        .count();
-        if selector_count > 1 {
-            return Err(StaircaseError::Other(
-                "exactly one staircase selector may be provided".into(),
-            )
-            .into());
-        }
-        if let Some(id) = &self.id {
-            return Ok(ResolvedSelector {
-                staircase: core::resolve_by_id(repo, id)?,
-                step_index: None,
-            });
-        }
-        if let Some(record) = &self.record {
-            return Ok(ResolvedSelector {
-                staircase: core::resolve_by_record(repo, record)?,
-                step_index: None,
-            });
-        }
-        if let Some(name) = &self.explicit_name {
-            return Ok(ResolvedSelector {
-                staircase: core::resolve_by_name(repo, name)?,
-                step_index: None,
-            });
-        }
-        if let Some(r) = &self.r#ref {
-            return Ok(ResolvedSelector {
-                staircase: core::resolve_by_ref(repo, r)?,
-                step_index: None,
-            });
-        }
-        if let Some(key) = &self.structural_key {
-            return Ok(ResolvedSelector {
-                staircase: core::resolve_by_structural_key(repo, key, self.onto.as_deref())?,
-                step_index: None,
-            });
-        }
-
-        if let Some(s) = steps {
-            if !s.is_empty() {
-                return Ok(ResolvedSelector {
-                    staircase: core::resolve_explicit_staircase(repo, s, self.onto.as_deref())?,
-                    step_index: None,
-                });
-            }
-        }
-        let name = self
-            .name
-            .as_ref()
-            .ok_or_else(|| anyhow!("Either a name, --steps, or an explicit selector (--id, --name, --ref, --record, --structural-key) must be provided"))?;
-        core::resolve_staircase(repo, name, self.onto.as_deref())?
-            .ok_or_else(|| StaircaseError::NotFound(name.clone()).into())
+        let selector = core::Selector {
+            name: self.name.as_deref(),
+            onto: self.onto.as_deref(),
+            id: self.id.as_deref(),
+            record: self.record.as_deref(),
+            explicit_name: self.explicit_name.as_deref(),
+            refname: self.r#ref.as_deref(),
+            structural_key: self.structural_key.as_deref(),
+            steps,
+        };
+        core::resolve(repo, &selector).map_err(Into::into)
     }
 }
 

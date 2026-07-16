@@ -2,7 +2,7 @@ use crate::cli::{
     Command, Presentation, PresentationOutput, RequiredStaircaseSelector, StaircaseSelectorArgs,
     ToPresentation, UsePresentation,
 };
-use crate::core::{self, ResolvedSelector};
+use crate::core;
 use crate::git::GitRepo;
 use crate::model::{StaircaseLink, StaircaseUserMetadata, StepMetadata};
 use anyhow::{Result, anyhow};
@@ -355,7 +355,13 @@ impl Command for MetadataCmd {
             }
             MetadataSubcommands::ShowStep(args) => {
                 let sel = args.selector.resolve(repo)?;
-                let step_key = resolve_step_arg(&sel, args.step.as_deref())?;
+                let idx = core::resolve_step(&sel, args.step.as_deref())?;
+                let step = &sel.metadata().steps[idx];
+                let step_key = if !step.id.is_empty() {
+                    step.id.clone()
+                } else {
+                    step.name.clone()
+                };
                 let meta = core::get_step_metadata(repo, &sel, &step_key)?;
                 Ok(Box::new(StepMetadataOutput {
                     name: sel.staircase.metadata().name.clone(),
@@ -365,7 +371,13 @@ impl Command for MetadataCmd {
             }
             MetadataSubcommands::EditStep(args) => {
                 let sel = args.selector.resolve(repo)?;
-                let step_key = resolve_step_arg(&sel, args.step.as_deref())?;
+                let idx = core::resolve_step(&sel, args.step.as_deref())?;
+                let step = &sel.metadata().steps[idx];
+                let step_key = if !step.id.is_empty() {
+                    step.id.clone()
+                } else {
+                    step.name.clone()
+                };
                 let (current_step_meta, expected_record_oid) =
                     core::get_step_metadata_snapshot(repo, &sel, &step_key)?;
                 let json_str = serde_json::to_string_pretty(&current_step_meta)?;
@@ -412,22 +424,4 @@ impl Command for MetadataCmd {
             }
         }
     }
-}
-
-fn resolve_step_arg(sel: &ResolvedSelector, step_arg: Option<&str>) -> Result<String> {
-    if let Some(idx) = sel.step_index {
-        let meta = sel.staircase.metadata();
-        if idx < meta.steps.len() {
-            let step = &meta.steps[idx];
-            return Ok(if !step.id.is_empty() {
-                step.id.clone()
-            } else {
-                step.name.clone()
-            });
-        }
-    }
-    if let Some(arg) = step_arg {
-        return Ok(arg.to_string());
-    }
-    Err(anyhow!("No step specified"))
 }
