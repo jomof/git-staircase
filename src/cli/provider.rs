@@ -111,8 +111,8 @@ impl ToPresentation for ProviderDoctorReport {
     }
 }
 
-impl ProviderCmd {
-    pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+impl crate::cli::Command for ProviderCmd {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         let record = find_workspace_record_for_path(&repo.workdir)?;
         let report = match &self.provider {
             ProviderSubcommand::Repo(_) => {

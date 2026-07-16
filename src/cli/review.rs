@@ -98,47 +98,6 @@ pub struct ReviewOpenCmd {
 }
 
 impl ReviewCmd {
-    pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let boot_res = bootstrap(repo, &BootstrapOptions::default())?;
-
-        let providers: Vec<Box<dyn ReviewProvider>> = match self.provider.as_deref() {
-            Some("gerrit") => vec![Box::new(GerritProvider)],
-            Some("github") => vec![Box::new(GitHubProvider)],
-            Some(provider) => {
-                return Err(anyhow!(
-                    "Unknown review provider '{}'; expected gerrit or github",
-                    provider
-                ));
-            }
-            None => {
-                if let Some(binding) = boot_res
-                    .record
-                    .capability_bindings
-                    .get(&crate::workspace::Capability::Review)
-                {
-                    match binding.provider.as_str() {
-                        "github" => vec![Box::new(GitHubProvider)],
-                        "gerrit" => vec![Box::new(GerritProvider)],
-                        _ => vec![Box::new(GerritProvider), Box::new(GitHubProvider)],
-                    }
-                } else {
-                    vec![Box::new(GerritProvider), Box::new(GitHubProvider)]
-                }
-            }
-        };
-
-        for provider in providers {
-            let provider_name = provider.name();
-            if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
-                return self.run_instance(repo, provider_name, instance.as_ref());
-            }
-        }
-
-        Err(anyhow!(
-            "No review provider route (Gerrit or GitHub) could be resolved. Please configure remote host or workspace review route."
-        ))
-    }
-
     fn run_instance(
         &self,
         repo: &GitRepo,
@@ -224,6 +183,49 @@ impl ReviewCmd {
             None
         };
         Ok((resolved, oids, record))
+    }
+}
+
+impl super::Command for ReviewCmd {
+    fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        let boot_res = bootstrap(repo, &BootstrapOptions::default())?;
+
+        let providers: Vec<Box<dyn ReviewProvider>> = match self.provider.as_deref() {
+            Some("gerrit") => vec![Box::new(GerritProvider)],
+            Some("github") => vec![Box::new(GitHubProvider)],
+            Some(provider) => {
+                return Err(anyhow!(
+                    "Unknown review provider '{}'; expected gerrit or github",
+                    provider
+                ));
+            }
+            None => {
+                if let Some(binding) = boot_res
+                    .record
+                    .capability_bindings
+                    .get(&crate::workspace::Capability::Review)
+                {
+                    match binding.provider.as_str() {
+                        "github" => vec![Box::new(GitHubProvider)],
+                        "gerrit" => vec![Box::new(GerritProvider)],
+                        _ => vec![Box::new(GerritProvider), Box::new(GitHubProvider)],
+                    }
+                } else {
+                    vec![Box::new(GerritProvider), Box::new(GitHubProvider)]
+                }
+            }
+        };
+
+        for provider in providers {
+            let provider_name = provider.name();
+            if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
+                return self.run_instance(repo, provider_name, instance.as_ref());
+            }
+        }
+
+        Err(anyhow!(
+            "No review provider route (Gerrit or GitHub) could be resolved. Please configure remote host or workspace review route."
+        ))
     }
 }
 
