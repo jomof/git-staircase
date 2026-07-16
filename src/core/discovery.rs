@@ -78,7 +78,7 @@ pub fn discover(
     let all_oids: Vec<&str> = branches.iter().map(|b| b.oid.as_str()).collect();
     let _ = repo.preload_ancestry_ext(&all_oids, &[&onto_oid]);
 
-    let mut active_branches = filter_active_branches(repo, branches, &onto_oid, &onto_final)?;
+    let mut active_branches = filter_active_branches(repo, branches, &onto_oid)?;
     active_branches.sort_by(|left, right| left.refname.cmp(&right.refname));
 
     let (parents, children_map) = graph::build_branch_graph(repo, &active_branches)?;
@@ -168,13 +168,9 @@ fn filter_active_branches(
     repo: &GitRepo,
     branches: Vec<crate::model::BranchInfo>,
     onto_oid: &str,
-    onto_final: &str,
 ) -> Result<Vec<crate::model::BranchInfo>> {
     let mut active_branches = Vec::new();
     for b in branches {
-        if b.refname == onto_final {
-            continue;
-        }
         if !repo.is_ancestor(&b.oid, onto_oid)? {
             active_branches.push(b);
         }

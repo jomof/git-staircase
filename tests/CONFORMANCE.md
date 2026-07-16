@@ -52,7 +52,7 @@ Conformance tests use the compiled `git-staircase` binary, temporary repositorie
 ### Discovery, identity, and selection
 
 * Integration branch exactly at anchor is not an empty staircase — `[planned] tests/conformance_corner_cases.rs::integration_branch_at_anchor_is_not_discovered`
-* Branch named `main` ahead of its anchor may be work — `[planned] tests/conformance_corner_cases.rs::main_ahead_of_anchor_is_valid_work`
+* Branch named `main` ahead of its anchor may be work — `[existing] tests/conformance_corner_cases.rs::main_ahead_of_anchor_is_valid_work`
 * Equivalent discovery sources collapse and merge provenance — `[planned] tests/conformance_corner_cases.rs::equivalent_discovery_sources_collapse`
 * Same top with different lower cuts remains distinct — `[planned] tests/conformance_corner_cases.rs::same_top_different_cuts_remain_distinct`
 * Different symbolic targets resolving to one anchor collapse — `[planned] tests/conformance_corner_cases.rs::equivalent_symbolic_targets_collapse`

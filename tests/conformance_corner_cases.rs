@@ -101,3 +101,27 @@ fn explicit_staircase_with_empty_step_is_rejected() {
         stderr
     );
 }
+
+#[test]
+fn main_ahead_of_anchor_is_valid_work() {
+    // ARRANGE: Repository with 'main' ahead of its base.
+    let ctx = TestContext::new();
+    let base = ctx.run_git(&["rev-parse", "HEAD"]);
+    ctx.commit("work.txt", "some work", "commit on main");
+
+    // ACT: Run 'git-staircase list'.
+    let (success, stdout, stderr) = ctx.run_staircase(&["list", "--onto", &base]);
+
+    // ASSERT: 'main' is present in output with '(implicit)' status.
+    assert!(success, "list failed: {}", stderr);
+    assert!(
+        stdout.contains("main"),
+        "main should be listed. Output: {}",
+        stdout
+    );
+    assert!(
+        stdout.contains("(implicit)"),
+        "main should be implicit. Output: {}",
+        stdout
+    );
+}
