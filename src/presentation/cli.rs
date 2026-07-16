@@ -27,7 +27,7 @@ impl ToPresentation for Summary<StaircaseStatus> {
                 s.state(),
                 implicit_marker
             )),
-            Presentation::Record(vec![m.name.clone(), m.id.clone(), s.state().to_string()]),
+            Presentation::record(vec![m.name.clone(), m.id.clone(), s.state().to_string()]),
         )
     }
 }
@@ -42,7 +42,7 @@ impl ToPresentation for Summary<StaircaseFamily> {
                 "{} [{}] {} {} (implicit)",
                 f.name, f.id, path_count, paths_word
             )),
-            Presentation::Record(vec![
+            Presentation::record(vec![
                 f.name.clone(),
                 f.id.clone(),
                 "family".to_string(),
@@ -66,7 +66,7 @@ impl ToPresentation for StepsList {
             h_rows.push(vec![
                 format!("Step {}:", i + 1),
                 step.name.clone(),
-                format!("({})", &step.cut[..7]),
+                format!("({})", Presentation::truncate_hash(&step.cut)),
             ]);
             p_rows.push(vec![
                 (i + 1).to_string(),
@@ -99,7 +99,7 @@ impl ToPresentation for StaircaseCommits {
                     "{} {}",
                     commit.hash, commit.subject
                 )));
-                p_commits.push(Presentation::Record(vec![
+                p_commits.push(Presentation::record(vec![
                     "commit".to_string(),
                     commit.hash.clone(),
                     commit.subject.clone(),
@@ -110,7 +110,7 @@ impl ToPresentation for StaircaseCommits {
                     title: format!("Step {}: {}", step.index, step.name),
                     children: h_commits,
                 }),
-                Presentation::porcelain(Presentation::Record(vec![
+                Presentation::porcelain(Presentation::record(vec![
                     "step".to_string(),
                     step.index.to_string(),
                     step.name.clone(),
@@ -134,7 +134,7 @@ impl ToPresentation for LogOutput {
         let mut p_items = vec![];
         for c in &self.0 {
             h_items.push(Presentation::Plain(format!("{} {}", c.hash, c.subject)));
-            p_items.push(Presentation::Record(vec![
+            p_items.push(Presentation::record(vec![
                 c.hash.clone(),
                 c.subject.clone(),
             ]));
@@ -147,15 +147,9 @@ impl ToPresentation for BTreeMap<String, Value> {
     fn to_presentation(&self) -> Presentation {
         let mut fields = vec![];
         for (k, v) in self {
-            fields.push(Presentation::Field {
-                label: k.clone(),
-                value: v.to_string(),
-            });
+            fields.push(Presentation::field(k.clone(), v.to_string()));
         }
-        Presentation::Section {
-            title: "Values:".into(),
-            children: fields,
-        }
+        Presentation::section("Values:", fields)
     }
 }
 
@@ -176,23 +170,22 @@ impl ToPresentation for ArchiveOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
         if !self.result.moved_branches.is_empty() {
-            h_children.push(Presentation::Section {
-                title: "Moved owned branches from refs/heads/:".into(),
-                children: self
-                    .result
+            h_children.push(Presentation::section(
+                "Moved owned branches from refs/heads/:",
+                self.result
                     .moved_branches
                     .iter()
                     .map(|b| Presentation::Plain(format!("  {}", b)))
                     .collect(),
-            });
+            ));
         }
         for warn in &self.result.unowned_warnings {
             h_children.push(Presentation::Plain(warn.clone()));
         }
 
         Presentation::pair(
-            Presentation::Section {
-                title: if self.result.is_dry_run {
+            Presentation::section(
+                if self.result.is_dry_run {
                     "Dry run: planned archive operations:".into()
                 } else {
                     format!(
@@ -200,9 +193,9 @@ impl ToPresentation for ArchiveOutput {
                         self.result.canonical_name, self.result.archived_staircase_id
                     )
                 },
-                children: h_children,
-            },
-            Presentation::Record(vec![
+                h_children,
+            ),
+            Presentation::record(vec![
                 "archived".into(),
                 self.result.canonical_name.clone(),
                 self.result.archived_staircase_id.clone(),
@@ -219,7 +212,7 @@ impl ToPresentation for ReleaseNameOutput {
                 "Released canonical name reservation (record OID: {})",
                 self.record_oid
             )),
-            Presentation::Record(vec!["name_released".into(), self.record_oid.clone()]),
+            Presentation::record(vec!["name_released".into(), self.record_oid.clone()]),
         )
     }
 }
@@ -230,10 +223,7 @@ impl ToPresentation for DescribeOutput {
     fn to_presentation(&self) -> Presentation {
         let mut h_children = vec![];
         if let Some(ref t) = self.title {
-            h_children.push(Presentation::Field {
-                label: "Title".into(),
-                value: t.clone(),
-            });
+            h_children.push(Presentation::field("Title", t.clone()));
         }
         if let Some(ref d) = self.description {
             h_children.push(Presentation::Plain(d.clone()));
@@ -245,12 +235,12 @@ impl ToPresentation for DescribeOutput {
             )));
         }
 
-        let mut p_records = vec![Presentation::Record(vec!["name".into(), self.name.clone()])];
+        let mut p_records = vec![Presentation::record(vec!["name".into(), self.name.clone()])];
         if let Some(ref t) = self.title {
-            p_records.push(Presentation::Record(vec!["title".into(), t.clone()]));
+            p_records.push(Presentation::record(vec!["title".into(), t.clone()]));
         }
         if let Some(ref d) = self.description {
-            p_records.push(Presentation::Record(vec![
+            p_records.push(Presentation::record(vec![
                 "description".into(),
                 d.replace('\n', "\n"),
             ]));

@@ -58,6 +58,14 @@ impl Presentation {
     pub fn record<S: Into<String>>(fields: Vec<S>) -> Self {
         Self::Record(fields.into_iter().map(|f| f.into()).collect())
     }
+
+    pub fn truncate_hash(hash: &str) -> &str {
+        if hash.len() > 7 { &hash[..7] } else { hash }
+    }
+
+    pub fn fields(items: Vec<(impl Into<String>, impl Into<String>)>) -> Vec<Self> {
+        items.into_iter().map(|(l, v)| Self::field(l, v)).collect()
+    }
 }
 
 #[macro_export]
