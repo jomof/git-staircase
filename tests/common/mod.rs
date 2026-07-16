@@ -102,8 +102,7 @@ pub fn setup_repo() -> (TempDir, GitRepo) {
 }
 
 #[allow(dead_code)]
-pub fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
-    let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", dir));
+pub fn get_test_binary_path() -> std::path::PathBuf {
     let bin_str = env!("CARGO_BIN_EXE_git-staircase");
     let mut bin = std::path::PathBuf::from(bin_str);
     if bin_str.contains("/shadow-") || !bin.exists() {
@@ -113,8 +112,32 @@ pub fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
             .join("git-staircase");
         if fallback.exists() {
             bin = fallback;
+        } else if let Ok(entries) = std::fs::read_dir(
+            std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+                .join("target")
+                .join("debug")
+                .join("deps"),
+        ) {
+            for entry in entries.flatten() {
+                let p = entry.path();
+                if p.is_file()
+                    && p.file_name()
+                        .and_then(|n| n.to_str())
+                        .map_or(false, |n| n.starts_with("git-staircase-") && !n.contains("."))
+                {
+                    bin = p;
+                    break;
+                }
+            }
         }
     }
+    bin
+}
+
+#[allow(dead_code)]
+pub fn run_staircase(dir: &Path, args: &[&str]) -> (bool, String, String) {
+    let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", dir));
+    let bin = get_test_binary_path();
     let output = match Command::new(&bin)
         .current_dir(dir)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)

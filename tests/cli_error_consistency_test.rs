@@ -41,5 +41,16 @@ fn test_error_output_consistency() {
 }
 
 fn get_bin_path() -> String {
-    env!("CARGO_BIN_EXE_git-staircase").to_string()
+    let bin_str = env!("CARGO_BIN_EXE_git-staircase");
+    let mut bin = std::path::PathBuf::from(bin_str);
+    if bin_str.contains("/shadow-") || !bin.exists() {
+        let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("target")
+            .join("debug")
+            .join("git-staircase");
+        if fallback.exists() {
+            bin = fallback;
+        }
+    }
+    bin.to_string_lossy().to_string()
 }

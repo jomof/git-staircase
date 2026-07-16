@@ -41,18 +41,7 @@ fn write_journal(context: &TestContext, journal: &OperationJournal) {
 }
 
 fn get_binary_path() -> std::path::PathBuf {
-    let bin_str = env!("CARGO_BIN_EXE_git-staircase");
-    let mut binary = std::path::PathBuf::from(bin_str);
-    if bin_str.contains("/shadow-") || !binary.exists() {
-        let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("target")
-            .join("debug")
-            .join("git-staircase");
-        if fallback.exists() {
-            binary = fallback;
-        }
-    }
-    binary
+    get_test_binary_path()
 }
 
 #[test]

@@ -8,17 +8,7 @@ use std::process::Command;
 
 fn command_output(path: &std::path::Path, args: &[&str]) -> std::process::Output {
     let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", path));
-    let bin_str = env!("CARGO_BIN_EXE_git-staircase");
-    let mut binary = std::path::PathBuf::from(bin_str);
-    if bin_str.contains("/shadow-") || !binary.exists() {
-        let fallback = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("target")
-            .join("debug")
-            .join("git-staircase");
-        if fallback.exists() {
-            binary = fallback;
-        }
-    }
+    let binary = get_test_binary_path();
     match Command::new(&binary)
         .current_dir(path)
         .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)
