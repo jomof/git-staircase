@@ -56,6 +56,26 @@ impl ResolvedStaircase {
         step: Step,
         no_ref: bool,
     ) -> Result<ResolvedStaircase> {
+        let needs_adoption =
+            self.is_managed() || no_ref || super::identity::has_stable_identity(repo, self)?;
+
+        if !needs_adoption {
+            if let Some(branch) = &step.branch {
+                let reference = if branch.starts_with("refs/") {
+                    branch.clone()
+                } else {
+                    format!("refs/heads/{}", branch)
+                };
+                let mut plan = super::operation::MutationPlan::new("split", None);
+                plan.update(reference, None, Some(step.cut.clone()));
+                plan.publish(repo, false)?;
+
+                let mut metadata = self.metadata().clone();
+                metadata.steps.insert(index, step);
+                return Ok(ResolvedStaircase::Implicit(metadata));
+            }
+        }
+
         let managed = ensure_managed(repo, self)?;
         let mut metadata = managed.metadata().clone();
         if no_ref {

@@ -198,6 +198,22 @@ pub fn join(
         }
     }
 
+    let needs_adoption = staircase.is_managed()
+        || options.ref_action == JoinRefAction::Keep
+        || super::identity::has_stable_identity(repo, staircase)?;
+
+    if !needs_adoption {
+        if let JoinRefAction::Delete = options.ref_action {
+            if let Some(branch) = &removed_step.branch {
+                let reference = format!("refs/heads/{}", branch);
+                let mut plan = super::operation::MutationPlan::new("join", None);
+                plan.update(reference, Some(removed_step.cut.clone()), None);
+                plan.publish(repo, false)?;
+            }
+        }
+        return Ok(());
+    }
+
     let managed = if staircase.is_managed() {
         staircase.clone()
     } else {

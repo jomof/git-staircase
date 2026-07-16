@@ -119,3 +119,69 @@ fn empty_step_is_rejected_before_mutation() {
     // OR it might adopt then fail the plan.
     // The spec says "Reject before mutation".
 }
+
+#[test]
+fn integration_branch_at_anchor_is_not_discovered() {
+    let ctx = TestContext::new();
+
+    // 1. ARRANGE: Create a repository where the local branch `main` and its remote anchor `origin/main` point to the same OID.
+    let main_oid = ctx.run_git(&["rev-parse", "main"]);
+    ctx.run_git(&["update-ref", "refs/remotes/origin/main", &main_oid]);
+
+    // 2. ACT: Run `git-staircase list --onto origin/main`.
+    let (ok, stdout, _) = ctx.run_staircase(&["list", "--onto", "origin/main"]);
+    assert!(ok);
+
+    // 3. ASSERT: Verify that `main` is NOT present in the output.
+    assert!(
+        !stdout.contains("main"),
+        "main should not be discovered if it is exactly at the anchor. Stdout: {}",
+        stdout
+    );
+}
+
+#[test]
+fn equivalent_discovery_sources_collapse() {
+    let ctx = TestContext::new();
+
+    // 1. ARRANGE: Create a staircase and point two different branches (`feat-1` and `feat-2`) to its tip OID.
+    ctx.commit("f1.txt", "1", "commit 1");
+    let c2 = ctx.commit("f2.txt", "2", "commit 2");
+    ctx.run_git(&["branch", "feat-1", &c2]);
+    ctx.run_git(&["branch", "feat-2", &c2]);
+
+    // 2. ACT: Run `git-staircase list --implicit --json`.
+    let (ok, stdout, stderr) = ctx.run_staircase(&["list", "--implicit", "--json"]);
+    assert!(ok, "list failed: {}", stderr);
+
+    // 3. ASSERT: Verify that only one staircase entry is returned in the JSON array,
+    // and its 'provenance' or 'refs' metadata includes both `feat-1` and `feat-2`.
+    let json: serde_json::Value =
+        serde_json::from_str(&stdout).expect("Failed to parse JSON output");
+    let staircases = json.as_array().expect("Output should be a JSON array");
+
+    assert_eq!(
+        staircases.len(),
+        1,
+        "Should have collapsed feat-1 and feat-2 into a single staircase entry. Output: {}",
+        stdout
+    );
+
+    let staircase = &staircases[0];
+    let refs = staircase["materializing_refs"]
+        .as_array()
+        .or_else(|| staircase["provenance"].as_array())
+        .expect("Should have materializing_refs or provenance field");
+
+    let ref_names: Vec<&str> = refs.iter().map(|r| r.as_str().unwrap()).collect();
+    assert!(
+        ref_names.iter().any(|r| r.contains("feat-1")),
+        "Should contain feat-1 in provenance. Refs: {:?}",
+        ref_names
+    );
+    assert!(
+        ref_names.iter().any(|r| r.contains("feat-2")),
+        "Should contain feat-2 in provenance. Refs: {:?}",
+        ref_names
+    );
+}

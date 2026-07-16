@@ -128,3 +128,45 @@ pub fn compute_identity(
         }
     }
 }
+
+pub fn has_stable_identity(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<bool> {
+    let boot_res = bootstrap(
+        repo,
+        &BootstrapOptions {
+            no_bootstrap: true,
+            ..Default::default()
+        },
+    )?;
+
+    let providers: Vec<Box<dyn ReviewProvider>> =
+        vec![Box::new(GerritProvider), Box::new(GitHubProvider)];
+
+    let oids: Vec<String> = staircase
+        .metadata()
+        .steps
+        .iter()
+        .map(|s| s.cut.clone())
+        .collect();
+
+    for provider in providers {
+        if let Some(instance) = provider.probe(repo, Some(&boot_res.record))? {
+            let identifiers = instance.get_stable_identifiers(repo, &oids, None)?;
+            if identifiers.iter().any(|opt| opt.is_some()) {
+                return Ok(true);
+            }
+        }
+    }
+
+    for oid in &oids {
+        let msg = repo.run(&["log", "-1", "--format=%B", oid])?;
+        match crate::workspace::gerrit_provider::parse_change_ids(&msg) {
+            crate::workspace::gerrit_provider::ChangeIdParseResult::Single(_)
+            | crate::workspace::gerrit_provider::ChangeIdParseResult::Multiple(_) => {
+                return Ok(true);
+            }
+            _ => {}
+        }
+    }
+
+    Ok(false)
+}
