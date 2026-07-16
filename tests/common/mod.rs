@@ -49,6 +49,7 @@ pub fn run_git(dir: &Path, args: &[&str]) -> String {
     let output = Command::new("git")
         .current_dir(dir)
         .args(args)
+        .env("GIT_CONFIG_NOSYSTEM", "1")
         .env("GIT_AUTHOR_NAME", "Test")
         .env("GIT_AUTHOR_EMAIL", "test@example.com")
         .env("GIT_COMMITTER_NAME", "Test")
@@ -96,6 +97,7 @@ pub fn setup_repo() -> (TempDir, GitRepo) {
     let tmp = TempDir::new().unwrap();
     let path = tmp.path().to_path_buf();
     run_git(&path, &["init", "-b", "main"]);
+    run_git(&path, &["config", "core.hooksPath", "/dev/null"]);
     commit(&path, "init.txt", "initial", "initial commit");
     let repo = GitRepo::new(path);
     (tmp, repo)

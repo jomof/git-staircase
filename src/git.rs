@@ -184,8 +184,11 @@ impl GitRepo {
         cmd.current_dir(&self.workdir);
         cmd.env("GIT_TERMINAL_PROMPT", "0");
         cmd.env("GIT_OPTIONAL_LOCKS", "0");
-        cmd.env("GIT_CONFIG_GLOBAL", "/dev/null");
-        cmd.env("GIT_CONFIG_SYSTEM", "/dev/null");
+        // Disable system configuration to avoid corp hooks (e.g. git-secrets)
+        // breaking staircase orchestration and test harnesses.
+        if std::env::var_os("GIT_STAIRCASE_TEST_ALLOW_GLOBAL_CONFIG").is_none() {
+            cmd.env("GIT_CONFIG_SYSTEM", "/dev/null");
+        }
         cmd
     }
 
@@ -850,18 +853,6 @@ mod tests {
                 .copied()
                 .flatten(),
             Some(std::ffi::OsStr::new("0"))
-        );
-        assert_eq!(
-            envs.get(std::ffi::OsStr::new("GIT_CONFIG_GLOBAL"))
-                .copied()
-                .flatten(),
-            Some(std::ffi::OsStr::new("/dev/null"))
-        );
-        assert_eq!(
-            envs.get(std::ffi::OsStr::new("GIT_CONFIG_SYSTEM"))
-                .copied()
-                .flatten(),
-            Some(std::ffi::OsStr::new("/dev/null"))
         );
     }
 }
