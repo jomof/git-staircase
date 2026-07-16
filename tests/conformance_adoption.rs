@@ -183,7 +183,10 @@ fn append_adopts_only_for_durable_association() {
 
     // 5. ASSERT: Verify adoption DID NOT occur (no stable ID).
     let refs = run_git(dir, &["for-each-ref", "refs/staircases/"]);
-    assert!(refs.is_empty(), "Append without stable ID should not trigger adoption.");
+    assert!(
+        refs.is_empty(),
+        "Append without stable ID should not trigger adoption."
+    );
 }
 
 #[test]

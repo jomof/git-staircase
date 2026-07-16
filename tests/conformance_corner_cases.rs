@@ -155,7 +155,8 @@ fn equivalent_discovery_sources_collapse() {
     ctx.run_git(&["branch", "-D", "feat"]);
 
     // 2. ACT: Run `git-staircase list --implicit --onto anchor --json`.
-    let (ok, stdout, stderr) = ctx.run_staircase(&["list", "--implicit", "--onto", &anchor, "--json"]);
+    let (ok, stdout, stderr) =
+        ctx.run_staircase(&["list", "--implicit", "--onto", &anchor, "--json"]);
     assert!(ok, "list failed: {}", stderr);
 
     // 3. ASSERT: Verify that only one staircase entry is returned in the JSON array,
@@ -177,13 +178,12 @@ fn equivalent_discovery_sources_collapse() {
         .or_else(|| staircase["steps"].as_array())
         .expect("Should have steps array");
 
-    let branch_names: Vec<&str> = steps
-        .iter()
-        .filter_map(|s| s["branch"].as_str())
-        .collect();
+    let branch_names: Vec<&str> = steps.iter().filter_map(|s| s["branch"].as_str()).collect();
 
     assert!(
-        branch_names.iter().any(|b| b.contains("feat-1") || b.contains("feat-2")),
+        branch_names
+            .iter()
+            .any(|b| b.contains("feat-1") || b.contains("feat-2")),
         "Should contain feat-1 or feat-2 in steps. Branches: {:?}, Full Output: {}",
         branch_names,
         stdout
