@@ -121,9 +121,9 @@ pub fn get_test_binary_path() -> std::path::PathBuf {
             for entry in entries.flatten() {
                 let p = entry.path();
                 if p.is_file()
-                    && p.file_name()
-                        .and_then(|n| n.to_str())
-                        .map_or(false, |n| n.starts_with("git-staircase-") && !n.contains("."))
+                    && p.file_name().and_then(|n| n.to_str()).map_or(false, |n| {
+                        n.starts_with("git-staircase-") && !n.contains(".")
+                    })
                 {
                     bin = p;
                     break;

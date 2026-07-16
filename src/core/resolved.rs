@@ -104,7 +104,10 @@ impl ResolvedStaircase {
     }
 }
 
-fn ensure_managed(repo: &GitRepo, staircase: &ResolvedStaircase) -> Result<ResolvedStaircase> {
+pub(crate) fn ensure_managed(
+    repo: &GitRepo,
+    staircase: &ResolvedStaircase,
+) -> Result<ResolvedStaircase> {
     if staircase.is_managed() {
         Ok(staircase.clone())
     } else {

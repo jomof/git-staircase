@@ -120,3 +120,57 @@ fn revision_identity_remains_implicit_but_stable_identity_adopts() {
         refs_after
     );
 }
+
+#[test]
+fn archive_always_adopts_implicit_selection() {
+    // ARRANGE: Create a local branch `feature` ahead of `main` (an implicit staircase).
+    let ctx = TestContext::new();
+    ctx.run_git(&["checkout", "-b", "feature"]);
+    ctx.commit("feature.txt", "feature content", "feature commit");
+
+    // Verify it is discovered as implicit initially.
+    let (success, stdout, _) = ctx.run_staircase(&["list", "--json"]);
+    assert!(success);
+    assert!(
+        stdout.contains("\"is_implicit\": true"),
+        "Initially should be implicit"
+    );
+
+    // ACT: Run `git staircase archive feature`.
+    let (archive_ok, stdout_archive, stderr) = ctx.run_staircase(&["archive", "feature"]);
+    assert!(
+        archive_ok,
+        "Archive command failed:\nSTDOUT: {}\nSTDERR: {}",
+        stdout_archive, stderr
+    );
+
+    // ASSERT: Verify success.
+    let (success2, stdout2, stderr2) = ctx.run_staircase(&["status", "feature", "--json"]);
+    assert!(
+        success2,
+        "Status command failed:\nSTDOUT: {}\nSTDERR: {}",
+        stdout2, stderr2
+    );
+
+    // Check if it's no longer implicit.
+    assert!(
+        stdout2.contains("\"is_implicit\": false"),
+        "Staircase should have been adopted during archive"
+    );
+    // Check if lifecycle state is archived.
+    assert!(
+        stdout2.contains("\"state\": \"archived\""),
+        "Lifecycle state should be archived"
+    );
+
+    // Verify a record exists in `refs/staircase-archive/`.
+    let refs = ctx.run_git(&[
+        "for-each-ref",
+        "--format=%(refname)",
+        "refs/staircase-archive/",
+    ]);
+    assert!(
+        !refs.is_empty(),
+        "Archive records should exist in refs/staircase-archive/"
+    );
+}

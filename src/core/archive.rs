@@ -47,7 +47,8 @@ pub fn archive_staircase(
         ));
     }
 
-    let meta = selector.staircase.metadata();
+    let managed = crate::core::resolved::ensure_managed(repo, &selector.staircase)?;
+    let meta = managed.metadata();
     let current_ref = StaircaseRefs::record(
         &meta.id,
         meta.lifecycle
