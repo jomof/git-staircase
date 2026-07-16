@@ -35,8 +35,8 @@ pub fn parse_git_url(url: &str) -> Option<GitUrlInfo> {
             if let Some(path) = path {
                 let parts: Vec<&str> = path.split('/').collect();
                 if parts.len() >= 2 {
-                    owner = Some(parts[0].to_string());
-                    let mut repo_name = parts[1];
+                    owner = Some(parts[..parts.len() - 1].join("/"));
+                    let mut repo_name = parts[parts.len() - 1];
                     if let Some(pos) = repo_name.find('?') {
                         repo_name = &repo_name[..pos];
                     }
@@ -84,11 +84,11 @@ pub fn parse_git_url(url: &str) -> Option<GitUrlInfo> {
         let mut repository = None;
 
         if parts.len() >= 2 {
-            owner = Some(parts[0].to_string());
+            owner = Some(parts[..parts.len() - 1].join("/"));
             repository = Some(
-                parts[1]
+                parts[parts.len() - 1]
                     .strip_suffix(".git")
-                    .unwrap_or(parts[1])
+                    .unwrap_or(parts[parts.len() - 1])
                     .to_string(),
             );
         } else if parts.len() == 1 && !parts[0].is_empty() {
