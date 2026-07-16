@@ -51,6 +51,25 @@ struct FormatArgs {
 }
 
 impl FormatArgs {
+    fn detect() -> Self {
+        let args: Vec<String> = std::env::args().collect();
+        let mut format_args = Self::default();
+        for (i, arg) in args.iter().enumerate() {
+            if arg == "--json" {
+                format_args.json = true;
+            } else if arg == "--porcelain" {
+                format_args.porcelain = true;
+            } else if arg == "--format" {
+                if let Some(val) = args.get(i + 1) {
+                    format_args.format = Some(val.clone());
+                }
+            } else if let Some(val) = arg.strip_prefix("--format=") {
+                format_args.format = Some(val.to_string());
+            }
+        }
+        format_args
+    }
+
     fn to_format(&self) -> cli::OutputFormat {
         if self.json || matches!(self.format.as_deref(), Some("json")) {
             cli::OutputFormat::Json
@@ -326,21 +345,8 @@ fn render_error(error: &anyhow::Error, format: cli::OutputFormat) -> i32 {
 }
 
 fn main() {
-    let matches = clap::Command::new("git-staircase")
-        .ignore_errors(true)
-        .arg(clap::Arg::new("json").long("json").action(clap::ArgAction::SetTrue))
-        .arg(clap::Arg::new("porcelain").long("porcelain").action(clap::ArgAction::SetTrue))
-        .arg(clap::Arg::new("format").long("format"))
-        .arg(clap::Arg::new("rest").num_args(0..))
-        .get_matches_from(std::env::args_os());
-    
-    let format = if matches.get_flag("json") || matches.get_one::<String>("format").map(|s| s == "json").unwrap_or(false) {
-        cli::OutputFormat::Json
-    } else if matches.get_flag("porcelain") || matches.get_one::<String>("format").map(|s| s == "porcelain").unwrap_or(false) {
-        cli::OutputFormat::Porcelain
-    } else {
-        cli::OutputFormat::Human
-    };
+    let format_args = FormatArgs::detect();
+    let format = format_args.to_format();
 
     let cli = match Cli::try_parse() {
         Ok(cli) => cli,
