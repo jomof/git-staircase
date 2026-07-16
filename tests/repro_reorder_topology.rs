@@ -1,6 +1,6 @@
 use git_staircase::core::manipulation::{ReorderOptions, reorder};
 use git_staircase::core::resolved::{adopt, is_clean};
-use git_staircase::core::resolution::resolve_by_id;
+
 use git_staircase::git::GitRepo;
 use git_staircase::model::{StaircaseMetadata, Step};
 use std::fs;
@@ -61,11 +61,10 @@ fn test_reorder_topology_invalidation() {
     assert!(is_clean(&repo, rs.metadata()).unwrap());
 
     // Reorder S2 before S1 with no_restack: true
-    reorder(&repo, &rs, &[1, 0], ReorderOptions { no_restack: true }).expect("Reorder failed");
+    let result = reorder(&repo, &rs, &[1, 0], ReorderOptions { no_restack: true });
+    assert!(result.is_err(), "Reorder with no_restack=true should fail if it creates an invalid topology.");
     
-    let rs_after = resolve_by_id(&repo, &rs.metadata().id).unwrap();
-    let clean = is_clean(&repo, rs_after.metadata()).unwrap();
-    
-    // If we reached here, reorder succeeded in creating an invalid state.
-    assert!(!clean, "Staircase should be invalid after reorder [1, 0]");
+    // Check that the error is specifically UnsupportedTopology
+    let err = format!("{:?}", result.unwrap_err());
+    assert!(err.contains("UnsupportedTopology"), "Expected UnsupportedTopology, got {:?}", err);
 }

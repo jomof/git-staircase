@@ -292,6 +292,12 @@ fn reorder_internal(
     metadata.steps = new_steps;
     super::resolved::validate_renumbering(repo, staircase.metadata(), &mut metadata)?;
     if options.no_restack {
+        if !crate::core::resolved::is_clean(repo, &metadata)? {
+            return Err(StaircaseError::UnsupportedTopology {
+                operation: "reorder".into(),
+                reason: "the requested new order creates an invalid commit topology. Please restack or reorder interactively.".into(),
+            });
+        }
         if dry_run {
             Ok(())
         } else {
