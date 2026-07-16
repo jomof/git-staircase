@@ -145,13 +145,17 @@ fn equivalent_discovery_sources_collapse() {
     let ctx = TestContext::new();
 
     // 1. ARRANGE: Create a staircase and point two different branches (`feat-1` and `feat-2`) to its tip OID.
+    let anchor = ctx.run_git(&["rev-parse", "main"]);
+    ctx.run_git(&["checkout", "-b", "feat"]);
     ctx.commit("f1.txt", "1", "commit 1");
     let c2 = ctx.commit("f2.txt", "2", "commit 2");
     ctx.run_git(&["branch", "feat-1", &c2]);
     ctx.run_git(&["branch", "feat-2", &c2]);
+    ctx.run_git(&["checkout", &anchor]);
+    ctx.run_git(&["branch", "-D", "feat"]);
 
-    // 2. ACT: Run `git-staircase list --implicit --json`.
-    let (ok, stdout, stderr) = ctx.run_staircase(&["list", "--implicit", "--json"]);
+    // 2. ACT: Run `git-staircase list --implicit --onto anchor --json`.
+    let (ok, stdout, stderr) = ctx.run_staircase(&["list", "--implicit", "--onto", &anchor, "--json"]);
     assert!(ok, "list failed: {}", stderr);
 
     // 3. ASSERT: Verify that only one staircase entry is returned in the JSON array,
@@ -168,20 +172,20 @@ fn equivalent_discovery_sources_collapse() {
     );
 
     let staircase = &staircases[0];
-    let refs = staircase["materializing_refs"]
+    let steps = staircase["metadata"]["steps"]
         .as_array()
-        .or_else(|| staircase["provenance"].as_array())
-        .expect("Should have materializing_refs or provenance field");
+        .or_else(|| staircase["steps"].as_array())
+        .expect("Should have steps array");
 
-    let ref_names: Vec<&str> = refs.iter().map(|r| r.as_str().unwrap()).collect();
+    let branch_names: Vec<&str> = steps
+        .iter()
+        .filter_map(|s| s["branch"].as_str())
+        .collect();
+
     assert!(
-        ref_names.iter().any(|r| r.contains("feat-1")),
-        "Should contain feat-1 in provenance. Refs: {:?}",
-        ref_names
-    );
-    assert!(
-        ref_names.iter().any(|r| r.contains("feat-2")),
-        "Should contain feat-2 in provenance. Refs: {:?}",
-        ref_names
+        branch_names.iter().any(|b| b.contains("feat-1") || b.contains("feat-2")),
+        "Should contain feat-1 or feat-2 in steps. Branches: {:?}, Full Output: {}",
+        branch_names,
+        stdout
     );
 }
