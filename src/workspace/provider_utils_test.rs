@@ -71,3 +71,14 @@ fn test_parse_git_url_no_owner() {
         })
     );
 }
+#[test]
+fn test_parse_git_url_nested() {
+    assert_eq!(
+        parse_git_url("https://gitlab.com/group/subgroup/project.git"),
+        Some(GitUrlInfo {
+            host: "gitlab.com".to_string(),
+            owner: Some("group/subgroup".to_string()),
+            repository: Some("project".to_string()),
+        })
+    );
+}
