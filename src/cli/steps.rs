@@ -1,4 +1,6 @@
-use super::{PresentationOutput, StaircaseSelectorArgs, StepsList};
+use super::{
+    PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs, StepsList,
+};
 use crate::GitRepo;
 use anyhow::Result;
 
@@ -10,7 +12,20 @@ pub struct Steps {
 
 impl super::Command for Steps {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let rs = self.staircase.resolve(repo)?;
+        super::run_staircase(self, repo)
+    }
+}
+
+impl StaircaseCommand for Steps {
+    fn selector(&self) -> &StaircaseSelectorArgs {
+        &self.staircase
+    }
+
+    fn run_resolved(
+        &self,
+        _repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>> {
         Ok(Box::new(StepsList(rs.metadata().steps.clone())))
     }
 }

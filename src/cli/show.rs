@@ -1,4 +1,6 @@
-use super::{PresentationOutput, StaircaseSelectorArgs};
+use super::{
+    Command, PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs,
+};
 use crate::GitRepo;
 use anyhow::Result;
 
@@ -18,6 +20,30 @@ pub struct Show {
 
 impl super::Command for Show {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
+        // We handle delegation before resolution to avoid redundant work,
+        // but since we want to consolidate boilerplate, we check flags first.
+        if self.graph || self.commits || self.ids || self.verification {
+            return self.delegate(repo);
+        }
+
+        if self
+            .staircase
+            .steps
+            .as_ref()
+            .map_or(false, |s| s.is_empty())
+        {
+            let cmd = super::steps::Steps {
+                staircase: self.staircase.clone(),
+            };
+            return cmd.run(repo);
+        }
+
+        super::run_staircase(self, repo)
+    }
+}
+
+impl Show {
+    fn delegate(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         if self.graph {
             let cmd = super::graph::Graph {
                 staircase: self.staircase.clone(),
@@ -26,17 +52,6 @@ impl super::Command for Show {
         }
         if self.commits {
             let cmd = super::commits::Commits {
-                staircase: self.staircase.clone(),
-            };
-            return cmd.run(repo);
-        }
-        if self
-            .staircase
-            .steps
-            .as_ref()
-            .map_or(false, |s| s.is_empty())
-        {
-            let cmd = super::steps::Steps {
                 staircase: self.staircase.clone(),
             };
             return cmd.run(repo);
@@ -61,8 +76,20 @@ impl super::Command for Show {
             };
             return cmd.run(repo);
         }
+        unreachable!()
+    }
+}
 
-        let rs = self.staircase.resolve(repo)?;
+impl StaircaseCommand for Show {
+    fn selector(&self) -> &StaircaseSelectorArgs {
+        &self.staircase
+    }
+
+    fn run_resolved(
+        &self,
+        _repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>> {
         Ok(Box::new(rs.metadata().clone()))
     }
 }

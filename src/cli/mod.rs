@@ -223,6 +223,23 @@ pub trait Command {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>>;
 }
 
+pub trait StaircaseCommand {
+    fn run_resolved(
+        &self,
+        repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>>;
+    fn selector(&self) -> &StaircaseSelectorArgs;
+}
+
+pub fn run_staircase<C: StaircaseCommand>(
+    cmd: &C,
+    repo: &GitRepo,
+) -> Result<Box<dyn PresentationOutput>> {
+    let rs = cmd.selector().resolve(repo)?;
+    cmd.run_resolved(repo, &rs)
+}
+
 pub fn dispatch(
     format: OutputFormat,
     repo: &GitRepo,

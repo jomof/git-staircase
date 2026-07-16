@@ -1,4 +1,6 @@
-use super::{PlainOutput, PresentationOutput, StaircaseSelectorArgs};
+use super::{
+    PlainOutput, PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs,
+};
 use crate::GitRepo;
 use anyhow::Result;
 
@@ -10,7 +12,20 @@ pub struct Diff {
 
 impl super::Command for Diff {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let rs = self.staircase.resolve(repo)?;
+        super::run_staircase(self, repo)
+    }
+}
+
+impl StaircaseCommand for Diff {
+    fn selector(&self) -> &StaircaseSelectorArgs {
+        &self.staircase
+    }
+
+    fn run_resolved(
+        &self,
+        repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>> {
         let m = rs.metadata();
         let target = &m.target;
         let tip = &m.steps.last().expect("Staircase has no steps").cut;

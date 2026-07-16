@@ -1,4 +1,6 @@
-use super::{PresentationOutput, StaircaseSelectorArgs, Success};
+use super::{
+    PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs, Success,
+};
 use crate::GitRepo;
 use crate::core;
 use crate::model::LandingPolicy;
@@ -36,7 +38,20 @@ pub struct Land {
 
 impl super::Command for Land {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let rs = self.staircase.resolve(repo)?;
+        super::run_staircase(self, repo)
+    }
+}
+
+impl StaircaseCommand for Land {
+    fn selector(&self) -> &StaircaseSelectorArgs {
+        &self.staircase
+    }
+
+    fn run_resolved(
+        &self,
+        repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>> {
         if let Some(provider) = &self.provider {
             let workspace = bootstrap(repo, &BootstrapOptions::default())?;
             let provider_impl: Box<dyn ReviewProvider> = match provider.as_str() {
@@ -93,7 +108,7 @@ impl super::Command for Land {
                         .position(|step| step.id == token || step.name == token)
                 })
                 .ok_or_else(|| crate::StaircaseError::NotFound(through.clone()))?;
-            core::land_through(repo, &rs, index, self.dry_run)?;
+            core::land_through(repo, rs, index, self.dry_run)?;
             return Ok(Box::new(Success::new(format!(
                 "{} landing prefix of staircase '{}'",
                 if self.dry_run { "Planned" } else { "Landed" },
@@ -108,7 +123,7 @@ impl super::Command for Land {
             self.policy
         };
         if !self.dry_run {
-            core::land(repo, &rs, core::LandOptions { policy })?;
+            core::land(repo, rs, core::LandOptions { policy })?;
         }
         Ok(Box::new(Success::new(format!(
             "Landed staircase '{}'",

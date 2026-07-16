@@ -1,4 +1,7 @@
-use super::{CommitInfo, LogOutput, PresentationOutput, StaircaseSelectorArgs};
+use super::{
+    CommitInfo, LogOutput, PresentationOutput, ResolvedSelector, StaircaseCommand,
+    StaircaseSelectorArgs,
+};
 use crate::GitRepo;
 use anyhow::Result;
 
@@ -10,7 +13,20 @@ pub struct Log {
 
 impl super::Command for Log {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let rs = self.staircase.resolve(repo)?;
+        super::run_staircase(self, repo)
+    }
+}
+
+impl StaircaseCommand for Log {
+    fn selector(&self) -> &StaircaseSelectorArgs {
+        &self.staircase
+    }
+
+    fn run_resolved(
+        &self,
+        repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>> {
         let m = rs.metadata();
         let target = &m.target;
         let tip = &m.steps.last().expect("Staircase has no steps").cut;

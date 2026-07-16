@@ -1,4 +1,7 @@
-use super::{Presentation, PresentationOutput, StaircaseSelectorArgs, ToPresentation};
+use super::{
+    Presentation, PresentationOutput, ResolvedSelector, StaircaseCommand, StaircaseSelectorArgs,
+    ToPresentation,
+};
 use crate::GitRepo;
 use crate::core;
 use crate::model::VerificationResult;
@@ -38,10 +41,23 @@ impl super::Command for Verify {
                 core::verify_draft(repo, self.build_command.clone(), self.test_command.clone())?;
             return Ok(Box::new(evidence));
         }
+        super::run_staircase(self, repo)
+    }
+}
+
+impl StaircaseCommand for Verify {
+    fn selector(&self) -> &StaircaseSelectorArgs {
+        &self.staircase
+    }
+
+    fn run_resolved(
+        &self,
+        repo: &GitRepo,
+        rs: &ResolvedSelector,
+    ) -> Result<Box<dyn PresentationOutput>> {
         let aggregate_opt = if self.aggregate { Some(true) } else { None };
         let each_prefix_opt = if self.each_prefix { Some(true) } else { None };
 
-        let rs = self.staircase.resolve(repo)?;
         if let Some(provider) = &self.provider {
             let workspace = bootstrap(repo, &BootstrapOptions::default())?;
             let provider_impl: Box<dyn ReviewProvider> = match provider.as_str() {
@@ -73,7 +89,7 @@ impl super::Command for Verify {
         }
         let results = core::verify(
             repo,
-            &rs,
+            rs,
             self.build_command.clone(),
             self.test_command.clone(),
             aggregate_opt,
