@@ -8,10 +8,23 @@ use std::path::PathBuf;
 use std::process::{Command, Stdio};
 use std::thread;
 
-#[derive(Debug, Clone)]
+use std::sync::{Arc, Mutex};
+
+#[derive(Clone)]
 pub struct GitRepo {
     pub workdir: PathBuf,
     pub memoizer: Memoizer,
+    #[allow(dead_code)]
+    git2_repo: Arc<Mutex<Option<git2::Repository>>>,
+}
+
+impl std::fmt::Debug for GitRepo {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("GitRepo")
+            .field("workdir", &self.workdir)
+            .field("memoizer", &self.memoizer)
+            .finish()
+    }
 }
 
 pub struct GitCommand<'a> {
@@ -207,6 +220,7 @@ impl GitRepo {
         GitRepo {
             workdir,
             memoizer: Memoizer::new().with_namespace(namespace),
+            git2_repo: Arc::new(Mutex::new(None)),
         }
     }
 
@@ -215,7 +229,19 @@ impl GitRepo {
         GitRepo {
             workdir,
             memoizer: memoizer.with_namespace(namespace),
+            git2_repo: Arc::new(Mutex::new(None)),
         }
+    }
+
+    #[allow(dead_code)]
+    pub(crate) fn git2(&self) -> Result<std::sync::MutexGuard<'_, Option<git2::Repository>>> {
+        let mut guard = self.git2_repo.lock().unwrap();
+        if guard.is_none() {
+            let repo = git2::Repository::open(&self.workdir)
+                .map_err(|e| StaircaseError::Other(e.to_string()))?;
+            *guard = Some(repo);
+        }
+        Ok(guard)
     }
 
     pub fn git_cmd(&self) -> Command {
@@ -261,58 +287,49 @@ impl GitRepo {
             }
         }
 
-        let is_full_oid =
-            (rev.len() == 40 || rev.len() == 64) && rev.chars().all(|c| c.is_ascii_hexdigit());
+        let guard = self.git2()?;
+        let git2_repo = guard.as_ref().unwrap();
 
-        if is_full_oid {
-            if let Ok(sha) = self
-                .command()
-                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-                .run()
-            {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
+        // Let's try native git2 first
+        let oid = match git2_repo.revparse_single(rev) {
+            Ok(obj) => {
+                if let Ok(commit) = obj.peel_to_commit() {
+                    commit.id().to_string()
+                } else {
+                    return Err(StaircaseError::Other(format!(
+                        "Object '{}' is not a commit",
+                        rev
+                    )));
                 }
-                return Ok(sha);
             }
-        }
-
-        let oid = if !rev.starts_with("refs/") {
-            if let Ok(sha) = self
-                .command()
-                .args(&[
-                    "rev-parse",
-                    "--verify",
-                    &format!("refs/tags/{}^{{commit}}", rev),
-                ])
-                .run()
-            {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
+            Err(_) => {
+                // If native parsing fails, we could try adding standard prefixes
+                // mimicking Git's resolution order.
+                if let Ok(obj) = git2_repo.revparse_single(&format!("refs/tags/{}", rev)) {
+                    if let Ok(commit) = obj.peel_to_commit() {
+                        commit.id().to_string()
+                    } else {
+                        return Err(StaircaseError::Other(format!(
+                            "Tag '{}' does not point to a commit",
+                            rev
+                        )));
+                    }
+                } else if let Ok(obj) = git2_repo.revparse_single(&format!("refs/heads/{}", rev)) {
+                    if let Ok(commit) = obj.peel_to_commit() {
+                        commit.id().to_string()
+                    } else {
+                        return Err(StaircaseError::Other(format!(
+                            "Branch '{}' does not point to a commit",
+                            rev
+                        )));
+                    }
+                } else {
+                    // Fall back to CLI if it's completely unresolvable via libgit2
+                    self.command()
+                        .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
+                        .run()?
                 }
-                return Ok(sha);
             }
-            if let Ok(sha) = self
-                .command()
-                .args(&[
-                    "rev-parse",
-                    "--verify",
-                    &format!("refs/heads/{}^{{commit}}", rev),
-                ])
-                .run()
-            {
-                if rev != "HEAD" {
-                    self.memoizer.set_resolve_commit(rev, &sha);
-                }
-                return Ok(sha);
-            }
-            self.command()
-                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-                .run()?
-        } else {
-            self.command()
-                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-                .run()?
         };
 
         if rev != "HEAD" {
@@ -327,10 +344,27 @@ impl GitRepo {
                 return Ok(res);
             }
         }
-        let full_name = self
-            .command()
-            .args(&["rev-parse", "--symbolic-full-name", name])
-            .run()?;
+
+        let guard = self.git2()?;
+        let git2_repo = guard.as_ref().unwrap();
+
+        let full_name = match git2_repo.find_reference(name) {
+            Ok(reference) => {
+                if let Some(resolved) = reference.resolve().ok() {
+                    resolved.name().unwrap_or("").to_string()
+                } else {
+                    reference.name().unwrap_or("").to_string()
+                }
+            }
+            Err(_) => {
+                // If direct reference search fails, try standard parsing via CLI fallback
+                // because git rev-parse --symbolic-full-name can do complex tracking
+                self.command()
+                    .args(&["rev-parse", "--symbolic-full-name", name])
+                    .run()?
+            }
+        };
+
         if full_name.is_empty() {
             return Err(StaircaseError::Other(format!(
                 "Could not resolve \"{}\" to a full refname",
@@ -356,17 +390,15 @@ impl GitRepo {
                 return Ok(res);
             }
         }
-        let result = self
-            .command()
-            .args(&["rev-parse", "--verify", rev])
-            .check_status(false)
-            .run_output()?;
 
-        let res = if result.status.success() {
-            Some(String::from_utf8_lossy(&result.stdout).trim().to_string())
-        } else {
-            None
+        let guard = self.git2()?;
+        let git2_repo = guard.as_ref().unwrap();
+
+        let res = match git2_repo.revparse_single(rev) {
+            Ok(obj) => Some(obj.id().to_string()),
+            Err(_) => None,
         };
+
         if rev != "HEAD" {
             self.memoizer.set_resolve_ref(rev, res.as_deref());
         }
