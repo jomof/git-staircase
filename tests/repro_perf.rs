@@ -1,41 +1,28 @@
-#![allow(unused)]
-use git_staircase::GitRepo;
-use std::fs;
-use std::path::PathBuf;
+mod common;
+use common::builder::RepoBuilder;
 use std::time::Instant;
-use tempfile::TempDir;
 
 #[test]
 fn test_discovery_performance() {
-    let tmp = TempDir::new().unwrap();
-    let repo_path = tmp.path();
-
-    let run_git = |args: &[&str]| {
-        let status = std::process::Command::new("git")
-            .current_dir(repo_path)
-            .args(args)
-            .status()
-            .unwrap();
-        assert!(status.success());
-    };
-
-    run_git(&["init", "-b", "main"]);
-    run_git(&["config", "user.email", "test@example.com"]);
-    run_git(&["config", "user.name", "Test"]);
-
-    fs::write(repo_path.join("file"), "content").unwrap();
-    run_git(&["add", "file"]);
-    run_git(&["commit", "-m", "initial"]);
+    let mut builder = RepoBuilder::new()
+        .git(&["init", "-b", "main"])
+        .git(&["config", "core.hooksPath", "/dev/null"])
+        .git(&["config", "user.email", "test@example.com"])
+        .git(&["config", "user.name", "Test"])
+        .write_file("file", "content")
+        .git(&["add", "file"])
+        .git(&["commit", "-m", "initial"]);
 
     // Create 100 branches in a chain.
     for i in 1..=100 {
-        fs::write(repo_path.join("file"), format!("content {}", i)).unwrap();
-        run_git(&["add", "file"]);
-        run_git(&["commit", "-m", &format!("commit {}", i)]);
-        run_git(&["branch", &format!("branch-{}", i)]);
+        builder = builder
+            .write_file("file", &format!("content {}", i))
+            .git(&["add", "file"])
+            .git(&["commit", "-m", &format!("commit {}", i)])
+            .git(&["branch", &format!("branch-{}", i)]);
     }
 
-    let repo = GitRepo::new(repo_path.to_path_buf());
+    let (_tmp, repo) = builder.build();
 
     let start = Instant::now();
     let _discoveries =

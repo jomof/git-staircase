@@ -1,74 +1,42 @@
+mod common;
+use common::builder::RepoBuilder;
 use git_staircase::core::graph::build_branch_graph;
-use git_staircase::git::GitRepo;
 use git_staircase::model::BranchInfo;
-use std::fs;
-use std::process::Command;
 use std::time::Instant;
-use tempfile::TempDir;
 
 #[test]
 fn test_build_branch_graph_bottleneck() {
-    let tmp = TempDir::new().unwrap();
-    let dir = tmp.path();
+    let mut builder = RepoBuilder::new()
+        .git(&["init", "-b", "main"])
+        .write_file("file.txt", "content")
+        .git(&["add", "."])
+        .git(&["commit", "-m", "initial"]);
 
-    // ARRANGE: Initialize a repo and create many branches in a chain
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["init", "-b", "main"])
-        .output()
-        .unwrap();
-    fs::write(dir.join("file.txt"), "content").unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["commit", "-m", "initial"])
-        .output()
-        .unwrap();
+    let num_branches = 50;
+    for i in 1..=num_branches {
+        builder = builder
+            .write_file(&format!("file{}.txt", i), "content")
+            .git(&["add", "."])
+            .git(&["commit", "-m", &format!("commit {}", i)])
+            .git(&["branch", &format!("b{}", i)]);
+    }
+
+    let (_tmp, repo) = builder.build();
 
     let mut active_branches = Vec::new();
-    let num_branches = 50;
-
     for i in 1..=num_branches {
-        fs::write(dir.join(format!("file{}.txt", i)), "content").unwrap();
-        Command::new("git")
-            .current_dir(dir)
-            .args(&["add", "."])
-            .output()
-            .unwrap();
-        Command::new("git")
-            .current_dir(dir)
-            .args(&["commit", "-m", &format!("commit {}", i)])
-            .output()
-            .unwrap();
-        let oid = String::from_utf8(
-            Command::new("git")
-                .current_dir(dir)
-                .args(&["rev-parse", "HEAD"])
-                .output()
-                .unwrap()
-                .stdout,
-        )
-        .unwrap()
-        .trim()
-        .to_string();
         let refname = format!("refs/heads/b{}", i);
-        Command::new("git")
-            .current_dir(dir)
-            .args(&["branch", &format!("b{}", i)])
-            .output()
-            .unwrap();
+        let oid = repo
+            .run(&["rev-parse", &refname])
+            .unwrap()
+            .trim()
+            .to_string();
         active_branches.push(BranchInfo {
             refname,
             oid,
             upstream: None,
         });
     }
-
-    let repo = GitRepo::new(dir.to_path_buf());
 
     // ACT: Measure time to build branch graph
     let start = Instant::now();
