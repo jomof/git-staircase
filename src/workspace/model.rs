@@ -124,14 +124,14 @@ impl fmt::Display for BindingProvenance {
     }
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct CapabilityBinding {
     pub provider: String,
     pub provenance: BindingProvenance,
     pub evidence: Option<String>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct WorkspaceRecord {
     pub workspace_id: String,
     pub canonical_root: PathBuf,

@@ -1,13 +1,13 @@
 use crate::error::{Result, StaircaseError};
 use crate::git::GitRepo;
 use crate::model::{StaircaseFamily, StaircaseMetadata, Step};
-use crate::workspace::storage::find_workspace_record_for_path;
+use crate::workspace::storage::find_workspace_record_for_repo;
 
 pub fn infer_onto(repo: &GitRepo) -> Result<String> {
     let mut inferred = None;
 
     // 1. Bound integration-context provider / workspace configuration
-    if let Ok(Some(ws)) = find_workspace_record_for_path(&repo.workdir) {
+    if let Ok(Some(ws)) = find_workspace_record_for_repo(repo) {
         if let Some(proj_id) = ws.current_project_id {
             if let Ok(Some(oid)) = repo.resolve_commit_opt(&proj_id) {
                 inferred = Some(oid);
@@ -18,10 +18,14 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
     // 2. Applicable branch upstream configuration
     if inferred.is_none() {
         if let Ok(Some(head)) = repo.current_branch() {
-            let branches = repo.local_branches(None)?;
-            if let Some(b) = branches.iter().find(|b| b.refname == head) {
-                if let Some(ref u) = b.upstream {
-                    inferred = Some(u.clone());
+            if let Ok(branches) = repo.local_branches(None) {
+                if let Some(b) = branches.iter().find(|b| {
+                    b.refname == head
+                        || b.refname.strip_prefix("refs/heads/").unwrap_or(&b.refname) == head
+                }) {
+                    if let Some(ref u) = b.upstream {
+                        inferred = Some(u.clone());
+                    }
                 }
             }
         }
@@ -31,7 +35,7 @@ pub fn infer_onto(repo: &GitRepo) -> Result<String> {
     if inferred.is_none() {
         if let Ok(None) = repo.current_branch() {
             // Check no active git rebase/merge operation
-            let git_dir = repo.workdir.join(".git");
+            let git_dir = repo.git_dir().unwrap_or_else(|_| repo.workdir.join(".git"));
             let rebase_interactive = git_dir.join("rebase-merge").exists();
             let rebase_apply = git_dir.join("rebase-apply").exists();
             let merge_head = git_dir.join("MERGE_HEAD").exists();

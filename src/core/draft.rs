@@ -663,22 +663,15 @@ pub(crate) fn capture_untracked_files(repo: &GitRepo) -> Result<Vec<DraftFileSna
     for path in output.split('\0').filter(|path| !path.is_empty()) {
         validate_snapshot_path(path)?;
         let absolute = repo.workdir.join(path);
-        let metadata = fs::symlink_metadata(&absolute)?;
+        let Ok(metadata) = fs::symlink_metadata(&absolute) else { continue; };
         let (kind, content) = if metadata.file_type().is_symlink() {
-            (
-                "symlink".to_string(),
-                fs::read_link(&absolute)?.into_os_string().into_vec(),
-            )
+            let Ok(target) = fs::read_link(&absolute) else { continue; };
+            ("symlink".to_string(), target.into_os_string().into_vec())
         } else if metadata.is_file() {
-            ("regular".to_string(), fs::read(&absolute)?)
+            let Ok(data) = fs::read(&absolute) else { continue; };
+            ("regular".to_string(), data)
         } else {
-            return Err(StaircaseError::UnsupportedTopology {
-                operation: "draft-snapshot".into(),
-                reason: format!(
-                    "untracked path '{}' is neither a regular file nor a symbolic link",
-                    path
-                ),
-            });
+            continue;
         };
         files.push(DraftFileSnapshot {
             path: path.to_string(),

@@ -1,17 +1,13 @@
+use crate::common::run_git;
 use git_staircase::git::GitRepo;
 use std::fs;
-use std::process::Command;
 use tempfile::TempDir;
 
 fn setup_repo() -> (TempDir, GitRepo) {
     let tmp = TempDir::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["init", "-b", "main"])
-        .output()
-        .unwrap();
-    let repo = GitRepo::new(path);
+    let path = tmp.path();
+    run_git(path, &["init", "-b", "main"]);
+    let repo = GitRepo::new(path.to_path_buf());
     (tmp, repo)
 }
 
@@ -25,26 +21,10 @@ fn test_binary_blob_corruption() {
     let file_path = dir.join("binary.bin");
     fs::write(&file_path, &binary_data).unwrap();
 
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["add", "binary.bin"])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["commit", "-m", "binary"])
-        .output()
-        .unwrap();
+    run_git(dir, &["add", "binary.bin"]);
+    run_git(dir, &["commit", "-m", "binary"]);
 
-    let oid_output = Command::new("git")
-        .current_dir(dir)
-        .args(&["rev-parse", "HEAD:binary.bin"])
-        .output()
-        .unwrap();
-    let oid = String::from_utf8(oid_output.stdout)
-        .unwrap()
-        .trim()
-        .to_string();
+    let oid = run_git(dir, &["rev-parse", "HEAD:binary.bin"]);
 
     // Read it back with git-staircase
     let read_back = repo.cat_file(&oid).unwrap();

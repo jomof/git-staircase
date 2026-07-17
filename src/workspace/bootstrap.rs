@@ -52,9 +52,10 @@ pub fn bootstrap(repo: &GitRepo, options: &BootstrapOptions) -> Result<Bootstrap
 
     if let Some(mut record) = locate_existing_configuration(repo, &workdir, options)? {
         let expected_generation = record.generation;
+        let original_record = record.clone();
         record = reconfigure_existing_record(repo, record, options)?;
 
-        if !options.no_configure {
+        if !options.no_configure && record != original_record {
             save_workspace_record_cas(&record, Some(expected_generation))?;
             record.generation = expected_generation.saturating_add(1);
         }
@@ -559,7 +560,10 @@ pub(crate) fn initialize_new_record(
 
     let temp_record = WorkspaceRecord {
         workspace_id: uuid::Uuid::new_v4().to_string(),
-        canonical_root: selected_candidate.workspace_root.clone(),
+        canonical_root: selected_candidate
+            .workspace_root
+            .canonicalize()
+            .unwrap_or_else(|_| selected_candidate.workspace_root.clone()),
         provider_native_key: selected_candidate.workspace_key.clone(),
         capability_bindings: bindings.clone(),
         binding_provenance: provenances.clone(),
@@ -678,7 +682,10 @@ pub(crate) fn initialize_new_record(
 
     Ok(WorkspaceRecord {
         workspace_id,
-        canonical_root: selected_candidate.workspace_root.clone(),
+        canonical_root: selected_candidate
+            .workspace_root
+            .canonicalize()
+            .unwrap_or_else(|_| selected_candidate.workspace_root.clone()),
         provider_native_key: selected_candidate.workspace_key.clone(),
         capability_bindings: bindings,
         binding_provenance: provenances,
@@ -735,11 +742,8 @@ mod tests {
         let tmp = TempDir::new().unwrap();
         let storage_tmp = TempDir::new().unwrap();
         let path = tmp.path().to_path_buf();
-        let repo = GitRepo::new(path);
+        let repo = GitRepo::with_storage_dir(path, storage_tmp.path().to_path_buf());
         repo.run(&["init", "-b", "main"]).unwrap();
-        unsafe {
-            std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_tmp.path());
-        }
         (tmp, storage_tmp, repo)
     }
 

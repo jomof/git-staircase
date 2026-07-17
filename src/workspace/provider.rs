@@ -59,10 +59,33 @@ pub fn get_core_git_candidate(repo: &GitRepo) -> WorkspaceCandidate {
     }
 }
 
+use std::cell::RefCell;
+
+thread_local! {
+    static OVERRIDE_PROVIDER_DIR: RefCell<Option<PathBuf>> = const { RefCell::new(None) };
+}
+
+pub struct ProviderDirGuard {
+    prev: Option<PathBuf>,
+}
+
+impl Drop for ProviderDirGuard {
+    fn drop(&mut self) {
+        OVERRIDE_PROVIDER_DIR.with(|dir| {
+            *dir.borrow_mut() = self.prev.take();
+        });
+    }
+}
+
+pub fn set_thread_provider_dir(path: &Path) -> ProviderDirGuard {
+    let prev = OVERRIDE_PROVIDER_DIR.with(|dir| dir.borrow_mut().replace(path.to_path_buf()));
+    ProviderDirGuard { prev }
+}
+
 pub fn get_provider_directories() -> Vec<PathBuf> {
     let mut dirs = Vec::new();
-    if let Ok(override_dir) = std::env::var("GIT_STAIRCASE_PROVIDER_DIR") {
-        dirs.push(PathBuf::from(override_dir));
+    if let Some(override_dir) = OVERRIDE_PROVIDER_DIR.with(|dir| dir.borrow().clone()) {
+        dirs.push(override_dir);
     }
     if let Ok(xdg) = std::env::var("XDG_CONFIG_HOME") {
         dirs.push(PathBuf::from(xdg).join("git-staircase").join("providers"));
@@ -146,6 +169,7 @@ fn wait_with_timeout(mut child: Child, timeout: Duration) -> Result<Output> {
             Ok(None) => {
                 if start.elapsed() >= timeout {
                     let _ = child.kill();
+                    let _ = child.wait();
                     return Err(StaircaseError::Other(format!(
                         "Process timed out after {:?}",
                         timeout

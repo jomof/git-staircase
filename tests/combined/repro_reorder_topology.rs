@@ -1,35 +1,23 @@
+use crate::common::run_git;
 use git_staircase::core::manipulation::{ReorderOptions, reorder};
 use git_staircase::core::resolved::{adopt, is_clean};
 
 use git_staircase::git::GitRepo;
 use git_staircase::model::{StaircaseMetadata, Step};
 use std::fs;
-use std::process::Command;
 use tempfile::TempDir;
 
 fn setup_repo() -> (TempDir, GitRepo) {
     let tmp = TempDir::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["init", "-b", "main"])
-        .output()
-        .unwrap();
+    let path = tmp.path();
+    run_git(path, &["init", "-b", "main"]);
 
     // Initial commit
     fs::write(path.join("init.txt"), "initial").unwrap();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["commit", "-m", "initial"])
-        .output()
-        .unwrap();
+    run_git(path, &["add", "."]);
+    run_git(path, &["commit", "-m", "initial"]);
 
-    let repo = GitRepo::new(path);
+    let repo = GitRepo::new(path.to_path_buf());
     (tmp, repo)
 }
 
@@ -41,29 +29,13 @@ fn test_reorder_topology_invalidation() {
 
     // Create C1 and C2
     fs::write(dir.join("f1.txt"), "c1").unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["commit", "-m", "c1"])
-        .output()
-        .unwrap();
+    run_git(dir, &["add", "."]);
+    run_git(dir, &["commit", "-m", "c1"]);
     let c1 = repo.resolve_commit("HEAD").unwrap();
 
     fs::write(dir.join("f2.txt"), "c2").unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(dir)
-        .args(&["commit", "-m", "c2"])
-        .output()
-        .unwrap();
+    run_git(dir, &["add", "."]);
+    run_git(dir, &["commit", "-m", "c2"]);
     let c2 = repo.resolve_commit("HEAD").unwrap();
 
     // Create metadata manually

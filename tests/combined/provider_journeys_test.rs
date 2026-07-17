@@ -370,11 +370,8 @@ fn repo_journey_9_missing_repo_executable_degrades_without_failure() {
         .unwrap();
     #[cfg(unix)]
     std::os::unix::fs::symlink(git, isolated_path.path().join("git")).unwrap();
-    unsafe { std::env::set_var("PATH", isolated_path.path()) };
+    let _guard = crate::common::EnvGuard::set(&[("PATH", isolated_path.path())]);
     let report = observe_repo_workspace(&client.repo).unwrap().unwrap();
-    if let Some(path) = original {
-        unsafe { std::env::set_var("PATH", path) };
-    }
     assert!(!report.executable_available);
     let invocation = controlled_repo_forall_invocation();
     assert_eq!(invocation.arguments[0], "forall");
@@ -449,7 +446,8 @@ fn gerrit_black_box_create_persists_pending_associations() {
     let workspace = TempDir::new().unwrap();
     let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(&local.repo.workdir)
-        .env("GIT_STAIRCASE_WORKSPACE_DIR", workspace.path())
+        .arg("--storage-dir")
+        .arg(workspace.path())
         .args(["review", "create", "provider-cli", "--provider", "gerrit"])
         .output()
         .unwrap();

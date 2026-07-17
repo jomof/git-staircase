@@ -20,6 +20,9 @@ pub fn resolve_staircase_internal(
 
     // Interpretation 1: Managed
     resolve_managed(repo, name, &mut resolved_staircases)?;
+    if let Some(rs) = resolved_staircases.remove(name) {
+        return Ok(Some(rs));
+    }
 
     let onto_final = match onto {
         Some(o) => repo

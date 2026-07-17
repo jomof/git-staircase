@@ -8,9 +8,7 @@ fn test_list_records_ignores_corrupted_json() {
     let tmp = tempfile::TempDir::new().unwrap();
     let storage_dir = tmp.path().join("workspaces");
     fs::create_dir_all(&storage_dir).unwrap();
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", &storage_dir);
-    }
+    let _guard = set_thread_storage_dir(&storage_dir);
 
     // Create one valid record
     let record = WorkspaceRecord {

@@ -14,7 +14,7 @@ fn test_managed_review_flow_gerrit() {
     );
 
     // 2. Adopt as managed
-    let (success, _, stderr) = ctx.run_staircase(&["adopt", "my-staircase", "feature"]);
+    let (success, _, stderr) = ctx.run_staircase(&["adopt", "my-staircase", "--onto", "main", "feature"]);
     assert!(success, "adopt failed: {}", stderr);
 
     // 3. Configure gerrit route so probe works
@@ -42,7 +42,7 @@ fn test_managed_review_flow_github() {
     ctx.commit("file1.txt", "content1", "step 1");
 
     // 2. Adopt as managed
-    let (success, _, stderr) = ctx.run_staircase(&["adopt", "my-staircase", "feature"]);
+    let (success, _, stderr) = ctx.run_staircase(&["adopt", "my-staircase", "--onto", "main", "feature"]);
     assert!(success, "adopt failed: {}", stderr);
 
     // 3. Configure github route so probe works

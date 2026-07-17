@@ -103,7 +103,8 @@ fn test_reorder_rollback_fails() {
 
 #[test]
 fn test_reorder_metadata_inconsistency() {
-    let (_tmp, repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _tmp_guard = &tmp;
     let repo_path = &repo.workdir;
 
     // 1. Create a staircase: A -> B -> C
@@ -197,6 +198,7 @@ fn test_reorder_metadata_inconsistency() {
 #[test]
 fn test_reorder_underflow_error() {
     let (tmp, repo) = setup_repo();
+    let _tmp_guard = &tmp;
     let repo_path = &repo.workdir;
 
     run_git(repo_path, &["checkout", "-b", "branch-a"]);
@@ -443,7 +445,8 @@ fn test_restack_inconsistency_on_failure() {
 
 #[test]
 fn test_move_commits_empty_panic() -> anyhow::Result<()> {
-    let (_tmp, repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _tmp_guard = &tmp;
     let repo_path = &repo.workdir;
     let target_oid = run_git(repo_path, &["rev-parse", "HEAD"]);
 
@@ -541,7 +544,8 @@ fn test_move_commit_refuses_empty_source_before_mutation() {
 #[test]
 fn test_local_branches_with_pipe() -> anyhow::Result<()> {
     // ARRANGE
-    let (_tmp, repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _tmp_guard = &tmp;
     let repo_path = &repo.workdir;
 
     // Create a branch with a pipe in its name

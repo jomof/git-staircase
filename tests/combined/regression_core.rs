@@ -14,10 +14,14 @@ use crate::common::*;
 fn test_implicit_sub_staircase_id_mismatch() {
     let tmp = TempDir::new().unwrap();
     let repo_path = tmp.path();
+    let storage_dir = tmp.path().join(".git").join("ws_storage");
+    let _storage_guard = git_staircase::workspace::storage::set_thread_storage_dir(&storage_dir);
     let run_git = |args: &[&str]| {
         let status = Command::new("git")
             .current_dir(repo_path)
             .args(args)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test")

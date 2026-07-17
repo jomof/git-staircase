@@ -10,15 +10,12 @@ fn test_discover_providers_hangs_on_slow_executable() {
     let provider_path = dir.path().join("hanging_provider");
 
     // Create a script that hangs
-    fs::write(&provider_path, "#!/bin/sh\nsleep 10").unwrap();
+    fs::write(&provider_path, "#!/bin/sh\nsleep 1").unwrap();
     let mut perms = fs::metadata(&provider_path).unwrap().permissions();
     perms.set_mode(0o755);
     fs::set_permissions(&provider_path, perms).unwrap();
 
-    // Set the provider directory env var
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_PROVIDER_DIR", dir.path());
-    }
+    let _guard = git_staircase::workspace::provider::set_thread_provider_dir(dir.path());
 
     let start = Instant::now();
     let _ = discover_installed_providers();

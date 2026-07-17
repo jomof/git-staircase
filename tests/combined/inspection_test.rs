@@ -4,10 +4,12 @@ use crate::common::*;
 #[test]
 fn test_inspection_commands_on_implicit_staircase() {
     // ARRANGE
-    let (tmp, _repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _repo_guard = &repo;
     let dir = tmp.path();
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    run_git(dir, &["branch", "--set-upstream-to=main"]);
     let c1 = commit(dir, "file1.txt", "1", "commit 1");
 
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
@@ -19,7 +21,7 @@ fn test_inspection_commands_on_implicit_staircase() {
     let name = "feature/auth";
 
     // ACT & ASSERT: steps
-    let (success, stdout, stderr) = run_staircase(dir, &["steps", name]);
+    let (success, stdout, stderr) = run_staircase(dir, &["steps", name, "--onto", "main"]);
     assert!(success, "steps command failed: {}", stderr);
     assert!(stdout.contains("feature/auth-core"));
     assert!(stdout.contains("feature/auth-ui"));
@@ -29,7 +31,7 @@ fn test_inspection_commands_on_implicit_staircase() {
     assert!(stdout.contains(&c3[..7]));
 
     // ACT & ASSERT: commits
-    let (success, stdout, stderr) = run_staircase(dir, &["commits", name]);
+    let (success, stdout, stderr) = run_staircase(dir, &["commits", name, "--onto", "main"]);
     assert!(success, "commits command failed: {}", stderr);
     assert!(stdout.contains("feature/auth-core"));
     assert!(stdout.contains(&c1[..7]));
@@ -39,7 +41,7 @@ fn test_inspection_commands_on_implicit_staircase() {
     assert!(stdout.contains(&c3[..7]));
 
     // ACT & ASSERT: log
-    let (success, stdout, stderr) = run_staircase(dir, &["log", name]);
+    let (success, stdout, stderr) = run_staircase(dir, &["log", name, "--onto", "main"]);
     assert!(success, "log command failed: {}", stderr);
     assert!(stdout.contains("commit 1"));
     assert!(stdout.contains("commit 2"));
@@ -47,21 +49,21 @@ fn test_inspection_commands_on_implicit_staircase() {
     assert!(!stdout.contains("initial commit")); // Should only show commits in the staircase
 
     // ACT & ASSERT: diff
-    let (success, stdout, stderr) = run_staircase(dir, &["diff", name]);
+    let (success, stdout, stderr) = run_staircase(dir, &["diff", name, "--onto", "main"]);
     assert!(success, "diff command failed: {}", stderr);
     assert!(stdout.contains("file1.txt"));
     assert!(stdout.contains("file2.txt"));
     assert!(stdout.contains("file3.txt"));
 
     // ACT & ASSERT: graph
-    let (success, stdout, stderr) = run_staircase(dir, &["graph", name]);
+    let (success, stdout, stderr) = run_staircase(dir, &["graph", name, "--onto", "main"]);
     assert!(success, "graph command failed: {}", stderr);
     assert!(stdout.contains("commit 1"));
     assert!(stdout.contains("commit 2"));
     assert!(stdout.contains("commit 3"));
 
     // ACT & ASSERT: show --steps
-    let (success, stdout, stderr) = run_staircase(dir, &["show", name, "--steps"]);
+    let (success, stdout, stderr) = run_staircase(dir, &["show", name, "--steps", "--onto", "main"]);
     assert!(success, "show --steps command failed: {}", stderr);
     assert!(stdout.contains("feature/auth-core"));
     assert!(stdout.contains("feature/auth-ui"));
@@ -71,7 +73,8 @@ fn test_inspection_commands_on_implicit_staircase() {
 #[test]
 fn test_inspection_commands_on_managed_staircase() {
     // ARRANGE
-    let (tmp, _repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _repo_guard = &repo;
     let dir = tmp.path();
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
@@ -116,13 +119,16 @@ fn test_inspection_commands_on_managed_staircase() {
 #[test]
 fn test_status_output_format_alignment() {
     // ARRANGE: Create implicit staircase
-    let (tmp, _repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _repo_guard = &repo;
     let dir = tmp.path();
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);
+    run_git(dir, &["branch", "--set-upstream-to=main"]);
     commit(dir, "file1.txt", "1", "commit 1");
 
     run_git(dir, &["checkout", "-b", "feature/auth-ui"]);
+    run_git(dir, &["branch", "--set-upstream-to=main"]);
     commit(dir, "file2.txt", "2", "commit 2");
 
     let name = "feature/auth";
@@ -154,7 +160,8 @@ fn test_status_output_format_alignment() {
 #[test]
 fn test_status_output_format_alignment_managed() {
     // ARRANGE: Create managed staircase
-    let (tmp, _repo) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _repo_guard = &repo;
     let dir = tmp.path();
 
     run_git(dir, &["checkout", "-b", "feature/auth-core"]);

@@ -7,6 +7,8 @@ use tempfile::TempDir;
 fn test_step_stable_ids() {
     let tmp = TempDir::new().unwrap();
     let repo_path = tmp.path();
+    let storage_dir = tmp.path().join(".git").join("ws_storage");
+    let _storage_guard = git_staircase::workspace::storage::set_thread_storage_dir(&storage_dir);
 
     // ARRANGE: Create a repository with three branches forming an implicit staircase
     run_git(repo_path, &["init", "-b", "main"]);

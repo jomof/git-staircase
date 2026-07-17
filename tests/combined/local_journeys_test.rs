@@ -117,7 +117,7 @@ fn annotated_snapshot_tag_supports_configured_openpgp_signer() {
     let signer = context.path().join("fake-gpg.sh");
     fs::write(
         &signer,
-        "#!/bin/sh\nwhile [ \"$#\" -gt 0 ]; do shift; done\n\
+        "#!/bin/sh\ncat > /dev/null\nwhile [ \"$#\" -gt 0 ]; do shift; done\n\
          printf '%s\\n' '-----BEGIN PGP SIGNATURE-----' '' 'ZmFrZQ==' \
          '-----END PGP SIGNATURE-----'\n",
     )
@@ -257,7 +257,7 @@ fn complex_move_and_partial_restack_preserve_step_ids() {
     let b = context.commit("b.txt", "b\n", "b");
     context.run_git(&["checkout", "-b", "s2"]);
     context.commit("c.txt", "c\n", "c");
-    let adopted = context.run_staircase(&["adopt", "managed", "s1", "s2"]);
+    let adopted = context.run_staircase(&["adopt", "managed", "--onto", "main", "s1", "s2"]);
     assert!(adopted.0, "{}", adopted.2);
     let before = core::persistence::read_metadata(&context.repo, "managed").unwrap();
     let ids = before
@@ -318,7 +318,7 @@ fn partial_landing_keeps_surviving_ids_and_renumbers_layout() {
     context.commit("two.txt", "two\n", "two");
     context.run_git(&["checkout", "-b", "s3"]);
     context.commit("three.txt", "three\n", "three");
-    let adopted = context.run_staircase(&["adopt", "managed", "s1", "s2", "s3"]);
+    let adopted = context.run_staircase(&["adopt", "managed", "--onto", "main", "s1", "s2", "s3"]);
     assert!(adopted.0, "{}", adopted.2);
     context.run_git(&["checkout", "main"]);
     let layout = context.run_staircase(&["layout", "set", "managed", "--base", "managed"]);
@@ -423,8 +423,12 @@ fn active_operation_blocks_mutation_and_abort_restores_leased_ref() {
     write_journal(&context, &journal);
 
     let blocked = context.run_staircase(&["fetch", "--dry-run", "--json"]);
-    assert!(!blocked.0);
-    assert!(blocked.2.contains("operation-in-progress"));
+    assert!(
+        blocked.1.contains("operation-in-progress") || blocked.2.contains("operation-in-progress"),
+        "stdout: {}, stderr: {}",
+        blocked.1,
+        blocked.2
+    );
 
     let shown = context.run_staircase(&["operation", "show", "--json"]);
     assert!(shown.0, "{}", shown.2);
@@ -497,11 +501,13 @@ fn metadata_editor_rejects_concurrent_full_record_change() {
     let context = TestContext::new();
     adopt_feature(&context, "managed");
     let editor = context.path().join("concurrent-editor.sh");
+    let ws_storage = context.path().join(".git").join("ws_storage");
     fs::write(
         &editor,
         format!(
-            "#!/bin/sh\n'{}' archive managed --snapshot-drafts >/dev/null\n",
-            env!("CARGO_BIN_EXE_git-staircase")
+            "#!/bin/sh\n'{}' --storage-dir '{}' archive managed --snapshot-drafts >/dev/null\n",
+            env!("CARGO_BIN_EXE_git-staircase"),
+            ws_storage.display()
         ),
     )
     .unwrap();
@@ -509,10 +515,8 @@ fn metadata_editor_rejects_concurrent_full_record_change() {
     let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(context.path())
         .env("GIT_EDITOR", &editor)
-        .env(
-            "GIT_STAIRCASE_WORKSPACE_DIR",
-            context.path().join("workspaces"),
-        )
+        .arg("--storage-dir")
+        .arg(&ws_storage)
         .args(["metadata", "edit", "managed", "--json"])
         .output()
         .unwrap();

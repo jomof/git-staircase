@@ -1,26 +1,20 @@
 use git_staircase::GitRepo;
 use git_staircase::workspace::{BootstrapOptions, Capability, bootstrap, probe_repo_workspace};
+use git_staircase::workspace::storage::{StorageDirGuard, set_thread_storage_dir};
 use std::fs;
 use std::path::PathBuf;
-use std::sync::Mutex;
 use tempfile::TempDir;
 
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
 fn setup_repo_workspace() -> (
-    std::sync::MutexGuard<'static, ()>,
+    StorageDirGuard,
     TempDir,
     PathBuf,
     GitRepo,
     TempDir,
 ) {
-    let guard = TEST_MUTEX.lock().unwrap();
     let client_root_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
-
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.path());
-    }
+    let guard = set_thread_storage_dir(storage_dir.path());
 
     let client_root = client_root_dir.path().to_path_buf();
     let dot_repo = client_root.join(".repo");
@@ -54,7 +48,8 @@ fn setup_repo_workspace() -> (
 
 #[test]
 fn test_repo_provider_discovery_and_bootstrap() {
-    let (_guard, _client_root_dir, client_root, repo, _storage_dir) = setup_repo_workspace();
+    let (guard, client_root_dir, client_root, repo, storage_dir) = setup_repo_workspace();
+    let _ = (&guard, &client_root_dir, &storage_dir);
 
     let cand = probe_repo_workspace(&repo).unwrap();
     assert!(cand.is_some());

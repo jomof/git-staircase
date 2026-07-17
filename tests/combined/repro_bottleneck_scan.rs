@@ -1,6 +1,6 @@
+use crate::common::run_git;
 use git_staircase::GitRepo;
 use std::fs;
-use std::process::Command;
 use std::time::Instant;
 use tempfile::TempDir;
 
@@ -9,66 +9,19 @@ fn test_bottleneck_worktree_scan() {
     let temp = TempDir::new().unwrap();
     let repo_path = temp.path();
 
-    // Initialize repo
-    Command::new("git")
-        .arg("init")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
-    Command::new("git")
-        .arg("config")
-        .arg("user.email")
-        .arg("test@example.com")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
-    Command::new("git")
-        .arg("config")
-        .arg("user.name")
-        .arg("Test User")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
+    run_git(repo_path, &["init"]);
 
     // Create commit 1
     fs::write(repo_path.join("file"), "A").unwrap();
-    Command::new("git")
-        .arg("add")
-        .arg("file")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
-    Command::new("git")
-        .arg("commit")
-        .arg("-m")
-        .arg("A")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
+    run_git(repo_path, &["add", "file"]);
+    run_git(repo_path, &["commit", "-m", "A"]);
 
     // Create commit 2
     fs::write(repo_path.join("file"), "B").unwrap();
-    Command::new("git")
-        .arg("add")
-        .arg("file")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
-    Command::new("git")
-        .arg("commit")
-        .arg("-m")
-        .arg("B")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
+    run_git(repo_path, &["add", "file"]);
+    run_git(repo_path, &["commit", "-m", "B"]);
 
-    let oid = Command::new("git")
-        .arg("rev-parse")
-        .arg("HEAD")
-        .current_dir(repo_path)
-        .output()
-        .unwrap();
-    let oid = String::from_utf8(oid.stdout).unwrap().trim().to_string();
+    let oid = run_git(repo_path, &["rev-parse", "HEAD"]);
 
     // Adopt a staircase
     let repo = GitRepo::new(repo_path.to_path_buf());

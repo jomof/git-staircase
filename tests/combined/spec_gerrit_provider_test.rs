@@ -3,25 +3,19 @@ use git_staircase::workspace::gerrit_provider::{
     ChangeIdParseResult, create_gerrit_upload_plan, get_gerrit_verification, parse_change_ids,
     probe_gerrit_route,
 };
+use git_staircase::workspace::storage::{StorageDirGuard, set_thread_storage_dir};
 use std::fs;
-use std::sync::Mutex;
 use tempfile::TempDir;
 
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
 fn setup_gerrit_repo() -> (
-    std::sync::MutexGuard<'static, ()>,
+    StorageDirGuard,
     TempDir,
     GitRepo,
     TempDir,
 ) {
-    let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
-
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.path());
-    }
+    let guard = set_thread_storage_dir(storage_dir.path());
 
     let repo = GitRepo::new(repo_dir.path().to_path_buf());
     repo.run(&["init"]).unwrap();
@@ -69,7 +63,8 @@ fn test_change_id_parsing() {
 
 #[test]
 fn test_gerrit_route_probing() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_gerrit_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_gerrit_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let route = probe_gerrit_route(&repo, None).unwrap();
     assert!(route.is_some());
@@ -83,7 +78,8 @@ fn test_gerrit_route_probing() {
 
 #[test]
 fn test_gerrit_upload_plan_and_verification() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_gerrit_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_gerrit_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let head_oid = repo.resolve_commit("HEAD").unwrap();
     let route = probe_gerrit_route(&repo, None).unwrap().unwrap();

@@ -3,25 +3,19 @@ use git_staircase::workspace::{
     BootstrapOptions, Capability, bootstrap, doctor, forget_workspace_record,
     list_workspace_records,
 };
+use git_staircase::workspace::storage::{StorageDirGuard, set_thread_storage_dir};
 use std::fs;
-use std::sync::Mutex;
 use tempfile::TempDir;
 
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
 fn setup_test_repo() -> (
-    std::sync::MutexGuard<'static, ()>,
+    StorageDirGuard,
     TempDir,
     GitRepo,
     TempDir,
 ) {
-    let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
-
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.path());
-    }
+    let guard = set_thread_storage_dir(storage_dir.path());
 
     let repo = GitRepo::new(repo_dir.path().to_path_buf());
     repo.run(&["init"]).unwrap();
@@ -40,7 +34,8 @@ fn setup_test_repo() -> (
 
 #[test]
 fn test_standalone_git_repo_bootstrap() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let options = BootstrapOptions::default();
     let res = bootstrap(&repo, &options).unwrap();
@@ -78,7 +73,8 @@ fn test_standalone_git_repo_bootstrap() {
 
 #[test]
 fn test_no_bootstrap_flag() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let options = BootstrapOptions {
         no_bootstrap: true,
@@ -93,7 +89,8 @@ fn test_no_bootstrap_flag() {
 
 #[test]
 fn test_workspace_mode_single_git() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let options = BootstrapOptions {
         workspace_mode: Some("single-git".to_string()),
@@ -112,7 +109,8 @@ fn test_workspace_mode_single_git() {
 
 #[test]
 fn test_provider_profile_expansion() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let options = BootstrapOptions {
         provider_profile: Some("repo+gerrit".to_string()),
@@ -137,7 +135,8 @@ fn test_provider_profile_expansion() {
 
 #[test]
 fn test_workspace_doctor() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let options = BootstrapOptions::default();
     let report = doctor(&repo, &options).unwrap();
@@ -151,7 +150,8 @@ fn test_workspace_doctor() {
 
 #[test]
 fn test_detached_head_integration_context() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let head_oid = repo.resolve_commit("HEAD").unwrap();
     repo.run(&["checkout", &head_oid]).unwrap();
@@ -165,7 +165,8 @@ fn test_detached_head_integration_context() {
 
 #[test]
 fn test_forget_workspace() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_test_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_test_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let options = BootstrapOptions::default();
     let res = bootstrap(&repo, &options).unwrap();

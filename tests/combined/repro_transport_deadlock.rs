@@ -43,9 +43,7 @@ time.sleep(2)
         // Add bin_dir to PATH
         let old_path = std::env::var("PATH").unwrap_or_default();
         let new_path = format!("{}:{}", bin_dir.display(), old_path);
-        unsafe {
-            std::env::set_var("PATH", &new_path);
-        }
+        let _guard = crate::common::EnvGuard::set_str(&[("PATH", &new_path)]);
 
         let transport = ProductionTransport::default();
 
@@ -68,18 +66,11 @@ time.sleep(2)
             tx.send(result).unwrap();
         });
 
-        match rx.recv_timeout(std::time::Duration::from_secs(10)) {
+        match rx.recv_timeout(std::time::Duration::from_secs(5)) {
             Ok(_) => println!("Test finished (may have failed but didn't hang)"),
             Err(_) => {
-                // Restore PATH before panicking
-                unsafe {
-                    std::env::set_var("PATH", &old_path);
-                }
                 panic!("Test DEADLOCKED!");
             }
-        }
-        unsafe {
-            std::env::set_var("PATH", old_path);
         }
     }
 }

@@ -3,9 +3,10 @@ use crate::error::{Result, StaircaseError};
 use crate::memoization::Memoizer;
 use crate::model::BranchInfo;
 use serde::Serialize;
+use std::fs::{self, OpenOptions};
 use std::io::Write;
-use std::path::PathBuf;
-use std::process::{Command, Stdio};
+use std::path::{Path, PathBuf};
+use std::process::{Command, Output, Stdio};
 use std::thread;
 
 use std::sync::{Arc, Mutex};
@@ -13,6 +14,7 @@ use std::sync::{Arc, Mutex};
 #[derive(Clone)]
 pub struct GitRepo {
     pub workdir: PathBuf,
+    pub storage_dir: Option<PathBuf>,
     pub memoizer: Memoizer,
     #[allow(dead_code)]
     git2_repo: Arc<Mutex<Option<git2::Repository>>>,
@@ -22,6 +24,7 @@ impl std::fmt::Debug for GitRepo {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("GitRepo")
             .field("workdir", &self.workdir)
+            .field("storage_dir", &self.storage_dir)
             .field("memoizer", &self.memoizer)
             .finish()
     }
@@ -97,7 +100,7 @@ impl<'a> GitCommand<'a> {
         }
     }
 
-    pub fn run_output(self) -> Result<std::process::Output> {
+    pub fn run_output(self) -> Result<Output> {
         let mut cmd = self.repo.git_cmd();
         for (k, v) in &self.envs {
             cmd.env(k, v);
@@ -113,7 +116,7 @@ impl<'a> GitCommand<'a> {
 
         let output = if self.interactive {
             let status = cmd.status()?;
-            std::process::Output {
+            Output {
                 status,
                 stdout: Vec::new(),
                 stderr: Vec::new(),
@@ -141,7 +144,7 @@ impl<'a> GitCommand<'a> {
 
         if let (Some(path), Some(start)) = (log_file, start_time) {
             let elapsed_ms = start.elapsed().as_millis();
-            if let Ok(mut f) = std::fs::OpenOptions::new()
+            if let Ok(mut f) = OpenOptions::new()
                 .create(true)
                 .append(true)
                 .open(&path)
@@ -216,20 +219,50 @@ impl TreeEntry {
 
 impl GitRepo {
     pub fn new(workdir: PathBuf) -> Self {
+        let workdir = workdir.canonicalize().unwrap_or(workdir);
         let namespace = workdir.to_string_lossy().to_string();
         GitRepo {
             workdir,
+            storage_dir: None,
+            memoizer: Memoizer::new().with_namespace(namespace),
+            git2_repo: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn with_storage_dir(workdir: PathBuf, storage_dir: PathBuf) -> Self {
+        let workdir = workdir.canonicalize().unwrap_or(workdir);
+        let namespace = workdir.to_string_lossy().to_string();
+        GitRepo {
+            workdir,
+            storage_dir: Some(storage_dir),
             memoizer: Memoizer::new().with_namespace(namespace),
             git2_repo: Arc::new(Mutex::new(None)),
         }
     }
 
     pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
+        let workdir = workdir.canonicalize().unwrap_or(workdir);
         let namespace = workdir.to_string_lossy().to_string();
         GitRepo {
             workdir,
+            storage_dir: None,
             memoizer: memoizer.with_namespace(namespace),
             git2_repo: Arc::new(Mutex::new(None)),
+        }
+    }
+
+    pub fn get_storage_dir(&self) -> PathBuf {
+        if let Some(ref custom) = self.storage_dir {
+            custom.clone()
+        } else {
+            crate::workspace::storage::get_workspace_storage_dir()
+        }
+    }
+
+    pub fn clear_cache(&self) {
+        self.memoizer.clear();
+        if let Ok(mut guard) = self.git2_repo.lock() {
+            *guard = None;
         }
     }
 
@@ -245,14 +278,31 @@ impl GitRepo {
     }
 
     pub fn git_cmd(&self) -> Command {
+        let _ = fs::create_dir_all(&self.workdir);
         let mut cmd = Command::new("git");
         cmd.current_dir(&self.workdir);
         cmd.env("GIT_TERMINAL_PROMPT", "0");
         cmd.env("GIT_OPTIONAL_LOCKS", "0");
-        // Disable system configuration to avoid corp hooks (e.g. git-secrets)
-        // breaking staircase orchestration and test harnesses.
-        if std::env::var_os("GIT_STAIRCASE_TEST_ALLOW_GLOBAL_CONFIG").is_none() {
-            cmd.env("GIT_CONFIG_SYSTEM", "/dev/null");
+        cmd.env_remove("GIT_DIR");
+        cmd.env_remove("GIT_WORK_TREE");
+        cmd.env_remove("GIT_INDEX_FILE");
+        cmd.env_remove("GIT_OBJECT_DIRECTORY");
+        cmd.env_remove("GIT_QUARANTINE_PATH");
+        cmd.env_remove("GIT_COMMON_DIR");
+        cmd.env_remove("GIT_GRAFT_FILE");
+        // Disable system and global configuration unless GIT_CONFIG_GLOBAL is explicitly provided
+        if std::env::var_os("GIT_CONFIG_GLOBAL").is_none() {
+            cmd.env("GIT_CONFIG_NOSYSTEM", "1");
+            cmd.env("GIT_CONFIG_GLOBAL", "/dev/null");
+        }
+        if let Ok(current_path) = std::env::var("PATH") {
+            if !current_path
+                .split(':')
+                .any(|p| Path::new(p).join("git").exists())
+            {
+                let system_path = format!("{}:/usr/bin:/bin:/usr/local/bin", current_path);
+                cmd.env("PATH", system_path);
+            }
         }
         cmd
     }
@@ -288,50 +338,22 @@ impl GitRepo {
         }
 
         let guard = self.git2()?;
-        let git2_repo = guard.as_ref().unwrap();
-
-        // Let's try native git2 first
-        let oid = match git2_repo.revparse_single(rev) {
-            Ok(obj) => {
+        if let Some(git2_repo) = guard.as_ref() {
+            if let Ok(obj) = git2_repo.revparse_single(rev) {
                 if let Ok(commit) = obj.peel_to_commit() {
-                    commit.id().to_string()
-                } else {
-                    return Err(StaircaseError::Other(format!(
-                        "Object '{}' is not a commit",
-                        rev
-                    )));
+                    let oid = commit.id().to_string();
+                    if rev != "HEAD" {
+                        self.memoizer.set_resolve_commit(rev, &oid);
+                    }
+                    return Ok(oid);
                 }
             }
-            Err(_) => {
-                // If native parsing fails, we could try adding standard prefixes
-                // mimicking Git's resolution order.
-                if let Ok(obj) = git2_repo.revparse_single(&format!("refs/tags/{}", rev)) {
-                    if let Ok(commit) = obj.peel_to_commit() {
-                        commit.id().to_string()
-                    } else {
-                        return Err(StaircaseError::Other(format!(
-                            "Tag '{}' does not point to a commit",
-                            rev
-                        )));
-                    }
-                } else if let Ok(obj) = git2_repo.revparse_single(&format!("refs/heads/{}", rev)) {
-                    if let Ok(commit) = obj.peel_to_commit() {
-                        commit.id().to_string()
-                    } else {
-                        return Err(StaircaseError::Other(format!(
-                            "Branch '{}' does not point to a commit",
-                            rev
-                        )));
-                    }
-                } else {
-                    // Fall back to CLI if it's completely unresolvable via libgit2
-                    self.command()
-                        .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
-                        .run()?
-                }
-            }
-        };
+        }
 
+        let oid = self
+            .command()
+            .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
+            .run()?;
         if rev != "HEAD" {
             self.memoizer.set_resolve_commit(rev, &oid);
         }
@@ -346,31 +368,33 @@ impl GitRepo {
         }
 
         let guard = self.git2()?;
-        let git2_repo = guard.as_ref().unwrap();
-
-        let full_name = match git2_repo.find_reference(name) {
-            Ok(reference) => {
-                if let Some(resolved) = reference.resolve().ok() {
-                    resolved.name().unwrap_or("").to_string()
-                } else {
-                    reference.name().unwrap_or("").to_string()
+        let full_name = if let Some(git2_repo) = guard.as_ref() {
+            match git2_repo.find_reference(name) {
+                Ok(reference) => {
+                    if let Some(resolved) = reference.resolve().ok() {
+                        resolved.name().unwrap_or("").to_string()
+                    } else {
+                        reference.name().unwrap_or("").to_string()
+                    }
                 }
-            }
-            Err(_) => {
-                // If direct reference search fails, try standard parsing via CLI fallback
-                // because git rev-parse --symbolic-full-name can do complex tracking
-                self.command()
+                Err(_) => self
+                    .command()
                     .args(&["rev-parse", "--symbolic-full-name", name])
-                    .run()?
+                    .run()?,
             }
+        } else {
+            self.command()
+                .args(&["rev-parse", "--symbolic-full-name", name])
+                .run()?
         };
 
         if full_name.is_empty() {
             return Err(StaircaseError::Other(format!(
-                "Could not resolve \"{}\" to a full refname",
+                "Failed to resolve symbolic full name for '{}'",
                 name
             )));
         }
+
         if name != "HEAD" {
             self.memoizer.set_symbolic_name(name, &full_name);
         }
@@ -392,11 +416,13 @@ impl GitRepo {
         }
 
         let guard = self.git2()?;
-        let git2_repo = guard.as_ref().unwrap();
-
-        let res = match git2_repo.revparse_single(rev) {
-            Ok(obj) => Some(obj.id().to_string()),
-            Err(_) => None,
+        let res = if let Some(git2_repo) = guard.as_ref() {
+            match git2_repo.revparse_single(rev) {
+                Ok(obj) => Some(obj.id().to_string()),
+                Err(_) => self.command().args(&["rev-parse", "--verify", rev]).run().ok(),
+            }
+        } else {
+            self.command().args(&["rev-parse", "--verify", rev]).run().ok()
         };
 
         if rev != "HEAD" {
@@ -559,14 +585,14 @@ impl GitRepo {
     pub fn update_branch(&self, branch_name: &str, oid: &str) -> Result<()> {
         let ref_name = format!("refs/heads/{}", branch_name);
         self.command().args(&["update-ref", &ref_name, oid]).run()?;
-        self.memoizer.clear();
+        self.clear_cache();
         Ok(())
     }
 
     pub fn update_step_ref(&self, id: &str, step_id: &str, cut: &str) -> Result<()> {
         let ref_name = StaircaseRefs::state_step(id, step_id);
         self.command().args(&["update-ref", &ref_name, cut]).run()?;
-        self.memoizer.clear();
+        self.clear_cache();
         Ok(())
     }
 
@@ -575,7 +601,7 @@ impl GitRepo {
         self.command()
             .args(&["update-ref", "-d", &ref_name])
             .run()?;
-        self.memoizer.clear();
+        self.clear_cache();
         Ok(())
     }
 
@@ -680,7 +706,7 @@ impl GitRepo {
         }
         let hash = self
             .command()
-            .args(&["hash-object", "--stdin"])
+            .args(&["hash-object", "-w", "--stdin"])
             .stdin(data)
             .run()?;
         self.memoizer.set_hash_data(data, &hash);
@@ -784,6 +810,17 @@ impl GitRepo {
     pub fn update_refs_transaction(&self, commands: &[String]) -> Result<()> {
         if commands.is_empty() {
             return Ok(());
+        }
+        if let Ok(git_dir) = self.git_dir() {
+            for cmd_line in commands {
+                let parts: Vec<&str> = cmd_line.split_whitespace().collect();
+                if parts.len() >= 2 {
+                    let ref_path = git_dir.join(parts[1]);
+                    if let Some(parent) = ref_path.parent() {
+                        let _ = fs::create_dir_all(parent);
+                    }
+                }
+            }
         }
         let input = format!("start\n{}\nprepare\ncommit\n", commands.join("\n"));
         self.command()
@@ -938,7 +975,7 @@ impl GitRepo {
             cmd = cmd.arg(old);
         }
         cmd.run()?;
-        self.memoizer.clear();
+        self.clear_cache();
         Ok(())
     }
 

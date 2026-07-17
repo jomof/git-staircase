@@ -7,10 +7,25 @@ use git_staircase::model::Discovery;
 use std::process::Command;
 
 fn command_output(path: &std::path::Path, args: &[&str]) -> std::process::Output {
-    let ws_dir = std::env::temp_dir().join(format!(".ws_storage_{:p}", path));
+    let canonical_path = path.canonicalize().unwrap_or_else(|_| path.to_path_buf());
+    let repo_ws_dir = canonical_path.join(".git").join("ws_storage");
+    let _ = std::fs::create_dir_all(&repo_ws_dir);
+    let ws_dir = repo_ws_dir;
     Command::new(env!("CARGO_BIN_EXE_git-staircase"))
-        .current_dir(path)
-        .env("GIT_STAIRCASE_WORKSPACE_DIR", &ws_dir)
+        .current_dir(&canonical_path)
+        .env_remove("GIT_DIR")
+        .env_remove("GIT_WORK_TREE")
+        .env_remove("GIT_INDEX_FILE")
+        .env_remove("GIT_OBJECT_DIRECTORY")
+        .env_remove("GIT_QUARANTINE_PATH")
+        .env("GIT_CONFIG_NOSYSTEM", "1")
+        .env("GIT_CONFIG_GLOBAL", "/dev/null")
+        .env("GIT_AUTHOR_NAME", "Test User")
+        .env("GIT_AUTHOR_EMAIL", "test@example.com")
+        .env("GIT_COMMITTER_NAME", "Test User")
+        .env("GIT_COMMITTER_EMAIL", "test@example.com")
+        .arg("--storage-dir")
+        .arg(&ws_dir)
         .args(args)
         .output()
         .unwrap()
@@ -27,18 +42,34 @@ fn adopt_one(repo: &git_staircase::GitRepo, name: &str) -> git_staircase::Stairc
 
 #[test]
 fn empty_list_output_contracts_are_exact() {
-    let (tmp, _) = setup_repo();
+    let (tmp, repo) = setup_repo();
+    let _repo_guard = &repo;
 
     let human = command_output(tmp.path(), &["list"]);
-    assert!(human.status.success());
+    assert!(
+        human.status.success(),
+        "human command failed with code {:?}: {}",
+        human.status.code(),
+        String::from_utf8_lossy(&human.stderr)
+    );
     assert_eq!(human.stdout, b"No staircases.\n");
 
     let porcelain = command_output(tmp.path(), &["list", "--porcelain"]);
-    assert!(porcelain.status.success());
+    assert!(
+        porcelain.status.success(),
+        "porcelain command failed with code {:?}: {}",
+        porcelain.status.code(),
+        String::from_utf8_lossy(&porcelain.stderr)
+    );
     assert!(porcelain.stdout.is_empty());
 
     let json = command_output(tmp.path(), &["list", "--json"]);
-    assert!(json.status.success());
+    assert!(
+        json.status.success(),
+        "json command failed with code {:?}: {}",
+        json.status.code(),
+        String::from_utf8_lossy(&json.stderr)
+    );
     assert_eq!(json.stdout, b"[]\n");
     assert!(
         serde_json::from_slice::<serde_json::Value>(&json.stdout)

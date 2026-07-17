@@ -1,66 +1,19 @@
-use git_staircase::core::manipulation::{LandOptions, land};
+use crate::common::*;
+use git_staircase::core::manipulation::{land, LandOptions};
 use git_staircase::core::resolution::resolve_by_id;
-use git_staircase::git::GitRepo;
-use git_staircase::model::{StaircaseMetadata, Step};
-use std::process::Command;
-use tempfile::TempDir;
-
-fn setup_repo(path: std::path::PathBuf) -> GitRepo {
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["init", "-b", "main"])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["config", "user.name", "Test"])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["config", "user.email", "test@example.com"])
-        .output()
-        .unwrap();
-
-    std::fs::write(path.join("init.txt"), "initial").unwrap();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(&path)
-        .args(&["commit", "-m", "initial"])
-        .output()
-        .unwrap();
-
-    GitRepo::new(path)
-}
+use git_staircase::core::resolved::adopt;
+use git_staircase::core::ResolvedStaircase;
+use git_staircase::model::{LifecycleState, StaircaseMetadata, Step};
 
 #[test]
 fn test_land_leaves_staircase_active() {
-    let tmp = TempDir::new().unwrap();
-    let repo = setup_repo(tmp.path().to_path_buf());
+    let ctx = TestContext::new();
+    let repo = ctx.repo.clone();
     let _initial_oid = repo.resolve_commit("main").unwrap();
 
     // Create a commit to land on a separate branch
-    Command::new("git")
-        .current_dir(tmp.path())
-        .args(&["checkout", "-b", "feature"])
-        .output()
-        .unwrap();
-    std::fs::write(tmp.path().join("f1.txt"), "c1").unwrap();
-    Command::new("git")
-        .current_dir(tmp.path())
-        .args(&["add", "."])
-        .output()
-        .unwrap();
-    Command::new("git")
-        .current_dir(tmp.path())
-        .args(&["commit", "-m", "c1"])
-        .output()
-        .unwrap();
-    let c1 = repo.resolve_commit("HEAD").unwrap();
+    ctx.run_git(&["checkout", "-b", "feature"]);
+    let c1 = ctx.commit("f1.txt", "c1", "c1");
 
     // Set up a managed staircase
     let metadata = StaircaseMetadata {
@@ -81,8 +34,8 @@ fn test_land_leaves_staircase_active() {
         lifecycle: None,
     };
 
-    let adopted = git_staircase::core::resolved::adopt(&repo, &metadata).expect("Adopt failed");
-    let rs = git_staircase::core::ResolvedStaircase::Managed(adopted);
+    let adopted = adopt(&repo, &metadata).expect("Adopt failed");
+    let rs = ResolvedStaircase::Managed(adopted);
 
     // Land it
     land(&repo, &rs, LandOptions { policy: None }).expect("Land failed");
@@ -99,9 +52,9 @@ fn test_land_leaves_staircase_active() {
 
     // ARRANGE/ACT/ASSERT
     if let Ok(staircase) = res {
-        if let git_staircase::core::ResolvedStaircase::Managed(metadata) = staircase {
+        if let ResolvedStaircase::Managed(metadata) = staircase {
             let is_archived = metadata.lifecycle.map_or(false, |l| {
-                l.state == git_staircase::model::LifecycleState::Archived
+                l.state == LifecycleState::Archived
             });
             assert!(
                 is_archived,

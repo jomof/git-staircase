@@ -3,7 +3,7 @@ use crate::GitRepo;
 use crate::workspace::gerrit_provider::probe_gerrit_route;
 use crate::workspace::github_provider::probe_github_route;
 use crate::workspace::repo_provider::observe_repo_workspace;
-use crate::workspace::storage::find_workspace_record_for_path;
+use crate::workspace::storage::find_workspace_record_for_repo;
 use anyhow::Result;
 use clap::{Args, Subcommand};
 use serde::Serialize;
@@ -113,7 +113,7 @@ impl ToPresentation for ProviderDoctorReport {
 
 impl ProviderCmd {
     pub fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
-        let record = find_workspace_record_for_path(&repo.workdir)?;
+        let record = find_workspace_record_for_repo(repo)?;
         let report = match &self.provider {
             ProviderSubcommand::Repo(_) => {
                 if let Some(observation) = observe_repo_workspace(repo)? {

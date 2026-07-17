@@ -66,6 +66,7 @@ pub trait MemoizationStore: Send + Sync + Debug {
     fn get(&self, namespace: &str, key: &MemoKey) -> Option<MemoValue>;
     fn put(&self, namespace: &str, key: MemoKey, value: MemoValue);
     fn clear(&self);
+    fn clear_namespace(&self, namespace: &str);
 }
 
 /// Thread-safe in-process memoization store.
@@ -110,6 +111,12 @@ impl MemoizationStore for InProcessMemoStore {
     fn clear(&self) {
         if let Ok(mut guard) = self.cache.lock() {
             guard.clear();
+        }
+    }
+
+    fn clear_namespace(&self, namespace: &str) {
+        if let Ok(mut guard) = self.cache.lock() {
+            guard.retain(|(ns, _), _| ns != namespace);
         }
     }
 }
@@ -338,7 +345,7 @@ impl Memoizer {
     }
 
     pub fn clear(&self) {
-        self.store.clear();
+        self.store.clear_namespace(&self.namespace);
     }
 }
 
@@ -390,6 +397,10 @@ mod tests {
 
         fn clear(&self) {
             self.inner.clear();
+        }
+
+        fn clear_namespace(&self, namespace: &str) {
+            self.inner.clear_namespace(namespace);
         }
     }
 

@@ -117,10 +117,14 @@ fn test_reorder_data_loss_on_dirty_workdir() {
 fn test_implicit_family_metadata_panic() {
     let tmp = TempDir::new().unwrap();
     let repo_path = tmp.path();
+    let storage_dir = tmp.path().join(".git").join("ws_storage");
+    let _storage_guard = git_staircase::workspace::storage::set_thread_storage_dir(&storage_dir);
     let run_git = |args: &[&str]| {
         let status = Command::new("git")
             .current_dir(repo_path)
             .args(args)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .env("GIT_AUTHOR_NAME", "Test")
             .env("GIT_AUTHOR_EMAIL", "test@example.com")
             .env("GIT_COMMITTER_NAME", "Test")
@@ -196,16 +200,10 @@ fn test_verify_leaves_detached_head() {
     let repo_dir = &repo.workdir;
 
     run_git(repo_dir, &["checkout", "-b", "s1"]);
-    fs::write(repo_dir.join("s1.txt"), "s1").unwrap();
-    run_git(repo_dir, &["add", "."]);
-    run_git(repo_dir, &["commit", "-m", "s1 commit"]);
-    let c1 = run_git(repo_dir, &["rev-parse", "HEAD"]);
+    let c1 = commit(repo_dir, "s1.txt", "s1", "s1 commit");
 
     run_git(repo_dir, &["checkout", "-b", "s2"]);
-    fs::write(repo_dir.join("s2.txt"), "s2").unwrap();
-    run_git(repo_dir, &["add", "."]);
-    run_git(repo_dir, &["commit", "-m", "s2 commit"]);
-    let c2 = run_git(repo_dir, &["rev-parse", "HEAD"]);
+    let c2 = commit(repo_dir, "s2.txt", "s2", "s2 commit");
 
     let sc = StaircaseMetadata {
         landing_policy: None,
@@ -216,13 +214,13 @@ fn test_verify_leaves_detached_head() {
             Step {
                 id: String::new(),
                 name: "s1".to_string(),
-                cut: c1.clone(),
+                cut: c1.trim().to_string(),
                 branch: Some("s1".to_string()),
             },
             Step {
                 id: String::new(),
                 name: "s2".to_string(),
-                cut: c2.clone(),
+                cut: c2.trim().to_string(),
                 branch: Some("s2".to_string()),
             },
         ],

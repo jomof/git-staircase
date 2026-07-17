@@ -1,6 +1,6 @@
 use git_staircase::workspace::model::WorkspaceRecord;
 use git_staircase::workspace::storage::{
-    load_workspace_record_by_id, save_workspace_record, save_workspace_record_cas,
+    load_workspace_record_by_id, save_workspace_record, save_workspace_record_cas, set_thread_storage_dir,
 };
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -9,9 +9,7 @@ use std::thread;
 #[test]
 fn test_storage_race_condition() {
     let storage_dir = tempfile::TempDir::new().unwrap();
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.path());
-    }
+    let _guard = set_thread_storage_dir(storage_dir.path());
 
     let workspace_id = "test-ws";
     let record = WorkspaceRecord {
@@ -33,9 +31,12 @@ fn test_storage_race_condition() {
 
     let _record = Arc::new(record);
     let mut handles = Vec::new();
+    let storage_path = storage_dir.path().to_path_buf();
 
     for i in 0..10 {
+        let path = storage_path.clone();
         let handle = thread::spawn(move || {
+            let _guard = set_thread_storage_dir(&path);
             for _ in 0..10 {
                 if let Ok(Some(current)) = load_workspace_record_by_id("test-ws") {
                     let mut updated = current.clone();

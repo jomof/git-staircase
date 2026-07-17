@@ -2,25 +2,19 @@ use git_staircase::GitRepo;
 use git_staircase::workspace::github_provider::{
     create_github_upload_plan, get_github_verification, parse_github_remote_url, probe_github_route,
 };
+use git_staircase::workspace::storage::{StorageDirGuard, set_thread_storage_dir};
 use std::fs;
-use std::sync::Mutex;
 use tempfile::TempDir;
 
-static TEST_MUTEX: Mutex<()> = Mutex::new(());
-
 fn setup_github_repo() -> (
-    std::sync::MutexGuard<'static, ()>,
+    StorageDirGuard,
     TempDir,
     GitRepo,
     TempDir,
 ) {
-    let guard = TEST_MUTEX.lock().unwrap();
     let repo_dir = TempDir::new().unwrap();
     let storage_dir = TempDir::new().unwrap();
-
-    unsafe {
-        std::env::set_var("GIT_STAIRCASE_WORKSPACE_DIR", storage_dir.path());
-    }
+    let guard = set_thread_storage_dir(storage_dir.path());
 
     let repo = GitRepo::new(repo_dir.path().to_path_buf());
     repo.run(&["init"]).unwrap();
@@ -63,7 +57,8 @@ fn test_github_url_parsing() {
 
 #[test]
 fn test_github_route_probing() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_github_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_github_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let route = probe_github_route(&repo, None).unwrap();
     assert!(route.is_some());
@@ -76,7 +71,8 @@ fn test_github_route_probing() {
 
 #[test]
 fn test_github_upload_plan_and_verification() {
-    let (_guard, _repo_dir, repo, _storage_dir) = setup_github_repo();
+    let (guard, repo_dir, repo, storage_dir) = setup_github_repo();
+    let _ = (&guard, &repo_dir, &storage_dir);
 
     let head_oid = repo.resolve_commit("HEAD").unwrap();
     let route = probe_github_route(&repo, None).unwrap().unwrap();

@@ -4,6 +4,7 @@ use git_staircase::{GitRepo, StaircaseError};
 use std::path::PathBuf;
 
 use git_staircase::cli::{self, Command};
+use git_staircase::core;
 use git_staircase::workspace::{BootstrapOptions, bootstrap};
 
 #[derive(Parser)]
@@ -42,6 +43,9 @@ struct Cli {
 
     #[arg(long, global = true)]
     workspace_mode: Option<String>,
+
+    #[arg(long, global = true)]
+    storage_dir: Option<PathBuf>,
 }
 
 #[derive(Subcommand)]
@@ -228,10 +232,13 @@ fn find_repo_root() -> Result<PathBuf> {
 
 fn run(cli: Cli) -> Result<()> {
     let repo_root = find_repo_root()?;
-    let repo = GitRepo::new(repo_root);
+    let repo = match cli.storage_dir {
+        Some(ref dir) => GitRepo::with_storage_dir(repo_root, dir.clone()),
+        None => GitRepo::new(repo_root),
+    };
     if cli.command.requires_clear_operation() {
-        git_staircase::core::ensure_no_active(&repo)?;
-        if let Some((operation, owner)) = git_staircase::core::external_git_operation(&repo)? {
+        core::ensure_no_active(&repo)?;
+        if let Some((operation, owner)) = core::external_git_operation(&repo)? {
             return Err(StaircaseError::ExternalOperation { operation, owner }.into());
         }
     }

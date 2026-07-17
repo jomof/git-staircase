@@ -1,48 +1,49 @@
 use git_staircase::core::operation::{MutationPlan, abort_active};
 use git_staircase::git::GitRepo;
 use std::fs;
-use std::path::PathBuf;
+use std::path::Path;
+use tempfile::TempDir;
 
 #[test]
 fn test_draft_loss_on_conflict() {
-    let test_dir = std::env::current_dir()
-        .unwrap()
-        .join("repro_draft_dir_unique");
-    if test_dir.exists() {
-        fs::remove_dir_all(&test_dir).unwrap();
-    }
-    fs::create_dir_all(&test_dir).unwrap();
+    let tmp = TempDir::new().unwrap();
+    let test_dir = tmp.path();
 
-    fn run_git(dir: &PathBuf, args: &[&str]) {
+    fn run_git(dir: &Path, args: &[&str]) {
         let status = std::process::Command::new("git")
             .args(args)
             .current_dir(dir)
+            .env("GIT_CONFIG_NOSYSTEM", "1")
+            .env("GIT_AUTHOR_NAME", "Test")
+            .env("GIT_AUTHOR_EMAIL", "test@example.com")
+            .env("GIT_COMMITTER_NAME", "Test")
+            .env("GIT_CONFIG_GLOBAL", "/dev/null")
             .status()
             .unwrap();
         assert!(status.success(), "git command failed: {:?}", args);
     }
 
-    run_git(&test_dir, &["init"]);
-    run_git(&test_dir, &["config", "user.email", "you@example.com"]);
-    run_git(&test_dir, &["config", "user.name", "Your Name"]);
+    run_git(test_dir, &["init", "-b", "main"]);
+    run_git(test_dir, &["config", "user.email", "you@example.com"]);
+    run_git(test_dir, &["config", "user.name", "Your Name"]);
 
     fs::write(test_dir.join("file"), "base").unwrap();
-    run_git(&test_dir, &["add", "file"]);
-    run_git(&test_dir, &["commit", "-m", "base"]);
+    run_git(test_dir, &["add", "file"]);
+    run_git(test_dir, &["commit", "-m", "base"]);
 
-    run_git(&test_dir, &["checkout", "-b", "A"]);
+    run_git(test_dir, &["checkout", "-b", "A"]);
     fs::write(test_dir.join("file"), "A").unwrap();
-    run_git(&test_dir, &["commit", "-am", "A"]);
+    run_git(test_dir, &["commit", "-am", "A"]);
 
-    run_git(&test_dir, &["checkout", "main"]);
-    run_git(&test_dir, &["checkout", "-b", "B"]);
+    run_git(test_dir, &["checkout", "main"]);
+    run_git(test_dir, &["checkout", "-b", "B"]);
     fs::write(test_dir.join("file"), "B").unwrap();
-    run_git(&test_dir, &["commit", "-am", "B"]);
+    run_git(test_dir, &["commit", "-am", "B"]);
 
     // Merge A into B to cause conflict
     let status = std::process::Command::new("git")
         .args(["merge", "A"])
-        .current_dir(&test_dir)
+        .current_dir(test_dir)
         .status()
         .unwrap();
     assert!(!status.success());
@@ -87,7 +88,4 @@ fn test_draft_loss_on_conflict() {
         unstaged_content, "more changes",
         "Unstaged changes should be preserved"
     );
-
-    // Cleanup
-    fs::remove_dir_all(&test_dir).unwrap();
 }
