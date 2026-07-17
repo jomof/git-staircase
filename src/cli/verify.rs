@@ -37,8 +37,12 @@ pub struct Verify {
 impl super::Command for Verify {
     fn run(&self, repo: &GitRepo) -> Result<Box<dyn PresentationOutput>> {
         if self.draft {
-            let evidence =
-                core::verify_draft(repo, self.build_command.clone(), self.test_command.clone(), self.timeout)?;
+            let evidence = core::verify_draft(
+                repo,
+                self.build_command.clone(),
+                self.test_command.clone(),
+                self.timeout,
+            )?;
             return Ok(Box::new(evidence));
         }
         let aggregate_opt = if self.aggregate { Some(true) } else { None };

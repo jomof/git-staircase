@@ -238,7 +238,9 @@ pub fn create_github_upload_plan(
     staircase_name: Option<&str>,
 ) -> Result<GitHubUploadPlan> {
     let policy = mapping_policy.unwrap_or("aggregate").to_string();
-    let name_prefix = staircase_name.map(|n| format!("{}/", n)).unwrap_or_default();
+    let name_prefix = staircase_name
+        .map(|n| format!("{}/", n))
+        .unwrap_or_default();
     if !matches!(policy.as_str(), "aggregate" | "stacked" | "cumulative") {
         return Err(StaircaseError::Other(format!(
             "unsupported GitHub review mapping '{}'; expected aggregate, stacked, or cumulative",
@@ -1335,7 +1337,13 @@ impl GitHubInstance {
         oids: &[String],
         _record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedReviewShow> {
-        let plan = create_github_upload_plan(repo, &self.route, oids, None, _record.map(|r| r.metadata.name.as_str()))?;
+        let plan = create_github_upload_plan(
+            repo,
+            &self.route,
+            oids,
+            None,
+            _record.map(|r| r.metadata.name.as_str()),
+        )?;
         let mut details = HashMap::new();
         details.insert("Mapping Policy".to_string(), plan.mapping_policy.clone());
 
@@ -1392,7 +1400,13 @@ impl GitHubInstance {
                 details,
             });
         }
-        let plan = create_github_upload_plan(_repo, &self.route, oids, None, record.map(|r| r.metadata.name.as_str()))?;
+        let plan = create_github_upload_plan(
+            _repo,
+            &self.route,
+            oids,
+            None,
+            record.map(|r| r.metadata.name.as_str()),
+        )?;
         let mut details = HashMap::new();
         details.insert("Mapping Policy".to_string(), plan.mapping_policy.clone());
         details.insert(
@@ -1561,7 +1575,13 @@ impl GitHubInstance {
                 });
             }
         }
-        let _plan = create_github_upload_plan(repo, &self.route, oids, None, record.map(|r| r.metadata.name.as_str()))?;
+        let _plan = create_github_upload_plan(
+            repo,
+            &self.route,
+            oids,
+            None,
+            record.map(|r| r.metadata.name.as_str()),
+        )?;
         Ok(UnifiedReviewReconcile {
             provider_label: "GitHub".to_string(),
             status: "Reconciled with GitHub repository".to_string(),
@@ -1807,7 +1827,13 @@ impl GitHubInstance {
         oids: &[String],
         _record: Option<&StaircaseRecord>,
     ) -> Result<UnifiedProviderVerification> {
-        let plan = create_github_upload_plan(repo, &self.route, oids, None, _record.map(|r| r.metadata.name.as_str()))?;
+        let plan = create_github_upload_plan(
+            repo,
+            &self.route,
+            oids,
+            None,
+            _record.map(|r| r.metadata.name.as_str()),
+        )?;
         Ok(UnifiedProviderVerification {
             provider_label: "GitHub".into(),
             status: if plan.warnings.is_empty() {

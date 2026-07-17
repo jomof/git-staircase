@@ -339,7 +339,8 @@ pub fn read_record(repo: &GitRepo, target: &str) -> Result<StaircaseRecord> {
     let manifest_oid = entries.get("archive-manifest").cloned();
 
     let structure_bytes = repo.cat_file(&structure_oid)?;
-    let structure = String::from_utf8(structure_bytes).map_err(|e| StaircaseError::Other(e.to_string()))?;
+    let structure =
+        String::from_utf8(structure_bytes).map_err(|e| StaircaseError::Other(e.to_string()))?;
     let (mut metadata, structural_extensions) = parse_structure(&structure)?;
     let mut user_metadata: StaircaseUserMetadata =
         read_versioned_json(repo, &metadata_oid, "git-staircase-metadata 1")?;

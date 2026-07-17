@@ -916,12 +916,12 @@ fn xml_start_tags(content: &str) -> Vec<String> {
     let mut offset = 0;
     while let Some(start_rel) = content[offset..].find('<') {
         let start = offset + start_rel;
-        
+
         let mut in_quote = false;
         let mut quote_char = ' ';
         let mut end_rel = 0;
         let mut found_end = false;
-        
+
         for (i, c) in content[start..].char_indices() {
             if !in_quote {
                 if c == '"' || c == '\'' {
@@ -936,11 +936,11 @@ fn xml_start_tags(content: &str) -> Vec<String> {
                 in_quote = false;
             }
         }
-        
+
         if !found_end {
             break;
         }
-        
+
         let end = start + end_rel + 1;
         let tag = content[start..end].trim();
         if !tag.starts_with("</") && !tag.starts_with("<?") && !tag.starts_with("<!") {

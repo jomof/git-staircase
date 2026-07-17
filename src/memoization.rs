@@ -122,7 +122,10 @@ impl Memoizer {
     }
 
     pub fn with_store(store: Arc<dyn MemoizationStore>) -> Self {
-        Self { store, namespace: String::new() }
+        Self {
+            store,
+            namespace: String::new(),
+        }
     }
 
     pub fn with_namespace(mut self, namespace: String) -> Self {
@@ -135,7 +138,9 @@ impl Memoizer {
             ancestor: ancestor.to_string(),
             descendant: descendant.to_string(),
         };
-        self.store.get(&self.namespace, &key).and_then(|v| v.as_bool())
+        self.store
+            .get(&self.namespace, &key)
+            .and_then(|v| v.as_bool())
     }
 
     pub fn set_ancestry(&self, ancestor: &str, descendant: &str, is_ancestor: bool) {
@@ -143,7 +148,8 @@ impl Memoizer {
             ancestor: ancestor.to_string(),
             descendant: descendant.to_string(),
         };
-        self.store.put(&self.namespace, key, MemoValue::Bool(is_ancestor));
+        self.store
+            .put(&self.namespace, key, MemoValue::Bool(is_ancestor));
     }
 
     pub fn get_merge_base(&self, a: &str, b: &str) -> Option<String> {
@@ -161,7 +167,8 @@ impl Memoizer {
             a: a.to_string(),
             b: b.to_string(),
         };
-        self.store.put(&self.namespace, key, MemoValue::Text(result.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(result.to_string()));
     }
 
     pub fn get_patch_id(&self, base: &str, tip: &str) -> Option<String> {
@@ -179,7 +186,8 @@ impl Memoizer {
             base: base.to_string(),
             tip: tip.to_string(),
         };
-        self.store.put(&self.namespace, key, MemoValue::Text(patch_id.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(patch_id.to_string()));
     }
 
     pub fn get_tree_id(&self, commit: &str) -> Option<String> {
@@ -195,7 +203,8 @@ impl Memoizer {
         let key = MemoKey::TreeId {
             commit: commit.to_string(),
         };
-        self.store.put(&self.namespace, key, MemoValue::Text(tree_id.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(tree_id.to_string()));
     }
 
     pub fn get_object_format(&self) -> Option<String> {
@@ -207,7 +216,8 @@ impl Memoizer {
 
     pub fn set_object_format(&self, format: &str) {
         let key = MemoKey::ObjectFormat;
-        self.store.put(&self.namespace, key, MemoValue::Text(format.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(format.to_string()));
     }
 
     pub fn get_hash_data(&self, data: &str) -> Option<String> {
@@ -227,7 +237,8 @@ impl Memoizer {
         hasher.update(data.as_bytes());
         let content_sha = format!("{:x}", hasher.finalize());
         let key = MemoKey::HashData { content_sha };
-        self.store.put(&self.namespace, key, MemoValue::Text(hash.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(hash.to_string()));
     }
 
     pub fn get_resolve_commit(&self, rev: &str) -> Option<String> {
@@ -243,7 +254,8 @@ impl Memoizer {
         let key = MemoKey::ResolveCommit {
             rev: rev.to_string(),
         };
-        self.store.put(&self.namespace, key, MemoValue::Text(oid.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(oid.to_string()));
     }
 
     pub fn get_resolve_ref(&self, rev: &str) -> Option<Option<String>> {
@@ -281,7 +293,8 @@ impl Memoizer {
         let key = MemoKey::ResolveSymbolic {
             name: name.to_string(),
         };
-        self.store.put(&self.namespace, key, MemoValue::Text(full_name.to_string()));
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(full_name.to_string()));
     }
 
     pub fn clear(&self) {

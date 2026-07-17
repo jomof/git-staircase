@@ -88,8 +88,14 @@ pub fn resolve_gerrit_route(
         .unwrap_or(server)
         .to_ascii_lowercase();
 
-    if final_server_id.is_empty() || final_server_id.contains("://") || final_server_id.contains('@') {
-        return Err(StaircaseError::Other(format!("gerrit.route-malformed: invalid server id '{}'", final_server_id)));
+    if final_server_id.is_empty()
+        || final_server_id.contains("://")
+        || final_server_id.contains('@')
+    {
+        return Err(StaircaseError::Other(format!(
+            "gerrit.route-malformed: invalid server id '{}'",
+            final_server_id
+        )));
     }
 
     Ok(GerritRoute {

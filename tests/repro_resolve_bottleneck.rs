@@ -25,5 +25,9 @@ fn test_resolve_commit_bottleneck() {
     // Each resolve_commit should be a single git call (or memoized).
     // But currently it's 3 git calls per OID if not memoized.
     // Even if memoized, the first call is slow.
-    assert!(duration.as_secs_f32() < 0.5, "Resolving 150 OIDs took too long: {:?}", duration);
+    assert!(
+        duration.as_secs_f32() < 0.5,
+        "Resolving 150 OIDs took too long: {:?}",
+        duration
+    );
 }

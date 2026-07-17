@@ -1,5 +1,7 @@
 use git_staircase::workspace::model::WorkspaceRecord;
-use git_staircase::workspace::storage::{save_workspace_record, save_workspace_record_cas, load_workspace_record_by_id};
+use git_staircase::workspace::storage::{
+    load_workspace_record_by_id, save_workspace_record, save_workspace_record_cas,
+};
 use std::collections::HashMap;
 use std::sync::Arc;
 use std::thread;
@@ -37,8 +39,10 @@ fn test_storage_race_condition() {
             for _ in 0..10 {
                 if let Ok(Some(current)) = load_workspace_record_by_id("test-ws") {
                     let mut updated = current.clone();
-                    updated.extensions.insert(format!("thread-{}", i), "value".into());
-                    // This SHOULD fail if someone else updated it in between, 
+                    updated
+                        .extensions
+                        .insert(format!("thread-{}", i), "value".into());
+                    // This SHOULD fail if someone else updated it in between,
                     // because save_workspace_record_cas checks the generation.
                     // But if the check-and-save is not atomic, it might succeed when it shouldn't,
                     // or overwrite other's changes.
@@ -59,5 +63,9 @@ fn test_storage_race_condition() {
 
     // We expect 10 extensions if every thread succeeded at least once and didn't overwrite others.
     // In a race, it's very likely some will be lost.
-    assert_eq!(final_record.extensions.len(), 10, "Updates were lost due to race condition!");
+    assert_eq!(
+        final_record.extensions.len(),
+        10,
+        "Updates were lost due to race condition!"
+    );
 }

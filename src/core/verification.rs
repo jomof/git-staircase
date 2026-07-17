@@ -163,7 +163,7 @@ pub fn verify_draft(
     let mut success = true;
     let mut stdout = String::new();
     let mut stderr = String::new();
-    
+
     let default_timeout = 300; // 5 minutes default
     let timeout = timeout_secs.unwrap_or(default_timeout);
 
@@ -195,7 +195,11 @@ pub fn verify_draft(
     })
 }
 
-fn run_shell_command(dir: &std::path::Path, command: &str, timeout_secs: u64) -> Result<(bool, String, String)> {
+fn run_shell_command(
+    dir: &std::path::Path,
+    command: &str,
+    timeout_secs: u64,
+) -> Result<(bool, String, String)> {
     let mut child = std::process::Command::new("sh")
         .current_dir(dir)
         .arg("-c")

@@ -82,12 +82,14 @@ fn test_github_upload_plan_and_verification() {
     let route = probe_github_route(&repo, None).unwrap().unwrap();
 
     let plan_agg =
-        create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("aggregate"), None).unwrap();
+        create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("aggregate"), None)
+            .unwrap();
     assert_eq!(plan_agg.publications.len(), 1);
     assert_eq!(plan_agg.publications[0].head_branch, "staircase/aggregate");
 
     let plan_stacked =
-        create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("stacked"), None).unwrap();
+        create_github_upload_plan(&repo, &route, &[head_oid.clone()], Some("stacked"), None)
+            .unwrap();
     assert_eq!(plan_stacked.publications.len(), 1);
     assert_eq!(plan_stacked.publications[0].head_branch, "staircase/step-1");
 

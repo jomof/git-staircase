@@ -4,6 +4,9 @@ use std::path::Path;
 use std::process::Command;
 use tempfile::TempDir;
 
+pub mod builder;
+pub use builder::RepoBuilder;
+
 pub struct TestContext {
     pub tmp: TempDir,
     #[allow(dead_code)]
@@ -94,13 +97,13 @@ pub fn commit(dir: &Path, file: &str, contents: &str, msg: &str) -> String {
 
 #[allow(dead_code)]
 pub fn setup_repo() -> (TempDir, GitRepo) {
-    let tmp = TempDir::new().unwrap();
-    let path = tmp.path().to_path_buf();
-    run_git(&path, &["init", "-b", "main"]);
-    run_git(&path, &["config", "core.hooksPath", "/dev/null"]);
-    commit(&path, "init.txt", "initial", "initial commit");
-    let repo = GitRepo::new(path);
-    (tmp, repo)
+    RepoBuilder::new()
+        .git(&["init", "-b", "main"])
+        .git(&["config", "core.hooksPath", "/dev/null"])
+        .write_file("init.txt", "initial")
+        .git(&["add", "."])
+        .git(&["commit", "--allow-empty", "-m", "initial commit"])
+        .build()
 }
 
 #[allow(dead_code)]

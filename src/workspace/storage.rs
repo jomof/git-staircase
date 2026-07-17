@@ -41,8 +41,13 @@ pub fn save_workspace_record_cas(
     let filename = format!("{}.json", record.workspace_id);
     let target_path = dir.join(&filename);
     let lock_path = dir.join(format!("{}.lock", record.workspace_id));
-    
-    let open = || std::fs::OpenOptions::new().write(true).create_new(true).open(&lock_path);
+
+    let open = || {
+        std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&lock_path)
+    };
     let mut _lock_file = loop {
         match open() {
             Ok(file) => break file,
@@ -94,7 +99,11 @@ pub fn save_workspace_record_cas(
     }
     let _guard = LockGuard(lock_path);
 
-    let temp_path = dir.join(format!(".tmp_{}_{}.json", record.workspace_id, uuid::Uuid::new_v4()));
+    let temp_path = dir.join(format!(
+        ".tmp_{}_{}.json",
+        record.workspace_id,
+        uuid::Uuid::new_v4()
+    ));
 
     let existing = if target_path.exists() {
         let data = fs::read_to_string(&target_path)?;
@@ -169,8 +178,13 @@ pub fn list_workspace_records() -> Result<Vec<WorkspaceRecord>> {
                 }
             }
             let data = std::fs::read_to_string(&path)?;
-            let record: WorkspaceRecord = serde_json::from_str(&data)
-                .map_err(|e| crate::error::StaircaseError::Other(format!("Invalid storage record {}: {}", path.display(), e)))?;
+            let record: WorkspaceRecord = serde_json::from_str(&data).map_err(|e| {
+                crate::error::StaircaseError::Other(format!(
+                    "Invalid storage record {}: {}",
+                    path.display(),
+                    e
+                ))
+            })?;
             records.push(record);
         }
     }

@@ -7,7 +7,7 @@ fn test_repro_manifest_xml_parsing_bracket() {
     let tmp = TempDir::new().unwrap();
     let repo_dir = tmp.path().join("repo_client");
     fs::create_dir_all(&repo_dir.join(".repo")).unwrap();
-    
+
     // Create a manifest where a project's name contains a '>' character.
     let manifest_content = r#"<manifest>
   <remote name="origin" fetch=".." />
@@ -29,6 +29,9 @@ fn test_repro_manifest_xml_parsing_bracket() {
         .expect("probe should succeed")
         .expect("should find a repo candidate");
 
-    assert_eq!(candidate.current_project.as_ref().unwrap().identity, "foo > bar", 
-               "Project was not found or misparsed because of '>' in manifest attribute!");
+    assert_eq!(
+        candidate.current_project.as_ref().unwrap().identity,
+        "foo > bar",
+        "Project was not found or misparsed because of '>' in manifest attribute!"
+    );
 }
