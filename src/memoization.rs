@@ -28,6 +28,10 @@ pub enum MemoKey {
     ResolveRef { rev: String },
     /// Full refname for a symbolic branch or ref name.
     ResolveSymbolic { name: String },
+    /// Git common dir.
+    GitCommonDir,
+    /// Git top level dir.
+    ShowTopLevel,
 }
 
 /// Serialized/typed memoized value.
@@ -68,6 +72,16 @@ pub trait MemoizationStore: Send + Sync + Debug {
 #[derive(Debug, Default, Clone)]
 pub struct InProcessMemoStore {
     cache: Arc<Mutex<HashMap<(String, MemoKey), MemoValue>>>,
+}
+
+use std::sync::OnceLock;
+
+static GLOBAL_MEMO_STORE: OnceLock<Arc<InProcessMemoStore>> = OnceLock::new();
+
+pub fn global_memo_store() -> Arc<InProcessMemoStore> {
+    GLOBAL_MEMO_STORE
+        .get_or_init(|| Arc::new(InProcessMemoStore::new()))
+        .clone()
 }
 
 impl InProcessMemoStore {
@@ -116,7 +130,7 @@ impl Default for Memoizer {
 impl Memoizer {
     pub fn new() -> Self {
         Self {
-            store: Arc::new(InProcessMemoStore::new()),
+            store: global_memo_store(),
             namespace: String::new(),
         }
     }
@@ -295,6 +309,32 @@ impl Memoizer {
         };
         self.store
             .put(&self.namespace, key, MemoValue::Text(full_name.to_string()));
+    }
+
+    pub fn get_git_common_dir(&self) -> Option<String> {
+        let key = MemoKey::GitCommonDir;
+        self.store
+            .get(&self.namespace, &key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_git_common_dir(&self, dir: &str) {
+        let key = MemoKey::GitCommonDir;
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(dir.to_string()));
+    }
+
+    pub fn get_show_toplevel(&self) -> Option<String> {
+        let key = MemoKey::ShowTopLevel;
+        self.store
+            .get(&self.namespace, &key)
+            .and_then(|v| v.as_text().map(String::from))
+    }
+
+    pub fn set_show_toplevel(&self, dir: &str) {
+        let key = MemoKey::ShowTopLevel;
+        self.store
+            .put(&self.namespace, key, MemoValue::Text(dir.to_string()));
     }
 
     pub fn clear(&self) {

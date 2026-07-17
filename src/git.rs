@@ -585,10 +585,19 @@ impl GitRepo {
     }
 
     pub fn common_dir(&self) -> Result<PathBuf> {
+        if let Some(dir) = self.memoizer.get_git_common_dir() {
+            let path = PathBuf::from(dir);
+            return Ok(if path.is_absolute() {
+                path
+            } else {
+                self.workdir.join(path)
+            });
+        }
         let raw = self
             .command()
             .args(["rev-parse", "--git-common-dir"])
             .run()?;
+        self.memoizer.set_git_common_dir(&raw);
         let path = PathBuf::from(raw);
         Ok(if path.is_absolute() {
             path

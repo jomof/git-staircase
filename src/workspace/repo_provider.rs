@@ -1031,6 +1031,20 @@ fn git_common_dir_for(path: &Path) -> Option<PathBuf> {
 
 fn git_path_query(path: &Path, args: &[&str]) -> Option<PathBuf> {
     let repo = GitRepo::new(path.to_path_buf());
+
+    // Check cache
+    if args == &["rev-parse", "--show-toplevel"] {
+        if let Some(dir) = repo.memoizer.get_show_toplevel() {
+            return Some(PathBuf::from(dir));
+        }
+    } else if args == &["rev-parse", "--path-format=absolute", "--git-common-dir"]
+        || args == &["rev-parse", "--git-common-dir"]
+    {
+        if let Some(dir) = repo.memoizer.get_git_common_dir() {
+            return Some(PathBuf::from(dir));
+        }
+    }
+
     let output = repo
         .command()
         .args(args)
@@ -1040,9 +1054,18 @@ fn git_path_query(path: &Path, args: &[&str]) -> Option<PathBuf> {
     if !output.status.success() {
         return None;
     }
-    let value = String::from_utf8(output.stdout).ok()?;
-    let path = PathBuf::from(value.trim());
-    Some(path.canonicalize().unwrap_or(path))
+    let res = PathBuf::from(String::from_utf8_lossy(&output.stdout).trim());
+
+    // Populate cache
+    if args == &["rev-parse", "--show-toplevel"] {
+        repo.memoizer.set_show_toplevel(res.to_str().unwrap());
+    } else if args == &["rev-parse", "--path-format=absolute", "--git-common-dir"]
+        || args == &["rev-parse", "--git-common-dir"]
+    {
+        repo.memoizer.set_git_common_dir(res.to_str().unwrap());
+    }
+
+    Some(res)
 }
 
 fn active_git_operation(repo: &GitRepo, common_dir: &Path) -> Option<String> {
