@@ -283,6 +283,7 @@ fn test_verification_aggregate() {
         None,
         Some(true),
         None,
+        None,
     )
     .unwrap();
 
@@ -323,6 +324,7 @@ fn test_verification_each_prefix() {
         None,
         None,
         Some(true),
+        None,
     )
     .unwrap();
 

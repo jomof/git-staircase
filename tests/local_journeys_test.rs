@@ -509,6 +509,10 @@ fn metadata_editor_rejects_concurrent_full_record_change() {
     let output = Command::new(env!("CARGO_BIN_EXE_git-staircase"))
         .current_dir(context.path())
         .env("GIT_EDITOR", &editor)
+        .env(
+            "GIT_STAIRCASE_WORKSPACE_DIR",
+            context.path().join("workspaces"),
+        )
         .args(["metadata", "edit", "managed", "--json"])
         .output()
         .unwrap();
