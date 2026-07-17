@@ -841,6 +841,19 @@ impl GitRepo {
     }
 
     pub fn cat_file(&self, oid: &str) -> Result<Vec<u8>> {
+        let guard = self.git2()?;
+        let git2_repo = guard.as_ref().unwrap();
+
+        match git2_repo.revparse_single(oid) {
+            Ok(obj) => {
+                if let Some(blob) = obj.as_blob() {
+                    return Ok(blob.content().to_vec());
+                }
+            }
+            Err(_) => {}
+        }
+
+        // Fallback for non-blobs (like commits/trees where -p pretty prints) or lookup failures
         let output = self
             .command()
             .args(&["cat-file", "-p", oid])

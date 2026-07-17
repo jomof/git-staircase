@@ -2,9 +2,9 @@ use git2::Repository;
 
 fn test_git2() {
     let repo = Repository::open(".").unwrap();
-    let oid1 = repo.revparse_single("main").unwrap().id();
-    let oid2 = repo.revparse_single("refs/heads/main^{commit}").unwrap().id();
-    println!("oid1: {}", oid1);
-    println!("oid2: {}", oid2);
+    let obj = repo.revparse_single("HEAD:Cargo.toml").unwrap();
+    println!("type: {:?}", obj.kind());
+    let blob = obj.as_blob().unwrap();
+    println!("size: {}", blob.size());
 }
 fn main() { test_git2(); }
