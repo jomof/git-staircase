@@ -121,15 +121,25 @@ impl<'a> GitCommand<'a> {
 
         if self.check_status && !output.status.success() {
             return Err(StaircaseError::GitCommandFailed {
-                command: format!("git {}", self.args.iter().map(|s| {
-                    if s.is_empty() {
-                        "''".to_string()
-                    } else if s.chars().any(|c| !c.is_ascii_alphanumeric() && !"-_.=+,/:@".contains(c)) {
-                        format!("'{}'", s.replace('\'', "'\\''"))
-                    } else {
-                        s.clone()
-                    }
-                }).collect::<Vec<_>>().join(" ")),
+                command: format!(
+                    "git {}",
+                    self.args
+                        .iter()
+                        .map(|s| {
+                            if s.is_empty() {
+                                "''".to_string()
+                            } else if s
+                                .chars()
+                                .any(|c| !c.is_ascii_alphanumeric() && !"-_.=+,/:@".contains(c))
+                            {
+                                format!("'{}'", s.replace('\'', "'\\''"))
+                            } else {
+                                s.clone()
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                ),
                 stdout: String::from_utf8_lossy(&output.stdout).into_owned(),
                 stderr: String::from_utf8_lossy(&output.stderr).into_owned(),
             });
@@ -176,7 +186,10 @@ impl GitRepo {
 
     pub fn with_memoizer(workdir: PathBuf, memoizer: Memoizer) -> Self {
         let namespace = workdir.to_string_lossy().to_string();
-        GitRepo { workdir, memoizer: memoizer.with_namespace(namespace) }
+        GitRepo {
+            workdir,
+            memoizer: memoizer.with_namespace(namespace),
+        }
     }
 
     pub fn git_cmd(&self) -> Command {
@@ -222,9 +235,23 @@ impl GitRepo {
             }
         }
 
-        let is_full_oid = (rev.len() == 40 || rev.len() == 64) && rev.chars().all(|c| c.is_ascii_hexdigit());
+        let is_full_oid =
+            (rev.len() == 40 || rev.len() == 64) && rev.chars().all(|c| c.is_ascii_hexdigit());
 
-        let oid = if !rev.starts_with("refs/") && !is_full_oid {
+        if is_full_oid {
+            if let Ok(sha) = self
+                .command()
+                .args(&["rev-parse", "--verify", &format!("{}^{{commit}}", rev)])
+                .run()
+            {
+                if rev != "HEAD" {
+                    self.memoizer.set_resolve_commit(rev, &sha);
+                }
+                return Ok(sha);
+            }
+        }
+
+        let oid = if !rev.starts_with("refs/") {
             if let Ok(sha) = self
                 .command()
                 .args(&[
@@ -747,11 +774,18 @@ impl GitRepo {
     }
 
     pub fn cat_file(&self, oid: &str) -> Result<Vec<u8>> {
-        let output = self.command().args(&["cat-file", "-p", oid]).trim(false).run_output()?;
+        let output = self
+            .command()
+            .args(&["cat-file", "-p", oid])
+            .trim(false)
+            .run_output()?;
         if output.status.success() {
             Ok(output.stdout)
         } else {
-            Err(StaircaseError::Other(format!("cat-file failed: {}", String::from_utf8_lossy(&output.stderr))))
+            Err(StaircaseError::Other(format!(
+                "cat-file failed: {}",
+                String::from_utf8_lossy(&output.stderr)
+            )))
         }
     }
 
