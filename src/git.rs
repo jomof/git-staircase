@@ -91,6 +91,13 @@ impl<'a> GitCommand<'a> {
         }
         cmd.args(&self.args);
 
+        let log_file = std::env::var("GIT_STAIRCASE_LOG_GIT_CALLS").ok();
+        let start_time = if log_file.is_some() {
+            Some(std::time::Instant::now())
+        } else {
+            None
+        };
+
         let output = if self.interactive {
             let status = cmd.status()?;
             std::process::Output {
@@ -118,6 +125,25 @@ impl<'a> GitCommand<'a> {
         } else {
             cmd.output()?
         };
+
+        if let (Some(path), Some(start)) = (log_file, start_time) {
+            let elapsed_ms = start.elapsed().as_millis();
+            if let Ok(mut f) = std::fs::OpenOptions::new()
+                .create(true)
+                .append(true)
+                .open(&path)
+            {
+                let git_staircase_args = std::env::args().collect::<Vec<_>>();
+                let outer_command = git_staircase_args.join(" ");
+                let underlying_command = format!("git {}", self.args.join(" "));
+                let log_entry = serde_json::json!({
+                    "outer_command": outer_command,
+                    "underlying_command": underlying_command,
+                    "elapsed_ms": elapsed_ms,
+                });
+                let _ = writeln!(f, "{}", log_entry.to_string());
+            }
+        }
 
         if self.check_status && !output.status.success() {
             return Err(StaircaseError::GitCommandFailed {
